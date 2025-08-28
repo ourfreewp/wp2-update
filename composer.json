@@ -1,0 +1,19 @@
+{
+	"name": "ourfreewp/wp2-update",
+	"description": "Modular MU-plugin for GitHub updates (themes, plugins, daemons)",
+	"type": "project",
+	"require": {
+		"composer/semver": "^3.0"
+	},
+	"autoload": {
+		"psr-4": {
+			"WP2\\Update\\": "wp2-update/src/"
+		}
+	},
+	"config": {
+		"vendor-dir": "wp2-update/vendor"
+	},
+	"require-dev": {
+		"phpunit/phpunit": "^10.0"
+	}
+}
