@@ -29,7 +29,7 @@ class Init {
      */
     public function __construct( Connection $connection, GitHubApp $github_app, ThemeUpdater $theme_updater, PluginUpdater $plugin_updater, SharedUtils $utils, GitHubService $github_service ) {
         // Instantiate page renderers
-        $this->pages_handler = new Pages( $connection, $github_app, $utils, $github_service );
+        $this->pages_handler = new Pages( $connection, $github_app, $utils ); // Removed extra argument $github_service
 
         // Instantiate action handler
         $this->actions = new Actions( $connection, $github_app, $theme_updater, $plugin_updater, $utils );

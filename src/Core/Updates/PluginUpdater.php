@@ -157,6 +157,9 @@ class PluginUpdater {
         // Cleanup the verification directory, but keep the downloaded zip for the upgrader
         $wp_filesystem->rmdir($temp_unzip_dir, true);
 
+        // Trigger an action before the plugin installation begins.
+        do_action('wp2_update_before_plugin_install', $app_slug, $repo, $version);
+
         $result   = $upgrader->install( $temp_zip_file, [ 'overwrite_package' => true ] );
 
         // --- PATCH: Clean up the downloaded zip file ---
@@ -166,6 +169,9 @@ class PluginUpdater {
             Logger::log( "Install failed: WP_Upgrader returned an error. Message: " . $result->get_error_message(), 'error', 'install' );
             return $result;
         }
+
+        // Trigger an action after the plugin installation completes.
+        do_action('wp2_update_after_plugin_install', $app_slug, $repo, $version, $result);
 
         // Clear caches after a successful installation.
         wp_clean_plugins_cache( true );

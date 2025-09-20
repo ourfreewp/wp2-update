@@ -19,7 +19,13 @@ class PackageEventsPage {
      * Renders the content for a tab view.
      */
     public function render_as_tab() {
-        $package_context = 'package_' . get_the_ID();
+        global $post;
+        if ( ! isset( $post ) || ! is_a( $post, 'WP_Post' ) ) {
+            echo '<p>' . esc_html__( 'Invalid context. Unable to retrieve package logs.', 'wp2-update' ) . '</p>';
+            return;
+        }
+
+        $package_context = 'package_' . $post->ID; // Use global $post instead of get_the_ID
         $logs = Logger::get_logs_by_context($package_context);
         ?>
         <h2><?php esc_html_e( 'Recent Events For This Package', 'wp2-update' ); ?></h2>

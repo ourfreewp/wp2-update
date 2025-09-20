@@ -133,4 +133,13 @@ class Init {
 
         return $updated;
     }
+
+    /**
+     * Retrieves the GitHubService instance.
+     *
+     * @return GitHubService
+     */
+    public function get_service(): GitHubService {
+        return $this->githubService;
+    }
 }

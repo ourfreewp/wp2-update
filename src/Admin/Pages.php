@@ -71,7 +71,7 @@ class Pages {
      * Renders the dedicated settings page.
      */
     public function render_settings_page() {
-        $view = new PackageSettingsPage();
+        $view = new PackageSettingsPage($this->utils->get_github_service()); // Pass GitHubService dependency
         $view->render();
     }
 

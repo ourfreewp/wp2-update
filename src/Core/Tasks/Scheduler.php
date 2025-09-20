@@ -24,10 +24,10 @@ final class Scheduler {
         $this->githubService = $githubService;
     }
 
-    public static function init() {
+    public function init_hooks() {
         // Check if Action Scheduler is loaded before adding hooks.
         if (!function_exists('as_enqueue_async_action')) {
-            add_action('admin_notices', [__CLASS__, 'action_scheduler_notice']);
+            add_action('admin_notices', [$this, 'action_scheduler_notice']);
             return;
         }
 
@@ -37,14 +37,14 @@ final class Scheduler {
         }
 
         // Sync Task
-        add_action(self::SYNC_ALL_REPOS_HOOK, [__CLASS__, 'run_sync_all_repos']);
-        add_action(self::SYNC_APP_REPOS_HOOK, [__CLASS__, 'run_sync_for_app'], 10, 1); // Add new action
+        add_action(self::SYNC_ALL_REPOS_HOOK, [$this, 'run_sync_all_repos']);
+        add_action(self::SYNC_APP_REPOS_HOOK, [$this, 'run_sync_for_app'], 10, 1);
 
         // Health Check Tasks
-        add_action(self::HEALTH_CHECK_ALL_APPS_HOOK, [__CLASS__, 'run_all_app_checks']);
-        add_action(self::HEALTH_CHECK_SINGLE_APP_HOOK, [__CLASS__, 'run_single_app_check'], 10, 1);
-        add_action(self::HEALTH_CHECK_ALL_REPOS_HOOK, [__CLASS__, 'run_all_repo_checks']);
-        add_action(self::HEALTH_CHECK_SINGLE_REPO_HOOK, [__CLASS__, 'run_single_repo_check'], 10, 1);
+        add_action(self::HEALTH_CHECK_ALL_APPS_HOOK, [$this, 'run_all_app_checks']);
+        add_action(self::HEALTH_CHECK_SINGLE_APP_HOOK, [$this, 'run_single_app_check'], 10, 1);
+        add_action(self::HEALTH_CHECK_ALL_REPOS_HOOK, [$this, 'run_all_repo_checks']);
+        add_action(self::HEALTH_CHECK_SINGLE_REPO_HOOK, [$this, 'run_single_repo_check'], 10, 1);
     }
 
     // --- Scheduler Methods (Public API for our plugin) ---
@@ -119,7 +119,7 @@ final class Scheduler {
         }
     }
 
-    public static function action_scheduler_notice() {
+    public function action_scheduler_notice() {
         ?>
         <div class="notice notice-error">
             <p><?php esc_html_e( 'WP2 Update requires the Action Scheduler library to function, but it was not found. Please ensure it is installed and activated.', 'wp2-update' ); ?></p>

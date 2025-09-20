@@ -5,6 +5,7 @@ use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\GitHubApp\Init as GitHubApp;
 use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Core\Health\PackageHealth;
+use WP2\Update\Utils\Logger;
 
 /**
  * Renders the "Status" tab content.
@@ -44,7 +45,22 @@ class PackageStatusPage {
         $health_checker = new PackageHealth($item_data['repo']);
         $health_status = $health_checker->get_status();
         
-        $installed  = $is_theme ? wp_get_theme( $slug )->get( 'Version' ) : get_plugin_data( WP_PLUGIN_DIR . '/' . $slug )['Version'];
+        $installed = null;
+        if ( ! $is_theme ) {
+            if ( ! function_exists( 'get_plugin_data' ) ) {
+                require_once ABSPATH . 'wp-admin/includes/plugin.php';
+            }
+
+            $plugin_data = get_plugin_data( WP_PLUGIN_DIR . '/' . $slug );
+            if ( isset( $plugin_data['Version'] ) ) {
+                $installed = $plugin_data['Version'];
+            } else {
+                Logger::log( 'Failed to retrieve plugin version for slug: ' . $slug, 'warning', 'plugin' );
+            }
+        } else {
+            $installed = wp_get_theme( $slug )->get( 'Version' );
+        }
+
         $updates    = $is_theme ? get_site_transient( 'update_themes' ) : get_site_transient( 'update_plugins' );
         $available  = $updates->response[ $slug ] ?? null;
 

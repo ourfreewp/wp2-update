@@ -2,6 +2,7 @@
 namespace WP2\Update\Utils;
 
 use WP2\Update\Core\GitHubApp\Init as GitHubApp;
+use WP2\Update\Core\API\Service as GitHubService;
 
 use const HOUR_IN_SECONDS;
 
@@ -21,7 +22,7 @@ class SharedUtils {
         $res = $this->github_app->gh($app_slug, 'GET', "/repos/{$repo}/releases", ['per_page' => $count]);
 
         if (!$res['ok']) {
-            Logger::log('Error fetching releases for repository: ' . $repo, 'error', 'github', ['error' => $res['error'] ?? 'Unknown error']);
+            Logger::log('Error fetching releases for repository: ' . $repo, 'error', 'github');
             return [];
         }
 
@@ -57,10 +58,15 @@ class SharedUtils {
 
     public function get_zip_url_from_release(array $release): ?string {
         foreach (($release['assets'] ?? []) as $asset) {
-            if (in_array($asset['content_type'], ['application/zip', 'application/x-zip-compressed'], true)) {
-                return $asset['url'];
+            if (isset($asset['browser_download_url']) && in_array($asset['content_type'], ['application/zip', 'application/x-zip-compressed'], true)) {
+                // Prioritize the direct download URL
+                return $asset['browser_download_url'];
             }
         }
+
+        // Log a warning if no valid ZIP URL is found in assets
+        Logger::log('No valid ZIP URL found in release assets.', 'warning', 'release');
+
         return $release['zipball_url'] ?? null;
     }
 
@@ -121,5 +127,12 @@ class SharedUtils {
         }
 
         return null;
+    }
+
+    /**
+     * Retrieves the GitHubService instance from GitHubApp.
+     */
+    public function get_github_service(): GitHubService {
+        return $this->github_app->get_service();
     }
 }

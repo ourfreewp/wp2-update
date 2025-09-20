@@ -5,6 +5,7 @@ use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Core\Updates\ThemeUpdater;
 use WP2\Update\Core\Updates\PluginUpdater;
+use WP2\Update\Utils\Logger;
 
 /**
  * Renders the "Version History" tab content.
@@ -39,7 +40,22 @@ class PackageHistoryPage {
         }
 
         $releases  = $this->utils->get_all_releases( $item_data['app_slug'], $item_data['repo'] );
-        $installed = $is_theme ? wp_get_theme( $slug )->get( 'Version' ) : get_plugin_data( WP_PLUGIN_DIR . '/' . $slug )['Version'];
+        // Ensure the required file is included before calling get_plugin_data
+        if ( ! function_exists( 'get_plugin_data' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        $installed = null;
+        if ( ! $is_theme ) {
+            $plugin_data = get_plugin_data( WP_PLUGIN_DIR . '/' . $slug );
+            if ( isset( $plugin_data['Version'] ) ) {
+                $installed = $plugin_data['Version'];
+            } else {
+                Logger::log( 'Failed to retrieve plugin version for slug: ' . $slug, 'warning', 'plugin' );
+            }
+        } else {
+            $installed = wp_get_theme( $slug )->get( 'Version' );
+        }
         ?>
         <h2><?php echo esc_html( $item_data['name'] . ' ' . __( 'Version History', 'wp2-update' ) ); ?></h2>
         <table class="wp2-data-table">

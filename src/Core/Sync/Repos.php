@@ -54,15 +54,27 @@ final class Repos {
             ['installation_id' => get_post_meta($app_post_id, '_wp2_installation_id', true)]
         );
 
-        if (empty($accessible_repos)) {
-            Logger::log('No accessible repositories found for app: ' . $app_slug, 'info', 'sync');
-            // Clear the accessible repos meta if the list is empty
+        if (empty($accessible_repos['repositories'])) {
+            Logger::log('No repositories found in the API response for app: ' . $app_slug, 'info', 'sync');
             update_post_meta($app_post_id, '_wp2_accessible_repos', []);
             return;
         }
 
+        // Ensure the 'repositories' key exists and is an array
+        if (!isset($accessible_repos['repositories']) || !is_array($accessible_repos['repositories'])) {
+            Logger::log('Invalid API response: Missing or invalid "repositories" key for app: ' . $app_slug, 'error', 'sync');
+            update_post_meta($app_post_id, '_wp2_accessible_repos', []);
+            return;
+        }
+
+        // Proceed with processing repositories
         $repo_slugs = [];
-        foreach ($accessible_repos as $repo_data) {
+        foreach ($accessible_repos['repositories'] as $repo_data) {
+            if (!isset($repo_data['full_name'])) {
+                Logger::log('Skipping repository with missing "full_name" in API response.', 'warning', 'sync');
+                continue;
+            }
+
             $repo_slug = $repo_data['full_name'];
             $repo_slugs[] = $repo_slug;
             $repo_post_id = $this->create_or_update_repository_post($repo_data, $app_post_id);
