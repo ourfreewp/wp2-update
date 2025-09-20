@@ -1,5 +1,5 @@
 <?php
-namespace WP2\Update\Health;
+namespace WP2\Update\Core\Health;
 
 /**
  * Validates the health of an installed package (theme or plugin).
@@ -20,7 +20,7 @@ class PackageHealth {
     /**
      * Gets the health status of the package.
      *
-     * @return array ['status' => 'ok'|'error', 'message' => '...']
+     * @return array An associative array with 'status' and 'message'.
      */
     public function get_status(): array {
         // 1. Check if a corresponding repository post exists.
@@ -35,31 +35,16 @@ class PackageHealth {
         // 2. Check if the corresponding repository itself is healthy.
         $repo_health = get_post_meta($repo_post->ID, '_health_status', true);
         if ($repo_health !== 'ok') {
+            $repo_message = get_post_meta($repo_post->ID, '_health_message', true);
             return [
                 'status' => 'error',
-                'message' => 'Repository Error: The discovered repository is not healthy. Check the Repositories page for details.',
+                'message' => $repo_message,
             ];
         }
 
         return [
             'status' => 'ok',
-            'message' => 'Managed and Healthy: This package is ready to receive updates.',
+            'message' => 'Healthy: This package is being managed correctly.',
         ];
-    }
-
-    /**
-     * Legacy: Runs health checks and updates status (for backward compatibility).
-     */
-    public function run_checks() {
-        $status = $this->get_status();
-        $this->update_status($status['status'], $status['message']);
-    }
-
-    /**
-     * Updates the status of the package.
-     * (Assumes this method is implemented elsewhere or is a stub.)
-     */
-    protected function update_status(string $status, string $message): void {
-        // Implement status update logic here.
     }
 }

@@ -1,8 +1,8 @@
 <?php
-namespace WP2\Update\Core\GitHubApp;
+namespace WP2\Update\Core\API\GitHubApp;
 
 use WP2\Update\Core\API\Service as GitHubService;
-use WP2\Update\Core\Utils\Logger;
+use WP2\Update\Utils\Logger;
 
 /**
  * Acts as a facade for all GitHub App-related operations.

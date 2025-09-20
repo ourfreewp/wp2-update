@@ -1,7 +1,7 @@
 <?php
 namespace WP2\Update\Core\Updates;
 
-use WP2\Update\Core\Utils\Init as SharedUtils;
+use WP2\Update\Utils\SharedUtils;
 use function get_transient;
 use function set_transient;
 use function delete_transient;
@@ -152,12 +152,13 @@ class PackageFinder {
     }
 
     /**
-     * Clears all package finder related caches.
+     * Clears all managed package caches.
      */
-    public function clear_cache() {
-        delete_transient( 'wp2_managed_themes' );
-        delete_transient( 'wp2_managed_plugins' );
-        delete_transient('wp2_repo_app_map');
+    public function clear_cache(): void {
+        delete_transient('wp2_managed_themes');
+        delete_transient('wp2_managed_plugins');
+        $this->managed_themes = [];
+        $this->managed_plugins = [];
     }
 
     /**

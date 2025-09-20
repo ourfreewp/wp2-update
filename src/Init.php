@@ -1,13 +1,12 @@
 <?php
 namespace WP2\Update;
 
-use WP2\Update\Core\Init as CoreInit;
 use WP2\Update\Admin\Init as AdminInit;
 use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\Updates\PluginUpdater; 
 use WP2\Update\Core\Updates\ThemeUpdater;
-use WP2\Update\Core\Utils\Init as SharedUtils;
+use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Core\API\Service as GitHubService;
 use WP2\Update\Core\Updates\PackageFinder;
 use WP2\Update\Core\Webhooks\Handler as WebhookHandler;
@@ -56,7 +55,8 @@ final class Init {
         $theme_updater->register_hooks();
         $plugin_updater->register_hooks();
 
-        // Schedule recurring background tasks.
+        // Initialize and schedule recurring background tasks.
+        TaskScheduler::init();
         TaskScheduler::schedule_recurring_tasks();
 
         // Text domain

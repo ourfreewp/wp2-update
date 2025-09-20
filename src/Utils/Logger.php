@@ -1,5 +1,5 @@
 <?php
-namespace WP2\Update\Core\Utils;
+namespace WP2\Update\Utils;
 
 /**
  * A simple static logger utility for the plugin.
@@ -8,35 +8,34 @@ namespace WP2\Update\Core\Utils;
  */
 class Logger {
 	const LOG_OPTION_KEY  = 'wp2_update_log';
-	const MAX_LOG_ENTRIES = 50;
+	const MAX_LOG_ENTRIES = 100;
 
 	/**
 	 * Logs a message with improved handling for arrays and objects.
 	 *
 	 * @param string|array|object $message The message to log.
-	 * @param string $type    The type of log (e.g., 'info', 'error').
+	 * @param string $type    The type of log (e.g., 'info', 'error', 'success', 'debug').
 	 * @param string $context The context of the log (e.g., 'github-app', 'update-check').
-	 * @param string $origin  The origin of the log (e.g., 'System', 'Package').
 	 */
-	public static function log( $message, $type = 'info', $context = 'general', $origin = 'System' ) {
+	public static function log( $message, $type = 'info', $context = 'general' ) {
 		$logs = get_site_option( self::LOG_OPTION_KEY, [] );
 
-		// Convert arrays and objects to JSON for logging
-		if ( is_array( $message ) || is_object( $message ) ) {
-			$message = json_encode( $message, JSON_PRETTY_PRINT );
-		}
+		// Standardize the message format. If it's already structured, use it. Otherwise, wrap it.
+        $log_message = is_array($message) || is_object($message) ? $message : ['message' => $message];
+
+		// Convert the final message payload to a JSON string for storage.
+		$message_string = json_encode( $log_message, JSON_PRETTY_PRINT );
 
 		$redacted = preg_replace(
 			'/\b(?:token|Bearer)\s+[A-Za-z0-9._-]+|\bghp_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{20,}/i',
 			'[REDACTED]',
-			(string) $message
+			(string) $message_string
 		);
 
 		array_unshift( $logs, [ 
 			'message'   => $redacted,
 			'type'      => $type,
 			'context'   => $context,
-			'origin'    => $origin,
 			'timestamp' => current_time( 'timestamp' ),
 		] );
 
@@ -51,4 +50,59 @@ class Logger {
 	public static function get_logs(): array {
 		return get_site_option( self::LOG_OPTION_KEY, [] );
 	}
+
+    /**
+     * Clears all log entries.
+     */
+    public static function clear_logs(): void {
+        delete_site_option(self::LOG_OPTION_KEY);
+    }
+
+	/**
+     * Retrieves log entries filtered by context.
+     *
+     * @param string $context The context to filter logs by.
+     * @return array The filtered list of log entries.
+     */
+    public static function get_logs_by_context(string $context): array {
+        $logs = self::get_logs();
+        return array_filter($logs, function ($log) use ($context) {
+            return isset($log['context']) && $log['context'] === $context;
+        });
+    }
+
+	/**
+     * Logs a message with an associated package slug.
+     *
+     * @param string|array|object $message The message to log.
+     * @param string $type    The type of log (e.g., 'info', 'error', 'success', 'debug').
+     * @param string $context The context of the log (e.g., 'github-app', 'update-check').
+     * @param string|null $package_slug The slug of the package associated with the log entry.
+     */
+    public static function log_with_package($message, $type = 'info', $context = 'general', $package_slug = null) {
+        $logs = get_site_option(self::LOG_OPTION_KEY, []);
+
+        $log_message = is_array($message) || is_object($message) ? $message : ['message' => $message];
+        $message_string = json_encode($log_message, JSON_PRETTY_PRINT);
+
+        $redacted = preg_replace(
+            '/\b(?:token|Bearer)\s+[A-Za-z0-9._-]+|\bghp_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{20,}/i',
+            '[REDACTED]',
+            (string) $message_string
+        );
+
+        $log_entry = [
+            'message'   => $redacted,
+            'type'      => $type,
+            'context'   => $context,
+            'timestamp' => current_time('timestamp'),
+        ];
+
+        if ($package_slug) {
+            $log_entry['package_slug'] = $package_slug;
+        }
+
+        array_unshift($logs, $log_entry);
+        update_site_option(self::LOG_OPTION_KEY, array_slice($logs, 0, self::MAX_LOG_ENTRIES));
+    }
 }

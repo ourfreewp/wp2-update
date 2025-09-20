@@ -3,7 +3,7 @@ namespace WP2\Update\Core\Webhooks;
 
 use WP2\Update\Core\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\Updates\PackageFinder;
-use WP2\Update\Core\Utils\Logger;
+use WP2\Update\Utils\Logger;
 use WP_REST_Request;
 
 /**
@@ -99,6 +99,7 @@ class Handler {
                 if (isset($data['action']) && $data['action'] === 'published') {
                     Logger::log('New release published. Clearing package transients to force update check.', 'info', 'webhook');
                     $this->package_finder->clear_cache();
+                    delete_transient('wp2_merged_packages_data');
                     // Force a new update check.
                     wp_update_themes();
                     wp_update_plugins();

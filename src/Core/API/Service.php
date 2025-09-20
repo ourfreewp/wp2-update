@@ -5,6 +5,7 @@ use Github\AuthMethod;
 use Github\Client as GitHubClient;
 use Github\Exception\ExceptionInterface;
 use Github\ResultPager;
+use WP2\Update\Utils\Logger;
 
 /**
  * A service class that manages the GitHub API client.
@@ -122,7 +123,8 @@ class Service {
             $data = json_decode($response->getBody()->getContents(), true);
             return ['ok' => true, 'data' => $data];
         } catch (ExceptionInterface $e) {
-            return ['ok' => false, 'error' => $e->getMessage()];
+            Logger::log('API call failed: ' . $e->getMessage(), 'error', 'api');
+            return ['ok' => false, 'error' => __('An error occurred while communicating with GitHub. Please try again later.', 'wp2-update')];
         }
     }
 

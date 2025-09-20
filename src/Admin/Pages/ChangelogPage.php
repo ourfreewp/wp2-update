@@ -2,7 +2,7 @@
 namespace WP2\Update\Admin\Pages;
 
 use WP2\Update\Core\Connection\Init as Connection;
-use WP2\Update\Core\Utils\Init as SharedUtils;
+use WP2\Update\Utils\SharedUtils;
 
 class ChangelogPage {
     private $connection;

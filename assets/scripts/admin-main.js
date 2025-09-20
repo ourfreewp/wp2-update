@@ -110,6 +110,30 @@ const initSystemHealthPage = () => {
 };
 
 /**
+ * Handles the example action via REST API.
+ */
+const handleExampleAction = async () => {
+    const exampleActionBtn = document.getElementById('example-action-button');
+    if (!exampleActionBtn) return;
+
+    exampleActionBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+            const response = await apiRequest('/wp2-update/v1/example-action', {
+                method: 'POST',
+                headers: {
+                    'X-WP-Nonce': wpApiSettings.nonce,
+                },
+            });
+
+            showToast(response.data.message, response.success ? 'success' : 'error');
+        } catch (error) {
+            showToast(`Error: ${error.message}`, 'error');
+        }
+    });
+};
+
+/**
  * Main application initializer.
  */
 const initApp = () => {
@@ -123,6 +147,9 @@ const initApp = () => {
     // Initialize global UI components
     initTooltips();
     initTabs();
+
+    // Initialize the example action handler
+    handleExampleAction();
 };
 
 // Run the application once the DOM is fully loaded.

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme updates.
- * Version:           0.0.1
+ * Version:           0.0.2
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -29,7 +29,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 // Check if Action Scheduler is already loaded.
 if ( ! class_exists( 'ActionScheduler' ) ) {
-    require_once __DIR__ . '/vendor/action-scheduler/action-scheduler.php';
+    require_once __DIR__ . '/vendor/woocommerce/action-scheduler/action-scheduler.php';
 }
 
 // Define core plugin constants.
@@ -60,3 +60,25 @@ require_once plugin_dir_path(__FILE__) . 'vite.php';
 if ( class_exists( 'Vite' ) ) {
   new \Vite();
 }
+
+/**
+ * Add the manage_wp2_updates capability to the administrator role on activation.
+ */
+function wp2_update_activate() {
+    $admin_role = get_role('administrator');
+    if ($admin_role) {
+        $admin_role->add_cap('manage_wp2_updates');
+    }
+}
+register_activation_hook(__FILE__, 'wp2_update_activate');
+
+/**
+ * Remove the manage_wp2_updates capability from the administrator role on deactivation.
+ */
+function wp2_update_deactivate() {
+    $admin_role = get_role('administrator');
+    if ($admin_role) {
+        $admin_role->remove_cap('manage_wp2_updates');
+    }
+}
+register_deactivation_hook(__FILE__, 'wp2_update_deactivate');

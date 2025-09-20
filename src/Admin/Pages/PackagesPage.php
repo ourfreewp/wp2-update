@@ -2,7 +2,7 @@
 namespace WP2\Update\Admin\Pages;
 
 use WP2\Update\Core\Connection\Init as Connection;
-use WP2\Update\Core\Utils\SharedUtils;
+use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Core\GitHubApp\Init as GitHubApp;
 use WP2\Update\Admin\Pages\PackageHistoryPage;
 use WP2\Update\Admin\Pages\PackageEventsPage;
@@ -152,6 +152,12 @@ class PackagesPage {
 	 * Fetches and merges all managed themes and plugins into a single array.
 	 */
 	private function get_all_packages_with_data(): array {
+        $cache_key = 'wp2_merged_packages_data';
+        $cached_data = get_transient($cache_key);
+        if (is_array($cached_data)) {
+            return $cached_data;
+        }
+
 		$themes  = $this->connection->get_managed_themes();
 		$plugins = $this->connection->get_managed_plugins();
 
@@ -196,6 +202,8 @@ class PackagesPage {
 				'update_available'  => ! empty( $latest_version ) && version_compare( $latest_version, $installed_version, '>' ),
 			];
 		}
+
+        set_transient($cache_key, $all_packages, 1 * HOUR_IN_SECONDS);
 
 		return $all_packages;
 	}

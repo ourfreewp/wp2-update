@@ -3,22 +3,18 @@ namespace WP2\Update\Admin;
 
 use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\GitHubApp\Init as GitHubApp;
-use WP2\Update\Core\Utils\SharedUtils;
-use WP2\Update\Admin\Pages\PackagesPage;
-use WP2\Update\Admin\Pages\OverviewPage;
-use WP2\Update\Admin\Pages\SystemHealthPage;
+use WP2\Update\Utils\SharedUtils;
+use WP2\Update\Admin\Pages\BulkActionsPage;
 use WP2\Update\Admin\Pages\ChangelogPage;
-use WP2\Update\Admin\Views\BulkActionsPage;
-use WP2\Update\Admin\Views\SettingsTab;
-use WP2\Update\Admin\Views\EventsPage;
+use WP2\Update\Admin\Pages\OverviewPage;
+use WP2\Update\Admin\Pages\PackageEventsPage;
+use WP2\Update\Admin\Pages\PackageSettingsPage;
+use WP2\Update\Admin\Pages\PackagesPage;
+use WP2\Update\Admin\Pages\SystemHealthPage;
 
 
 /**
  * Renders the admin page framework and delegates tab content rendering.
- *
- * This class has been streamlined to only handle page rendering and asset
- * enqueuing, removing the redundant `init()` and `handle_submission()` methods
- * which now reside in `Admin/Init.php`.
  */
 class Pages {
     private $connection;
@@ -45,9 +41,9 @@ class Pages {
         if ( ! is_string( $hook_suffix ) || strpos((string)$hook_suffix, 'wp2-update' ) === false ) {
             return;
         }
-        wp_enqueue_style( 'wp2-update-admin', WP2_UPDATE_PLUGIN_URL . 'assets/styles/admin-main.css', [], '0.1.5' );
+        wp_enqueue_style( 'wp2-update-admin', WP2_UPDATE_PLUGIN_URL . 'assets/styles/admin-main.css', [], '0.1.6' );
         wp_enqueue_script( 'tabby-js', 'https://cdn.jsdelivr.net/npm/tabbyjs@12.0.3/dist/js/tabby.polyfills.min.js', [], '12.0.3', true );
-        wp_enqueue_script( 'wp2-update-admin', WP2_UPDATE_PLUGIN_URL . 'assets/scripts/admin-main.js', [ 'tabby-js' ], '0.1.5', true );
+        wp_enqueue_script( 'wp2-update-admin', WP2_UPDATE_PLUGIN_URL . 'assets/scripts/admin-main.js', [ 'tabby-js' ], '0.1.6', true );
 
         wp_localize_script( 'wp2-update-admin', 'wpApiSettings', [
             'nonce' => wp_create_nonce( 'wp_rest' )
@@ -75,7 +71,7 @@ class Pages {
      * Renders the dedicated settings page.
      */
     public function render_settings_page() {
-        $view = new SettingsTab($this->github_app);
+        $view = new PackageSettingsPage();
         $view->render();
     }
 
@@ -112,16 +108,10 @@ class Pages {
     }
     
     /**
-     * Renders the System page.
+     * Renders the Events page
      */
-    public function render_system_page() {
-        $view = new SystemHealthPage($this->connection, $this->github_app, $this->utils);
-        $view->render();
-    }
-
-    // Render the Events page
     public function render_events_page() {
-        $events_page = new EventsPage();
-        $events_page->render();
+        $events_page = new PackageEventsPage();
+        $events_page->render_as_view();
     }
 }

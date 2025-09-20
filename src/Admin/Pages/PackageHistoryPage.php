@@ -2,7 +2,7 @@
 namespace WP2\Update\Admin\Pages;
 
 use WP2\Update\Core\Connection\Init as Connection;
-use WP2\Update\Core\Utils\Init as SharedUtils;
+use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Core\Updates\ThemeUpdater;
 use WP2\Update\Core\Updates\PluginUpdater;
 
@@ -52,6 +52,17 @@ class PackageHistoryPage {
                         $norm_installed_v = $this->utils->normalize_version( $installed );
                         $is_current   = version_compare( $norm_release_v, $norm_installed_v, '==' );
                         $is_older     = version_compare( $norm_release_v, $norm_installed_v, '<' );
+
+                        $button_text = __('Install', 'wp2-update');
+                        $button_class = 'wp2-button--primary'; // Default to primary for upgrades
+
+                        if (version_compare($norm_release_v, $norm_installed_v, '==')) {
+                            $button_text = __('Re-install', 'wp2-update');
+                            $button_class = 'wp2-button--secondary';
+                        } elseif (version_compare($norm_release_v, $norm_installed_v, '<')) {
+                            $button_text = __('Rollback', 'wp2-update');
+                            $button_class = 'wp2-button--destructive'; // A new class for caution
+                        }
                         ?>
                         <tr class="<?php echo $is_current ? 'current-version' : ''; ?>">
                             <td data-label="Version"><strong><?php echo esc_html( $release['tag_name'] ?? 'Unknown' ); ?></strong></td>
@@ -63,7 +74,7 @@ class PackageHistoryPage {
                                         <input type="hidden" name="slug" value="<?php echo esc_attr( $slug ); ?>">
                                         <input type="hidden" name="version" value="<?php echo esc_attr( $release['tag_name'] ?? '' ); ?>">
                                         <?php wp_nonce_field( 'wp2_install_' . $type . '_' . $slug . '_' . ( $release['tag_name'] ?? '' ) ); ?>
-                                        <button type="submit" class="wp2-button wp2-button--small"><?php echo $is_current ? 'Re-install' : ( $is_older ? 'Rollback' : 'Upgrade' ); ?></button>
+                                        <button type="submit" class="wp2-button wp2-button--small <?php echo esc_attr($button_class); ?>"><?php echo esc_html($button_text); ?></button>
                                     </form>
                                 <?php endif; ?>
                             </td>

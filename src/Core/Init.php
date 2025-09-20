@@ -1,7 +1,7 @@
 <?php
 namespace WP2\Update\Core;
 
-use WP2\Update\Core\Utils\Logger\Init as Logger;
+use WP2\Update\Utils\Logger;
 use WP2\Update\Core\Health\AppHealth;
 use WP2\Update\Core\Health\RepoHealth;
 use WP2\Update\Core\API\Service as GitHubService;
@@ -10,13 +10,19 @@ use WP2\Update\Core\API\Service as GitHubService;
  * Encapsulates core plugin logic, including automated tasks and health checks.
  */
 class Init {
+    private GitHubService $githubService;
+
+    public function __construct(GitHubService $githubService) {
+        $this->githubService = $githubService;
+    }
+
     /**
      * Runs automated health checks on all apps and repositories.
      * This method is now correctly dependent on the new CPTs.
      * It is designed to be triggered by a scheduled task.
      */
-    public static function run_health_checks() {
-        $github_service = new GitHubService();
+    public function run_health_checks() {
+        $github_service = $this->githubService;
 
         // Run health checks for all GitHub Apps
         $app_query = new \WP_Query([

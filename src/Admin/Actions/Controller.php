@@ -5,9 +5,8 @@ use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\Updates\PluginUpdater;
 use WP2\Update\Core\Updates\ThemeUpdater;
-use WP2\Update\Core\Utils\Logger;
-use WP2\Update\Core\Utils\Init as SharedUtils;
-use WP2\Update\Core\Tasks\Scheduler;
+use WP2\Update\Utils\Logger;
+use WP2\Update\Utils\SharedUtils;
 
 /**
  * Handles all admin-side actions, such as form submissions and GitHubApp callbacks.
@@ -34,11 +33,7 @@ class Controller {
      * Logs GitHub App-related actions for debugging.
      */
     private function log_github_app_action($message, $data = []) {
-        Logger::log(
-            'GitHub App Debug',
-            $message,
-            $data
-        );
+        Logger::log( $message, 'debug', 'github-app', $data );
     }
     /**
      * Main action router for events on standard admin pages.
@@ -48,34 +43,26 @@ class Controller {
             return;
         }
 
-        // Example: handle disconnect action
-        if ( isset( $_GET['action'] ) && 'disconnect' === $_GET['action'] ) {
-            $this->log_github_app_action('Disconnected from GitHub App');
-            set_transient('wp2_update_admin_notice', __('Disconnected from GitHub.', 'wp2-update'), 60);
-            wp_safe_redirect(admin_url('admin.php?page=wp2-update-settings&disconnected=1'));
-            exit;
-        }
-
         // Handle connected=1 parameter
         if ( isset( $_GET['connected'] ) && '1' === $_GET['connected'] ) {
             $this->log_github_app_action('Connected parameter detected', ['connected' => $_GET['connected']]);
-            set_transient( 'wp2_update_admin_notice', __( 'Successfully connected to GitHub!', 'wp2-update' ), 60 );
+            set_transient( 'wp2_update_admin_notice', esc_html__( 'Successfully connected to GitHub!', 'wp2-update' ), 60 );
         }
 
         // Handle the force-check action
         if ( isset( $_GET['force-check'] ) && '1' === $_GET['force-check'] ) {
-            if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( $_GET['_wpnonce'], 'wp2-force-check' ) ) {
+            if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( $_GET['_wpnonce'] ), 'wp2-force-check' ) ) {
                 wp_die( 'Security check failed.' );
             }
 
             // Clear transients and force a check
-            delete_site_transient( 'update_themes' );
-            delete_site_transient( 'update_plugins' );
+            $this->connection->clear_package_cache();
             wp_update_themes();
             wp_update_plugins();
+            delete_transient('wp2_merged_packages_data');
 
             // Redirect back with a success message
-            wp_safe_redirect( admin_url( 'admin.php?page=wp2-update-system-health&cache-cleared=1' ) );
+            wp_safe_redirect( esc_url( admin_url( 'admin.php?page=wp2-update-system-health&cache-cleared=1' ) ) );
             exit;
         }
     }
@@ -90,7 +77,7 @@ class Controller {
         check_admin_referer( 'wp2_bulk_action', 'wp2_bulk_action_nonce' );
 
         $action = sanitize_key( $_POST['bulk-action'] ?? '' );
-        $packages = isset($_POST['packages']) ? array_map('sanitize_text_field', $_POST['packages']) : [];
+        $packages = isset($_POST['packages']) ? array_map('sanitize_text_field', (array) $_POST['packages']) : [];
 
         if ( empty($action) || empty($packages) ) {
             wp_safe_redirect( admin_url( 'admin.php?page=wp2-update-bulk-actions&error=no_action_or_packages' ) );
@@ -101,9 +88,10 @@ class Controller {
 
         switch ($action) {
             case 'force-check':
-                delete_site_transient('update_themes');
-                delete_site_transient('update_plugins');
-                Logger::log( "Bulk action: Forced update check for {$count} packages.", 'info', 'bulk-action', 'Package' );
+                $this->connection->clear_package_cache();
+                wp_update_themes();
+                wp_update_plugins();
+                Logger::log( "Bulk action: Forced update check for {$count} packages.", 'info', 'bulk-action' );
                 break;
             case 'clear-cache':
                 foreach ($packages as $pkg_key) {
@@ -111,11 +99,12 @@ class Controller {
                     $repo = 'theme' === $type ? $this->connection->get_managed_themes()[$slug]['repo'] : $this->connection->get_managed_plugins()[$slug]['repo'];
                     delete_transient('wp2_releases_' . md5($repo));
                 }
-                Logger::log( "Bulk action: Cleared cache for {$count} packages.", 'info', 'bulk-action', 'Package' );
+                Logger::log( "Bulk action: Cleared cache for {$count} packages.", 'info', 'bulk-action');
                 break;
         }
 
-        wp_safe_redirect( admin_url( "admin.php?page=wp2-update-bulk-actions&success={$action}&count={$count}" ) );
+        // Escape query parameters in redirect URL
+        wp_safe_redirect( esc_url( admin_url( "admin.php?page=wp2-update-bulk-actions&success={$action}&count={$count}" ) ) );
         exit;
     }
 
@@ -141,13 +130,24 @@ class Controller {
         $result = $this->theme_updater->install_theme( $item_data['app_slug'], $item_data['repo'], $version );
 
         $redirect_url = admin_url( 'admin.php?page=wp2-update-packages&package=' . urlencode( $package_key ) );
+        // Enhanced error handling
         if ( is_wp_error( $result ) ) {
-            set_transient( 'wp2_update_error_notice', $result->get_error_message(), 60 );
+            $error_message = sprintf(
+                /* translators: 1: Theme slug, 2: Version, 3: Error message */
+                __( 'Failed to install theme %1$s (version %2$s): %3$s', 'wp2-update' ),
+                esc_html( $slug ),
+                esc_html( $version ),
+                esc_html( $result->get_error_message() )
+            );
+            Logger::log( $error_message, 'error', 'theme-install' );
+            set_transient( 'wp2_update_error_notice', $error_message, 60 );
             $redirect_url .= '&error=install_failed';
         } else {
             $redirect_url .= '&installed=' . urlencode( $version );
         }
-        wp_safe_redirect( $redirect_url );
+
+        // Escape query parameters in redirect URL
+        wp_safe_redirect( esc_url( $redirect_url ) );
         exit;
     }
 
@@ -173,43 +173,24 @@ class Controller {
         $result = $this->plugin_updater->install_plugin( $item_data['app_slug'], $item_data['repo'], $version );
 
         $redirect_url = admin_url( 'admin.php?page=wp2-update-packages&package=' . urlencode( $package_key ) );
+        // Enhanced error handling
         if ( is_wp_error( $result ) ) {
-            set_transient( 'wp2_update_error_notice', $result->get_error_message(), 60 );
+            $error_message = sprintf(
+                /* translators: 1: Plugin slug, 2: Version, 3: Error message */
+                __( 'Failed to install plugin %1$s (version %2$s): %3$s', 'wp2-update' ),
+                esc_html( $slug ),
+                esc_html( $version ),
+                esc_html( $result->get_error_message() )
+            );
+            Logger::log( $error_message, 'error', 'plugin-install' );
+            set_transient( 'wp2_update_error_notice', $error_message, 60 );
             $redirect_url .= '&error=install_failed';
         } else {
             $redirect_url .= '&installed=' . urlencode( $version );
-            $redirect_url = add_query_arg( 'wp2_notice_nonce', wp_create_nonce( 'wp2_install_success_' . $slug ), $redirect_url );
-        }
-        wp_safe_redirect( $redirect_url );
-        exit;
-    }
-
-    /**
-     * Handles the connection test action.
-     */
-    public function handle_test_connection_action() {
-        if ( ! current_user_can( 'manage_options' ) || !isset($_POST['app_id']) || !isset($_POST['_wpnonce']) ) {
-            wp_die( __( 'You do not have permission to perform this action.', 'wp2-update' ) );
         }
 
-        $app_id = sanitize_key($_POST['app_id']);
-        check_admin_referer('wp2_test_connection_' . $app_id, '_wpnonce');
-
-        $app_post = get_post($app_id);
-        if (!$app_post || $app_post->post_type !== 'wp2_github_app') {
-            wp_die(__('Invalid app ID.', 'wp2-update'));
-        }
-
-        $app_slug = $app_post->post_name;
-        $success = $this->github_app->test_connection($app_slug);
-
-        if ( $success ) {
-            set_transient( 'wp2_update_admin_notice', __( 'Connection test successful.', 'wp2-update' ), 60 );
-        } else {
-            set_transient( 'wp2_update_admin_notice', __( 'Connection test failed. Please check your GitHub App settings.', 'wp2-update' ), 60 );
-        }
-
-        wp_safe_redirect( admin_url( 'admin.php?page=wp2-update-settings' ) );
+        // Escape query parameters in redirect URL
+        wp_safe_redirect( esc_url( $redirect_url ) );
         exit;
     }
 }

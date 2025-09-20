@@ -3,7 +3,7 @@ namespace WP2\Update\Core\Sync;
 
 use WP2\Update\Core\API\Service as GitHubService;
 use WP2\Update\Core\Tasks\Scheduler as TaskManager;
-use WP2\Update\Core\Utils\Logger;
+use WP2\Update\Utils\Logger;
 
 /**
  * Manages the background synchronization of repositories from GitHub.
@@ -39,13 +39,13 @@ final class Repos {
     /**
      * Fetches and processes all accessible repositories for a single GitHub App.
      */
-    private function sync_repositories_for_app(int $app_post_id): void {
+    public function sync_repositories_for_app(int $app_post_id): void {
         $app_slug = get_post_field('post_name', $app_post_id);
         if (!$app_slug) {
             Logger::log('Skipping sync: Could not find app slug for post ID ' . $app_post_id, 'error', 'sync');
             return;
         }
-        
+
         // This call is now correctly using the new Service class with the app slug
         $accessible_repos = $this->github_service->fetch_all_paginated(
             $app_slug,

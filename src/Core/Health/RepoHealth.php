@@ -51,13 +51,14 @@ class RepoHealth
      *
      * @param array $args An array containing the 'repo_post_id'.
      */
-    public static function check_single_repo(array $args)
+    public function check_single_repo(array $args)
     {
         if (!isset($args['repo_post_id'])) {
             return;
         }
         $repo_post_id = $args['repo_post_id'];
-        (new self($repo_post_id, new GitHubService()))->run_checks();
+        $github_service = $this->github_service;
+        (new self($repo_post_id, $github_service))->run_checks();
     }
 
     /**

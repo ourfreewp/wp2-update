@@ -18,6 +18,8 @@ final class Init {
         // Custom columns for the 'wp2_repository' CPT
         add_filter('manage_wp2_repository_posts_columns', [$this, 'add_repository_custom_columns']);
         add_action('manage_wp2_repository_posts_custom_column', [$this, 'populate_repository_custom_columns'], 10, 2);
+
+        add_action('admin_notices', [$this, 'add_new_app_notice']);
     }
 
     /**
@@ -161,6 +163,14 @@ final class Init {
             update_post_meta($post_id, '_wp2_installation_id', sanitize_text_field($_POST['_wp2_installation_id'] ?? ''));
             // Use sanitize_textarea_field for multi-line private key
             update_post_meta($post_id, '_wp2_private_key', sanitize_textarea_field($_POST['_wp2_private_key'] ?? ''));
+
+            // Clear caches that depend on this data
+            delete_transient('wp2_repo_app_map');
+            $package_finder = new \WP2\Update\Core\Updates\PackageFinder();
+            $package_finder->clear_cache();
+
+            // Schedule an immediate health check for this app
+            \WP2\Update\Core\Tasks\Scheduler::schedule_health_check_for_app($post_id);
         }
     }
 
@@ -202,6 +212,19 @@ final class Init {
                 $timestamp = get_post_meta($post_id, '_last_synced_timestamp', true);
                 echo $timestamp ? esc_html(wp_date('Y-m-d H:i:s', (int) $timestamp)) : 'Never';
                 break;
+        }
+    }
+
+    /**
+     * Displays an admin notice with an 'Add New App' button on the settings page.
+     */
+    public function add_new_app_notice(): void {
+        global $pagenow;
+        if ($pagenow === 'edit.php' && isset($_GET['post_type']) && $_GET['post_type'] === 'wp2_github_app') {
+            echo '<div class="notice notice-info is-dismissible">
+                <p>' . __('To get started, add a new GitHub App.', 'wp2-update') . '</p>
+                <p><a href="' . admin_url('post-new.php?post_type=wp2_github_app') . '" class="button button-primary">' . __('Add New App', 'wp2-update') . '</a></p>
+            </div>';
         }
     }
 }

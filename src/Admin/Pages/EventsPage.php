@@ -1,7 +1,7 @@
 <?php
-namespace WP2\Update\Admin\Views;
+namespace WP2\Update\Admin\Pages;
 
-use WP2\Update\Core\Utils\Logger\Init as Logger;
+use WP2\Update\Utils\Logger;
 
 /**
  * Renders the "Events" page content.
