@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<ruleset name="WP2 Update Coding Standards">
+
+    <!-- Define the coding standard to use -->
+    <rule ref="PSR12" />
+
+    <!-- Exclude vendor directory -->
+    <exclude-pattern>vendor/*</exclude-pattern>
+
+    <!-- Include all PHP files in the project -->
+    <file>./</file>
+
+    <!-- Report all errors and warnings -->
+    <arg name="report" value="full" />
+
+</ruleset>

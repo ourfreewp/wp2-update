@@ -1,0 +1,33 @@
+{
+	"name": "webmultipliers/wp2-update",
+	"description": "Private GitHub theme updates via GitHub App integration.",
+	"type": "wordpress-plugin",
+	"autoload": {
+		"psr-4": {
+			"WP2\\Update\\": "src/",
+			"Tests\\": "tests/"
+		}
+	},
+	"authors": [
+		{
+			"name": "Vinny S. Green",
+			"homepage": "https://vinnysgreen.com"
+		}
+	],
+	"require": {
+		"knplabs/github-api": "^3.1",
+		"symfony/http-client": "^7.3",
+		"nyholm/psr7": "^1.8",
+		"woocommerce/action-scheduler": "^3.9"
+	},
+	"require-dev": {
+		"pestphp/pest": "^4.1",
+		"mockery/mockery": "^1.6"
+	},
+	"config": {
+		"allow-plugins": {
+			"pestphp/pest-plugin": true,
+			"php-http/discovery": true
+		}
+	}
+}

@@ -1,0 +1,10 @@
+{
+	"php.stubs": [
+		"*",
+		"wordpress"
+	],
+	"intelephense.environment.includePaths": [
+		"./vendor/php-stubs/wordpress-stubs",
+		"./vendor/php-stubs/wp-cli-stubs"
+	]
+}

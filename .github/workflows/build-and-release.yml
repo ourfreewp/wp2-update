@@ -1,0 +1,169 @@
+# A descriptive name for your workflow
+name: Build and Release Plugin
+
+# --- TRIGGER ---
+# This workflow is triggered when a commit is pushed or merged into the 'main' branch.
+on:
+  push:
+    branches:
+      - development # You can change this to 'development' if you prefer
+
+# --- CONCURRENCY ---
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# --- JOB DEFINITION ---
+jobs:
+  build_and_release:
+    name: Build and Release Plugin
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to create tags and releases.
+
+    steps:
+      # Step 1: Check out the repository's code.
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Step 2: Get the plugin version and slug from the main plugin file.
+      - name: Get Plugin Info from Main File
+        id: plugin_info
+        run: |
+          PLUGIN_FILE="wp2-update.php"
+          VERSION=$(grep -i '^\s\*\sVersion:' "$PLUGIN_FILE" | awk -F': ' '{print $2}' | tr -d '[:space:]')
+          PLUGIN_SLUG=$(grep -i '^\s\*\sText Domain:' "$PLUGIN_FILE" | awk -F': ' '{print $2}' | tr -d '[:space:]')
+          
+          if [ -z "$VERSION" ]; then
+            echo "❌ Could not find 'Version:' in $PLUGIN_FILE. Exiting."
+            exit 1
+          fi
+
+          echo "Found Version: ${VERSION}"
+          echo "Plugin Slug: ${PLUGIN_SLUG}"
+          
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "slug=${PLUGIN_SLUG}" >> "$GITHUB_OUTPUT"
+
+      # Step 3: Check if a release for this version already exists.
+      - name: Check if Release Already Exists
+        id: check_release
+        run: |
+          if gh release view v${{ steps.plugin_info.outputs.version }} >/dev/null 2>&1; then
+            echo "✅ Release v${{ steps.plugin_info.outputs.version }} already exists. No new release needed."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "🚀 Release v${{ steps.plugin_info.outputs.version }} does not exist. Proceeding with build."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 4: Set up PHP and Composer
+      - name: Set up PHP
+        if: steps.check_release.outputs.exists == 'false'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.0' # Updated to meet firebase/php-jwt requirements
+          tools: composer
+
+      # Step 5: Set up Node.js
+      - name: Set up Node.js
+        if: steps.check_release.outputs.exists == 'false'
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22' # Updated to a compatible version
+          cache: 'npm'
+
+      # Step 6: Cache and Install Composer Dependencies
+      - name: Cache Composer dependencies
+        if: steps.check_release.outputs.exists == 'false'
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      # Step 7: Install Composer Dependencies
+      - name: Install Composer Dependencies
+        if: steps.check_release.outputs.exists == 'false'
+        run: composer install --no-dev --prefer-dist --optimize-autoloader
+
+      # Step 8: Install Node.js Dependencies
+      - name: Install Node.js Dependencies
+        if: steps.check_release.outputs.exists == 'false'
+        run: npm install
+
+      # Step 9: Build Vite Assets for Production 🚀
+      - name: Build Vite Assets
+        if: steps.check_release.outputs.exists == 'false'
+        run: npm run build
+
+      # Step 10: Build the Production-Ready Plugin ZIP (Now includes Vite assets)
+      - name: Build Production-Ready Plugin ZIP
+        if: steps.check_release.outputs.exists == 'false'
+        id: build_zip
+        run: |
+          PLUGIN_SLUG="${{ steps.plugin_info.outputs.slug }}"
+          # This rsync command now correctly includes the newly built Vite assets
+          rsync -rc --exclude-from='.distignore' . "$PLUGIN_SLUG/"
+          zip -r "${PLUGIN_SLUG}.zip" "$PLUGIN_SLUG"
+          mkdir -p build
+          mv "${PLUGIN_SLUG}.zip" "build/"
+          rm -rf "$PLUGIN_SLUG"
+          echo "zip_path=build/${PLUGIN_SLUG}.zip" >> "$GITHUB_OUTPUT"
+
+      # Step 11: Create the 'update.json' file.
+      - name: Create Update JSON File
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.plugin_info.outputs.version }}"
+          SLUG="${{ steps.plugin_info.outputs.slug }}"
+          ZIP_PATH="${{ steps.build_zip.outputs.zip_path }}"
+          PACKAGE_NAME=$(basename "$ZIP_PATH")
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${PACKAGE_NAME}"
+
+          jq -n \
+            --arg name "${{ github.repository_owner }}/${SLUG}" \
+            --arg slug "$SLUG" \
+            --arg version "$VERSION" \
+            --arg download_url "$DOWNLOAD_URL" \
+            --arg tested "6.6" \
+            --arg last_updated "$(date -u +"%Y-%m-%d %H:%M:%S")" \
+            '{
+              name: $name,
+              slug: $slug,
+              version: $version,
+              download_url: $download_url,
+              tested: $tested,
+              last_updated: $last_updated
+            }' > build/update.json
+
+      # ⭐️ NEW STEP: Verify that our build files exist before trying to release them.
+      - name: Verify Build Assets
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          echo "Listing files in the build directory:"
+          ls -R build
+
+      # Step 8: Create the Git tag for the new version.
+      - name: Create and Push Git Tag
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag v${{ steps.plugin_info.outputs.version }}
+          git push origin v${{ steps.plugin_info.outputs.version }}
+
+      # Step 9: Create the GitHub Release and upload the assets.
+      - name: Create GitHub Release and Upload Assets
+        if: steps.check_release.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.plugin_info.outputs.version }}
+          name: Release ${{ steps.plugin_info.outputs.version }}
+          # The paths here MUST match the output from the "Verify Build Assets" step
+          files: |
+            ${{ steps.build_zip.outputs.zip_path }}
+            build/update.json
