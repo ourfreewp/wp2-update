@@ -2,6 +2,11 @@
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// Load WordPress core files to make classes like WP_Query available.
+if ( ! defined( 'ABSPATH' ) ) {
+    require_once '/path/to/wordpress/wp-load.php'; // Update this path to your WordPress installation.
+}
+
 // Ensure Brain Monkey is loaded globally for all tests
 use Brain\Monkey;
 
