@@ -3,7 +3,8 @@
 namespace Tests;
 
 use Mockery;
-use WP2\Update\Admin\Views\SystemHealthPage;
+use Mockery\MockInterface;
+use WP2\Update\Admin\Pages\SystemHealthPage;
 use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\GitHubApp\Init as GitHubApp;
 use WP2\Update\Utils\SharedUtils;
@@ -12,13 +13,16 @@ class SystemHealthPageTest extends TestCase
 {
     public function testGitHubApiStatusIsConnected()
     {
+        /** @var MockInterface|GitHubApp */
         $githubAppMock = Mockery::mock(GitHubApp::class);
         $githubAppMock->shouldReceive('get_connection_status')->andReturn([
             'connected' => true,
             'message' => 'Connected to GitHub App.',
         ]);
 
+        /** @var MockInterface|Connection */
         $connectionMock = Mockery::mock(Connection::class);
+        /** @var MockInterface|SharedUtils */
         $utilsMock = Mockery::mock(SharedUtils::class);
 
         $systemHealthPage = new SystemHealthPage(
@@ -35,13 +39,18 @@ class SystemHealthPageTest extends TestCase
 
     public function testGitHubApiStatusIsNotConnected()
     {
+        /** @var MockInterface|GitHubApp */
         $githubAppMock = Mockery::mock(GitHubApp::class);
-        $githubAppMock->shouldReceive('get_connection_status')->andReturn([
-            'connected' => false,
-            'message' => 'Not connected to GitHub App.',
-        ]);
+        $githubAppMock->shouldReceive('get_connection_status')->andReturnUsing(function () {
+            return [
+                'connected' => false,
+                'message' => 'Not connected to GitHub App.',
+            ];
+        });
 
+        /** @var MockInterface|Connection */
         $connectionMock = Mockery::mock(Connection::class);
+        /** @var MockInterface|SharedUtils */
         $utilsMock = Mockery::mock(SharedUtils::class);
 
         $systemHealthPage = new SystemHealthPage(
