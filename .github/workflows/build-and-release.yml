@@ -6,7 +6,7 @@ name: Build and Release Plugin
 on:
   push:
     branches:
-      - development # You can change this to 'development' if you prefer
+      - main # You can change this to 'development' if you prefer
 
 # --- CONCURRENCY ---
 concurrency:
