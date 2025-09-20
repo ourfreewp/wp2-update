@@ -27,16 +27,24 @@ final class Init {
      */
     public function register_cpts(): void {
         register_post_type('wp2_github_app', [
-            'label'         => __('GitHub Apps', 'wp2-update'),
+            'label'         => __('App Connections', 'wp2-update'),
             'public'        => false,
             'show_ui'       => true,
             'show_in_menu'  => 'wp2-update-overview',
             'menu_icon'     => 'dashicons-github',
             'supports'      => ['title'],
             'rewrite'       => false,
+            'capability_type' => 'wp2_github_app',
+            'capabilities'  => [
+                'edit_posts'   => 'edit_wp2_github_apps',
+                'edit_others_posts' => 'edit_others_wp2_github_apps',
+                'publish_posts' => 'publish_wp2_github_apps',
+                'read_private_posts' => 'read_private_wp2_github_apps',
+            ],
+            'map_meta_cap'  => true,
         ]);
         register_post_type('wp2_repository', [
-            'label'         => __('Repositories', 'wp2-update'),
+            'label'         => __('Managed Repositories', 'wp2-update'),
             'public'        => false,
             'show_ui'       => true,
             'show_in_menu'  => 'wp2-update-overview',

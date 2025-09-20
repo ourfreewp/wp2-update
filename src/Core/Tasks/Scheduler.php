@@ -5,6 +5,7 @@ use WP2\Update\Core\Health\AppHealth;
 use WP2\Update\Core\Health\RepoHealth;
 use WP2\Update\Core\Sync\Repos;
 use WP2\Update\Core\API\Service as GitHubService;
+use ActionScheduler;
 
 /**
  * Manages all Action Scheduler tasks.
@@ -50,6 +51,12 @@ final class Scheduler {
     // --- Scheduler Methods (Public API for our plugin) ---
 
     public static function schedule_recurring_tasks() {
+        // Ensure Action Scheduler is initialized before scheduling tasks.
+        if (!class_exists('ActionScheduler') || !ActionScheduler::is_initialized()) {
+            error_log('Action Scheduler is not initialized. Recurring tasks cannot be scheduled.');
+            return;
+        }
+
         // Schedule main sync to run hourly.
         if (as_next_scheduled_action(self::SYNC_ALL_REPOS_HOOK) === false) {
             as_schedule_recurring_action(time(), HOUR_IN_SECONDS, self::SYNC_ALL_REPOS_HOOK, [], 'WP2 Update');
@@ -113,9 +120,10 @@ final class Scheduler {
 
     public static function run_sync_for_app(array $args) {
         if (isset($args['app_post_id'])) {
-            $github_service = new GitHubService(); // Note: Still needs DI refactoring
+            // Use the DI container to fetch the GitHubService instance.
+            $github_service = apply_filters('wp2_update_di_container', null)->get(GitHubService::class);
             $repos = new Repos($github_service);
-            $repos->sync_repositories_for_app($args['app_post_id']); // Fixed visibility issue
+            $repos->sync_repositories_for_app($args['app_post_id']);
         }
     }
 

@@ -7,6 +7,7 @@ use WP2\Update\Core\GitHubApp\Init as GitHubApp;
 use WP2\Update\Admin\Pages\PackageHistoryPage;
 use WP2\Update\Admin\Pages\PackageEventsPage;
 use WP2\Update\Admin\Pages\PackageStatusPage;
+use WP2\Update\Admin\Pages\ChangelogPage;
 
 /**
  * Renders the main "Packages" page with a table of all managed items.
@@ -22,6 +23,7 @@ class PackagesPage {
 	private $status_tab;
 	private $log_tab;
 	private $github_app;
+	private $changelog_tab;
 
 	/**
 	 * Constructor.
@@ -33,6 +35,7 @@ class PackagesPage {
 		$this->history_tab = new PackageHistoryPage( $connection, $utils );
 		$this->status_tab = new PackageStatusPage( $connection, $github_app, $utils );
 		$this->log_tab = new PackageEventsPage();
+		$this->changelog_tab = new ChangelogPage( $connection, $utils );
 	}
 
 	/**
@@ -71,51 +74,16 @@ class PackagesPage {
 	}
 
 	private function render_list_view() {
-		$all_packages = $this->get_all_packages_with_data();
-		?>
-		<table class="wp2-data-table">
-			<thead>
-				<tr>
-					<th><?php esc_html_e( 'Package Name', 'wp2-update' ); ?></th>
-					<th><?php esc_html_e( 'Type', 'wp2-update' ); ?></th>
-					<th><?php esc_html_e( 'Installed Version', 'wp2-update' ); ?></th>
-					<th><?php esc_html_e( 'Latest Version', 'wp2-update' ); ?></th>
-					<th><?php esc_html_e( 'Status', 'wp2-update' ); ?></th>
-					<th><?php esc_html_e( 'Actions', 'wp2-update' ); ?></th>
-				</tr>
-			</thead>
-			<tbody>
-				<?php if ( empty( $all_packages ) ) : ?>
-					<tr>
-						<td colspan="6">
-							<?php esc_html_e( 'No managed packages found. Add an "Update URI" to a theme or plugin header to begin.', 'wp2-update' ); ?>
-						</td>
-					</tr>
-				<?php else :
-					foreach ( $all_packages as $pkg ) : ?>
-						<tr>
-							<td data-label="Name"><strong><?php echo esc_html( $pkg['name'] ); ?></strong></td>
-							<td data-label="Type"><?php echo esc_html( ucfirst( $pkg['type'] ) ); ?></td>
-							<td data-label="Installed"><?php echo esc_html( $pkg['installed_version'] ); ?></td>
-							<td data-label="Latest"><?php echo esc_html( $pkg['latest_version'] ?? 'N/A' ); ?></td>
-							<td data-label="Status">
-								<span
-									class="wp2-status-item__value <?php echo $pkg['update_available'] ? 'status-success' : 'status-info'; ?>">
-									<?php echo $pkg['update_available'] ? esc_html__( 'Update Available', 'wp2-update' ) : esc_html__( 'Up to Date', 'wp2-update' ); ?>
-								</span>
-							</td>
-							<td data-label="Actions" class="cell-action">
-								<a href="<?php echo esc_url( admin_url( 'admin.php?page=wp2-update-packages&package=' . urlencode( $pkg['key'] ) ) ); ?>"
-									class="wp2-button wp2-button--small wp2-button--secondary">
-									<?php esc_html_e( 'View Details', 'wp2-update' ); ?>
-								</a>
-							</td>
-						</tr>
-					<?php endforeach; endif; ?>
-			</tbody>
-		</table>
-		<?php
-	}
+        $list_table = new \WP2\Update\Admin\Tables\PackagesListTable($this->connection, $this->utils);
+        $list_table->prepare_items();
+        ?>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <input type="hidden" name="action" value="wp2_bulk_action">
+            <?php wp_nonce_field( 'wp2_bulk_action', 'wp2_bulk_action_nonce' ); ?>
+            <?php $list_table->display(); ?>
+        </form>
+        <?php
+    }
 
 	private function render_details_view( $package_key ) {
 		list($type, $slug) = explode(':', $package_key, 2);
@@ -130,6 +98,7 @@ class PackagesPage {
 			<ul id="wp2-tabs-list" data-tabs>
 				<li><a data-tabby-default href="#status"><?php esc_html_e( 'Status', 'wp2-update' ); ?></a></li>
 				<li><a href="#history"><?php esc_html_e( 'Version History', 'wp2-update' ); ?></a></li>
+				<li><a href="#changelog"><?php esc_html_e( 'Changelog', 'wp2-update' ); ?></a></li>
 				<li><a href="#log"><?php esc_html_e( 'Event Log', 'wp2-update' ); ?></a></li>
 			</ul>
 		</div>
@@ -140,6 +109,9 @@ class PackagesPage {
 			</div>
 			<div id="history">
 				<?php $this->history_tab->render( $type, $slug ); ?>
+			</div>
+			<div id="changelog">
+				<?php $this->changelog_tab->render(); ?>
 			</div>
 			<div id="log">
 				<?php $this->log_tab->render(); ?>

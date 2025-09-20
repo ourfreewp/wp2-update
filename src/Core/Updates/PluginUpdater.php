@@ -41,6 +41,11 @@ class PluginUpdater {
             return $transient;
         }
 
+        // Ensure the required file is loaded before calling get_plugin_data.
+        if ( ! function_exists( 'get_plugin_data' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
         $managed_plugins = $this->connection->get_managed_plugins();
         foreach ($managed_plugins as $slug => $item) {
             if (empty($item['repo']) || empty($item['app_slug'])) {

@@ -19,31 +19,10 @@ class PackageEventsPage {
      * Renders the content for a tab view.
      */
     public function render_as_tab() {
-        global $post;
-        if ( ! isset( $post ) || ! is_a( $post, 'WP_Post' ) ) {
-            echo '<p>' . esc_html__( 'Invalid context. Unable to retrieve package logs.', 'wp2-update' ) . '</p>';
-            return;
-        }
-
-        $package_context = 'package_' . $post->ID; // Use global $post instead of get_the_ID
-        $logs = Logger::get_logs_by_context($package_context);
-        ?>
-        <h2><?php esc_html_e( 'Recent Events For This Package', 'wp2-update' ); ?></h2>
-        <p><?php esc_html_e('This is a global event log. Context-specific logs will be implemented in a future version.', 'wp2-update'); ?></p>
-        <table class="wp2-data-table">
-            <thead><tr><th><?php esc_html_e( 'Timestamp', 'wp2-update' ); ?></th><th><?php esc_html_e( 'Event', 'wp2-update' ); ?></th></tr></thead>
-            <tbody>
-                <?php if ( empty( $logs ) ) : ?>
-                    <tr><td colspan="2"><?php esc_html_e( 'No events logged yet.', 'wp2-update' ); ?></td></tr>
-                <?php else : foreach ( $logs as $log ) : ?>
-                    <tr>
-                        <td><?php echo esc_html( wp_date( 'Y-m-d H:i:s', (int) $log['timestamp'] ) ); ?></td>
-                        <td><?php $this->render_log_message($log); ?></td>
-                    </tr>
-                <?php endforeach; endif; ?>
-            </tbody>
-        </table>
-        <?php
+        $events_table = new \WP2\Update\Admin\Tables\EventsListTable();
+        $events_table->prepare_items();
+        echo '<h2>' . esc_html__( 'Recent Events', 'wp2-update' ) . '</h2>';
+        $events_table->display();
     }
 
     /**

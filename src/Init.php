@@ -49,7 +49,7 @@ final class Init {
         $rest_router->register_routes();
 
         // Register BackupEndpoints
-        \WP2\Update\Core\API\BackupEndpoints::register_routes();
+        \WP2\Update\Core\API\BackupEndpoints::init();
 
         // Pass all dependencies to the Admin orchestrator.
         $admin = new AdminInit(

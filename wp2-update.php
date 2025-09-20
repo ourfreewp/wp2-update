@@ -46,6 +46,20 @@ if ( ! defined( 'WP2_UPDATE_GITHUB_API_URL' ) ) {
 }
 
 /**
+ * Assign custom capabilities for wp2_github_app post type to the administrator role on init.
+ */
+function wp2_update_add_custom_caps() {
+    $admin_role = get_role('administrator');
+    if ($admin_role) {
+        $admin_role->add_cap('edit_wp2_github_apps');
+        $admin_role->add_cap('edit_others_wp2_github_apps');
+        $admin_role->add_cap('publish_wp2_github_apps');
+        $admin_role->add_cap('read_private_wp2_github_apps');
+    }
+}
+add_action('init', __NAMESPACE__ . '\\wp2_update_add_custom_caps', 5); // Higher priority to ensure capabilities are added early
+
+/**
  * Initializes the plugin and gets all the components running.
  */
 function run_wp2_update() {
@@ -70,15 +84,30 @@ function wp2_update_activate() {
         $admin_role->add_cap('manage_wp2_updates');
     }
 }
-register_activation_hook(__FILE__, 'wp2_update_activate');
+// Update the activation hook to include the namespace
+register_activation_hook(__FILE__, '\\WP2\\Update\\wp2_update_activate');
 
 /**
  * Remove the manage_wp2_updates capability from the administrator role on deactivation.
  */
 function wp2_update_deactivate() {
+    error_log('wp2_update_deactivate function executed.');
     $admin_role = get_role('administrator');
     if ($admin_role) {
         $admin_role->remove_cap('manage_wp2_updates');
     }
 }
-register_deactivation_hook(__FILE__, 'wp2_update_deactivate');
+// Update the deactivation hook to include the namespace
+register_deactivation_hook(__FILE__, '\\WP2\\Update\\wp2_update_deactivate');
+
+// Add a debug log to confirm the deactivation hook is registered
+error_log('Deactivation hook registered for wp2_update_deactivate.');
+
+add_action('admin_init', function() {
+    $admin_role = get_role('administrator');
+    if ($admin_role) {
+        error_log('Administrator Capabilities: ' . print_r($admin_role->capabilities, true));
+    } else {
+        error_log('Administrator role not found.');
+    }
+});

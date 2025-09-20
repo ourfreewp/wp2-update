@@ -7,6 +7,13 @@ namespace WP2\Update\Core\API;
 class BackupEndpoints {
 
     /**
+     * Initializes the class and hooks into WordPress.
+     */
+    public static function init() {
+        add_action('rest_api_init', [__CLASS__, 'register_routes']);
+    }
+
+    /**
      * Registers the REST API routes.
      */
     public static function register_routes() {

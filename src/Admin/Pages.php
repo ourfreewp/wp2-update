@@ -4,11 +4,9 @@ namespace WP2\Update\Admin;
 use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\GitHubApp\Init as GitHubApp;
 use WP2\Update\Utils\SharedUtils;
-use WP2\Update\Admin\Pages\BulkActionsPage;
 use WP2\Update\Admin\Pages\ChangelogPage;
 use WP2\Update\Admin\Pages\OverviewPage;
 use WP2\Update\Admin\Pages\PackageEventsPage;
-use WP2\Update\Admin\Pages\PackageSettingsPage;
 use WP2\Update\Admin\Pages\PackagesPage;
 use WP2\Update\Admin\Pages\SystemHealthPage;
 
@@ -71,8 +69,8 @@ class Pages {
      * Renders the dedicated settings page.
      */
     public function render_settings_page() {
-        $view = new PackageSettingsPage($this->utils->get_github_service()); // Pass GitHubService dependency
-        $view->render();
+        echo '<h1>Settings Page</h1>';
+        echo '<p>This page is under construction.</p>';
     }
 
     /**
@@ -103,8 +101,8 @@ class Pages {
      * Renders the Bulk Actions page.
      */
     public function render_bulk_actions_page() {
-        $view = new BulkActionsPage($this->connection);
-        $view->render();
+        echo '<h1>Bulk Actions Page</h1>';
+        echo '<p>This page is under construction.</p>';
     }
     
     /**

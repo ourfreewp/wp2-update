@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// Ensure Brain Monkey is loaded globally for all tests
 use Brain\Monkey;
 
 // Setup Brain Monkey before each test

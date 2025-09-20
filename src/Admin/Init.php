@@ -62,7 +62,7 @@ class Init {
         add_menu_page(
             __( 'WP2 Updates', 'wp2-update' ),
             'WP2 Updates',
-            'manage_wp2_updates', // Changed from 'manage_options'
+            'manage_wp2_updates',
             'wp2-update-overview',
             [ $this->pages_handler, 'render_overview_page' ],
             'dashicons-cloud',
@@ -73,7 +73,7 @@ class Init {
             'wp2-update-overview',
             __( 'Packages', 'wp2-update' ),
             __( 'Packages', 'wp2-update' ),
-            'manage_wp2_updates', // Changed from 'manage_options'
+            'manage_wp2_updates',
             'wp2-update-packages',
             [ $this->pages_handler, 'render_packages_page' ]
         );
@@ -82,45 +82,9 @@ class Init {
             'wp2-update-overview',
             __( 'System Health', 'wp2-update' ),
             __( 'System Health', 'wp2-update' ),
-            'manage_wp2_updates', // Changed from 'manage_options'
+            'manage_wp2_updates',
             'wp2-update-system-health',
             [ $this->pages_handler, 'render_system_health_page' ]
-        );
-
-        add_submenu_page(
-            'wp2-update-overview',
-            __( 'Changelog', 'wp2-update' ),
-            __( 'Changelog', 'wp2-update' ),
-            'manage_wp2_updates', // Changed from 'manage_options'
-            'wp2-update-changelog',
-            [ $this->pages_handler, 'render_changelog_page' ]
-        );
-
-        add_submenu_page(
-            'wp2-update-overview',
-            __( 'Bulk Actions', 'wp2-update' ),
-            __( 'Bulk Actions', 'wp2-update' ),
-            'manage_wp2_updates', // Changed from 'manage_options'
-            'wp2-update-bulk-actions',
-            [ $this->pages_handler, 'render_bulk_actions_page' ]
-        );
-
-        add_submenu_page(
-            'wp2-update-overview',
-            __( 'Settings', 'wp2-update' ),
-            __( 'Settings', 'wp2-update' ),
-            'manage_wp2_updates', // Changed from 'manage_options'
-            'wp2-update-settings',
-            [ $this->pages_handler, 'render_settings_page' ]
-        );
-
-        add_submenu_page(
-            'wp2-update-overview',
-            __( 'Events', 'wp2-update' ),
-            __( 'Events', 'wp2-update' ),
-            'manage_wp2_updates', // Changed from 'manage_options'
-            'wp2-update-events',
-            [ $this->pages_handler, 'render_events_page' ]
         );
     }
 }
