@@ -64,7 +64,7 @@ jobs:
         if: steps.check_release.outputs.exists == 'false'
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.0' # Updated to meet firebase/php-jwt requirements
+          php-version: '8.2' # Updated to meet firebase/php-jwt requirements
           tools: composer
 
       # Step 5: Set up Node.js
