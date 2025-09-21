@@ -9,7 +9,9 @@ abstract class AbstractListTable extends WP_List_Table {
         parent::__construct($args);
     }
 
-    abstract public function prepare_items();
+    public function prepare_items() {
+        // Optionally, you can provide a default implementation or leave it empty.
+    }
 
     abstract public function get_columns();
 }

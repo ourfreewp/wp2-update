@@ -32,5 +32,11 @@
 			"pestphp/pest-plugin": true,
 			"php-http/discovery": true
 		}
+	},
+	"scripts": {
+		"build": [
+			"@composer install --no-dev --optimize-autoloader",
+			"@composer dump-autoload --optimize --no-dev"
+		]
 	}
 }

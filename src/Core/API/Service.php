@@ -41,13 +41,22 @@ final class Service {
 		try {
 			$client = new GitHubClient();
 
+			// Debug: Log the App ID and Installation ID
+			Logger::log("GitHub Service: Using App ID: {$credentials['app_id']} and Installation ID: {$credentials['installation_id']}", 'debug', 'api');
+
 			$client->authenticate(
 				$credentials['app_id'],
 				$credentials['private_key'],
 				AuthMethod::JWT
 			);
 
+			// Debug: Log JWT generation success
+			Logger::log("GitHub Service: JWT generated successfully for App ID: {$credentials['app_id']}", 'debug', 'api');
+
 			$token_data = $client->apps()->createInstallationToken( $credentials['installation_id'] );
+
+			// Debug: Log the installation token
+			Logger::log("GitHub Service: Installation token generated successfully: " . substr($token_data['token'], 0, 10) . "...", 'debug', 'api');
 
 			$client->authenticate( $token_data['token'], AuthMethod::ACCESS_TOKEN );
 

@@ -33,6 +33,10 @@ final class Init {
 
 		// Handle the installation ID callback from GitHub.
 		add_action( 'admin_init', [ $this, 'handle_installation_id_callback' ] );
+
+
+		// Add the App Health metabox.
+		add_action( 'add_meta_boxes', [ $this, 'add_app_health_metabox' ] );
 	}
 
 	/**
@@ -54,7 +58,7 @@ final class Init {
 				'show_ui'      => true,
 				'show_in_menu' => false,
 				'menu_icon'    => 'dashicons-github',
-				'supports'     => [ 'title', 'editor' ],
+				'supports'     => [ 'title' ],
 				'rewrite'      => false,
 				'map_meta_cap' => true,
 			]
@@ -68,7 +72,7 @@ final class Init {
 				'show_ui'       => true,
 				'show_in_menu'  => false,
 				'menu_icon'     => 'dashicons-book-alt',
-				'supports'      => [ 'title', 'editor' ],
+				'supports'      => [ 'title' ],
 				'rewrite'       => false,
 				'capabilities'  => [
 					'create_posts' => 'do_not_allow',
@@ -119,6 +123,20 @@ final class Init {
 			[ $this, 'render_repository_meta_box' ],
 			'wp2_repository',
 			'normal',
+			'high'
+		);
+	}
+
+	/**
+	 * Registers the App Health metabox.
+	 */
+	public function add_app_health_metabox(): void {
+		add_meta_box(
+			'wp2_app_health',
+			__( 'App Health', 'wp2-update' ),
+			[ $this, 'render_app_health_metabox' ],
+			'wp2_github_app',
+			'side',
 			'high'
 		);
 	}
@@ -333,6 +351,34 @@ final class Init {
 			</tbody>
 		</table>
 		<?php
+	}
+
+	/**
+	 * Renders the App Health metabox content.
+	 *
+	 * @param \WP_Post $post The current post object.
+	 */
+	public function render_app_health_metabox( \WP_Post $post ): void {
+		$app_post_id = $post->ID;
+
+		// Ensure the AppHealth service is available.
+		if ( ! class_exists( '\WP2\Update\Core\Health\AppHealth' ) ) {
+			echo '<p>' . esc_html__( 'AppHealth service is unavailable.', 'wp2-update' ) . '</p>';
+			return;
+		}
+
+		// Instantiate the AppHealth service.
+		$github_service = new \WP2\Update\Core\API\Service();
+		$app_health     = new \WP2\Update\Core\Health\AppHealth( $app_post_id, $github_service );
+
+		// Run health checks and fetch the status.
+		$app_health->run_checks();
+		$health_status  = get_post_meta( $app_post_id, '_health_status', true );
+		$health_message = get_post_meta( $app_post_id, '_health_message', true );
+
+		// Display the health status and message.
+		echo '<p><strong>' . esc_html__( 'Status:', 'wp2-update' ) . '</strong> ' . esc_html( ucfirst( $health_status ) ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Message:', 'wp2-update' ) . '</strong> ' . esc_html( $health_message ) . '</p>';
 	}
 
 	/**

@@ -4,7 +4,6 @@ namespace WP2\Update\Admin\Pages;
 use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Utils\SharedUtils;
-use WP2\Update\Core\API\Service as GitHubService;
 
 class SystemHealthPage {
     private $connection;
@@ -27,11 +26,11 @@ class SystemHealthPage {
 
             <div class="wp2-update-card">
                 <div class="wp2-container">
-                    <?php $this->render_health_section('WordPress Environment', $this->get_wp_environment()); ?>
-                    <?php $this->render_health_section('Server Environment', $this->get_server_environment()); ?>
                     <?php $this->render_health_section('GitHub App Status', $this->get_github_api_status()); ?>
                     <?php $this->render_health_section('Repository Health', $this->get_repo_health()); ?>
                     <?php $this->render_health_section('Plugin & Cache Status', $this->get_plugin_cache_status()); ?>
+                    <?php $this->render_health_section('WordPress Environment', $this->get_wp_environment()); ?>
+                    <?php $this->render_health_section('Server Environment', $this->get_server_environment()); ?>
                 </div>
             </div>
         </div>
@@ -86,7 +85,8 @@ class SystemHealthPage {
                 $message = get_post_meta($post->ID, '_health_message', true);
                 $last_checked = get_post_meta($post->ID, '_last_checked_timestamp', true);
                 $status_text = $status === 'ok' ? '<span class="status-success">Connected</span>' : '<span class="status-danger">Error</span>';
-                $items[] = ['label' => 'App: ' . $post->post_title, 'value' => $status_text];
+                
+                $items[] = ['label' => 'App: ' . esc_html($post->post_title), 'value' => $status_text];
                 $items[] = ['label' => 'Message', 'value' => esc_html($message)];
                 $items[] = ['label' => 'Last Checked', 'value' => $last_checked ? human_time_diff($last_checked) . ' ago' : 'Never'];
             }
@@ -105,7 +105,7 @@ class SystemHealthPage {
                 $message = get_post_meta($post->ID, '_health_message', true);
                 $last_checked = get_post_meta($post->ID, '_last_checked_timestamp', true);
                 $status_text = $status === 'ok' ? '<span class="status-success">Healthy</span>' : '<span class="status-danger">Error</span>';
-                $items[] = ['label' => 'Repo: ' . $post->post_title, 'value' => $status_text];
+                $items[] = ['label' => 'Repo: ' . esc_html($post->post_title), 'value' => $status_text];
                 $items[] = ['label' => 'Message', 'value' => esc_html($message)];
                 $items[] = ['label' => 'Last Checked', 'value' => $last_checked ? human_time_diff($last_checked) . ' ago' : 'Never'];
             }
@@ -117,7 +117,6 @@ class SystemHealthPage {
         $themes_transient = get_site_transient('update_themes');
         $plugins_transient = get_site_transient('update_plugins');
 
-        // Add Clear Cache button
         return [
             ['label' => 'Managed Themes (Cached)', 'value' => count($this->connection->get_managed_themes())],
             ['label' => 'Managed Plugins (Cached)', 'value' => count($this->connection->get_managed_plugins())],
