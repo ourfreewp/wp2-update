@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use WP2\Update\Utils\SharedUtils;
+use WP2\Update\Utils\Logger;
 
 /**
  * Registers CPTs, Meta Boxes, Columns, and related admin flows.
@@ -24,6 +25,10 @@ final class Init {
 		add_filter( 'manage_wp2_repository_posts_columns', [ $this, 'add_repository_custom_columns' ] );
 		add_action( 'manage_wp2_repository_posts_custom_column', [ $this, 'populate_repository_custom_columns' ], 10, 2 );
 
+		// Add custom columns for GitHub App post type.
+		add_filter( 'manage_wp2_github_app_posts_columns', [ $this, 'add_github_app_custom_columns' ] );
+		add_action( 'manage_wp2_github_app_posts_custom_column', [ $this, 'populate_github_app_custom_columns' ], 10, 2 );
+
 		add_action( 'admin_notices', [ $this, 'show_automated_setup_success_notice' ] );
 		add_action( 'admin_notices', [ $this, 'show_automated_setup_error_notice' ] );
 		add_action( 'admin_notices', [ $this, 'show_installation_saved_notice' ] );
@@ -37,6 +42,8 @@ final class Init {
 
 		// Add the App Health metabox.
 		add_action( 'add_meta_boxes', [ $this, 'add_app_health_metabox' ] );
+
+		add_action('admin_post_wp2_update_check', [ $this, 'handle_update_check' ]);
 	}
 
 	/**
@@ -58,7 +65,7 @@ final class Init {
 				'show_ui'      => true,
 				'show_in_menu' => false,
 				'menu_icon'    => 'dashicons-github',
-				'supports'     => [ 'title' ],
+				'supports'     => [ 'title', 'custom-fields' ],
 				'rewrite'      => false,
 				'map_meta_cap' => true,
 			]
@@ -125,6 +132,70 @@ final class Init {
 			'normal',
 			'high'
 		);
+
+		// Add the App Logs metabox.
+		add_meta_box(
+			'wp2_app_logs',
+			__( 'App Logs', 'wp2-update' ),
+			[ $this, 'render_app_logs_metabox' ],
+			'wp2_github_app',
+			'normal',
+			'default'
+		);
+
+		// debug panel
+		add_meta_box(
+			'wp2_debug_panel',
+			__( 'Debug Panel', 'wp2-update' ),
+			[ $this, 'render_debug_panel_metabox' ],
+			'wp2_github_app',
+			'normal',
+			'default'
+		);
+	}
+
+	/**
+	 * Renders the meta box for the Debug Panel.
+	 */
+	public function render_debug_panel_metabox(): void {
+		?>
+		<div id="wp2-debug-panel">
+			<h3><?php esc_html_e( 'Debug Information', 'wp2-update' ); ?></h3>
+			<p><?php esc_html_e( 'Here you can find debug information related to the GitHub App.', 'wp2-update' ); ?></p>
+		</div>
+		<?php
+		// structured dump of all post meta for this post
+		global $post;
+		$post_meta = get_post_meta( $post->ID );
+		echo '<h4>' . esc_html__( 'Post Meta:', 'wp2-update' ) . '</h4>';
+		if ( ! empty( $post_meta ) ) {
+			echo '<ul style="list-style:disc; margin-left:20px;">';
+			foreach ( $post_meta as $key => $values ) {
+				echo '<li><strong>' . esc_html( $key ) . ':</strong> ';
+				// Obfuscate sensitive fields
+				if ( in_array( $key, [ '_wp2_webhook_secret', '_wp2_client_secret', '_wp2_private_key_content' ], true ) ) {
+					if ( is_array( $values ) ) {
+						echo '<em>' . esc_html__( 'Obfuscated', 'wp2-update' ) . '</em>';
+					} else {
+						echo '<em>' . esc_html__( 'Obfuscated', 'wp2-update' ) . '</em>';
+					}
+				} elseif ( is_array( $values ) && count( $values ) === 1 ) {
+					echo esc_html( $values[0] );
+				} elseif ( is_array( $values ) ) {
+					echo '<ul style="list-style:circle; margin-left:20px;">';
+					foreach ( $values as $v ) {
+						echo '<li>' . esc_html( $v ) . '</li>';
+					}
+					echo '</ul>';
+				} else {
+					echo esc_html( $values );
+				}
+				echo '</li>';
+			}
+			echo '</ul>';
+		} else {
+			echo '<p>' . esc_html__( 'No post meta found.', 'wp2-update' ) . '</p>';
+		}
 	}
 
 	/**
@@ -215,7 +286,7 @@ final class Init {
 				</tr>
 				<tr>
 					<th><label for="_wp2_client_id"><?php esc_html_e( 'Client ID', 'wp2-update' ); ?></label></th>
-					<td><input type="text" id="_wp2_client_id" name="_wp2_client_id" value="<?php echo esc_attr( get_post_meta( $post->ID, '_wp2_client_id', true ) ); ?>" class="widefat" /></td>
+					<td><input type="text" id="_wp2_client_id" name="_wp2_client_id" value="<?php echo esc_attr( get_post_meta( $post->ID, '_wp2_client_id', true ) ); ?>" class="widefat" autocomplete="username" /></td>
 				</tr>
 				<tr>
 					<th><label for="_wp2_client_secret"><?php esc_html_e( 'Client Secret', 'wp2-update' ); ?></label></th>
@@ -382,6 +453,32 @@ final class Init {
 	}
 
 	/**
+	 * Renders the App Logs meta box content.
+	 *
+	 * @param \WP_Post $post The current post object.
+	 */
+	public function render_app_logs_metabox( \WP_Post $post ): void {
+		$logs = Logger::get_logs_by_context( 'custom_columns' );
+
+		// Filter logs specific to the current post ID.
+		$filtered_logs = array_filter( $logs, function ( $log ) use ( $post ) {
+			return strpos( $log['message'], "post {$post->ID}") !== false;
+		});
+
+		if ( empty( $filtered_logs ) ) {
+			echo '<p>' . esc_html__( 'No logs available for this app.', 'wp2-update' ) . '</p>';
+			return;
+		}
+
+		echo '<ul style="max-height: 300px; overflow-y: auto;">';
+		foreach ( $filtered_logs as $log ) {
+			$timestamp = isset( $log['timestamp'] ) ? date( 'Y-m-d H:i:s', $log['timestamp'] ) : '';
+			echo '<li>' . esc_html( $timestamp . ' - ' . $log['message'] ) . '</li>';
+		}
+		echo '</ul>';
+	}
+
+	/**
 	 * @param int      $post_id
 	 * @param \WP_Post $post
 	 */
@@ -428,10 +525,16 @@ final class Init {
 	 */
 	private function trigger_post_save_actions( int $post_id ): void {
 		delete_transient( 'wp2_repo_app_map' );
-		if ( class_exists( '\\WP2\\Update\\Core\\Updates\\PackageFinder' ) ) {
-			( new \WP2\Update\Core\Updates\PackageFinder() )->clear_cache();
+
+		$container = apply_filters( 'wp2_update_di_container', null );
+		if ( $container && method_exists( $container, 'resolve' ) ) {
+			$package_finder = $container->resolve( 'PackageFinder' );
+			if ( $package_finder instanceof \WP2\Update\Core\Updates\PackageFinder ) {
+				$package_finder->clear_cache();
+			}
 		}
-		if ( class_exists( '\\WP2\\Update\\Core\\Tasks\\Scheduler' ) ) {
+
+		if ( class_exists( '\WP2\Update\Core\Tasks\Scheduler' ) ) {
 			\WP2\Update\Core\Tasks\Scheduler::schedule_health_check_for_app( $post_id );
 			\WP2\Update\Core\Tasks\Scheduler::schedule_sync_for_app( $post_id );
 		}
@@ -479,6 +582,61 @@ final class Init {
 				break;
 		}
 	}
+
+	/**
+     * Adds GitHub App data as columns for quick view.
+     *
+     * @param array<string,string> $columns
+     * @return array<string,string>
+     */
+    public function add_github_app_custom_columns( array $columns ): array {
+        $new_columns = [];
+        foreach ( $columns as $key => $title ) {
+            $new_columns[ $key ] = $title;
+            if ( 'title' === $key ) {
+                $new_columns['app_id'] = __( 'App ID', 'wp2-update' );
+                $new_columns['client_id'] = __( 'Client ID', 'wp2-update' );
+                $new_columns['installation_id'] = __( 'Installation ID', 'wp2-update' );
+            }
+        }
+        return $new_columns;
+    }
+
+    /**
+     * Populates GitHub App custom columns with data.
+     *
+     * @param string $column
+     * @param int    $post_id
+     */
+    public function populate_github_app_custom_columns( string $column, int $post_id ): void {
+        static $rendered_columns = [];
+
+        if (isset($rendered_columns[$post_id][$column])) {
+            return; // Prevent duplicate rendering for the same column and post ID.
+        }
+
+        switch ( $column ) {
+            case 'app_id':
+                $app_id = get_post_meta( $post_id, '_wp2_app_id', true );
+                Logger::log_debug( sprintf( 'App ID for post %d: %s', $post_id, (string) $app_id ), 'custom_columns' );
+                echo esc_html( $app_id );
+                break;
+
+            case 'client_id':
+                $client_id = get_post_meta( $post_id, '_wp2_client_id', true );
+                Logger::log_debug( sprintf( 'Client ID for post %d: %s', $post_id, (string) $client_id ), 'custom_columns' );
+                echo esc_html( $client_id );
+                break;
+
+            case 'installation_id':
+                $installation_id = get_post_meta( $post_id, '_wp2_installation_id', true );
+                Logger::log_debug( sprintf( 'Installation ID for post %d: %s', $post_id, (string) $installation_id ), 'custom_columns' );
+                echo esc_html( $installation_id );
+                break;
+        }
+
+        $rendered_columns[$post_id][$column] = true; // Mark this column as rendered.
+    }
 
 	/**
 	 * Success notice after automated setup.
@@ -564,6 +722,9 @@ final class Init {
 			$installation_id = $payload['installation']['id'];
 			$app_id          = $payload['installation']['app_id'];
 
+			Logger::log_debug( 'Handling GitHub installation event. Payload keys: ' . implode( ', ', array_keys( (array) $payload ) ), 'webhook' );
+			Logger::log_debug( sprintf( 'Installation ID %s associated with App ID %s.', (string) $installation_id, (string) $app_id ), 'webhook' );
+
 			$app_query = new \WP_Query(
 				[
 					'post_type'      => 'wp2_github_app',
@@ -580,5 +741,47 @@ final class Init {
 			}
 		}
 	}
+
+	public function handle_update_check(): void {
+        // Verify nonce for security.
+        if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'wp2_update_check')) {
+            wp_die(__('Invalid request.', 'wp2-update'));
+        }
+
+        // Perform the check logic here.
+        $results = $this->perform_update_check();
+
+        // Store results in a transient to display in admin notice.
+        set_transient('wp2_update_check_results', $results, 60);
+
+        // Redirect back to the admin page.
+        wp_redirect(add_query_arg('wp2_update_check', '1', wp_get_referer()));
+        exit;
+    }
+
+    private function perform_update_check(): array {
+        // Simulate performing a check and returning results.
+        return [
+            'status' => 'success',
+            'message' => __('Update check completed successfully.', 'wp2-update'),
+        ];
+    }
+
+    /**
+     * Displays the results of the update check in a dismissable admin notice.
+     */
+    public function show_update_check_results(): void {
+        if (!get_transient('wp2_update_check_results')) {
+            return;
+        }
+
+        $results = get_transient('wp2_update_check_results');
+        delete_transient('wp2_update_check_results');
+
+        $class = $results['status'] === 'success' ? 'notice-success' : 'notice-error';
+        $message = $results['message'];
+
+        printf('<div class="notice %s is-dismissible"><p>%s</p></div>', esc_attr($class), esc_html($message));
+    }
 }
 

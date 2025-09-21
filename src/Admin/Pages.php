@@ -12,6 +12,8 @@ use WP2\Update\Admin\Pages\SystemHealthPage;
 use WP2\Update\Admin\Pages\BackupManagementPage;
 use WP2\Update\Admin\Pages\PackageHistoryPage;
 use WP2\Update\Admin\Pages\PackageStatusPage;
+use WP2\Update\Utils\Logger;
+use WP2\Update\Admin\Tables\WP2_Logs_Table;
 
 
 /**
@@ -109,14 +111,6 @@ class Pages {
     }
     
     /**
-     * Renders the Events page
-     */
-    public function render_events_page() {
-        $events_page = new PackageEventsPage();
-        $events_page->render_as_view();
-    }
-
-    /**
      * Renders the Backup Management page.
      */
     public function render_backup_management_page() {
@@ -147,4 +141,53 @@ class Pages {
         $view = new PackageStatusPage($this->connection, $this->github_app, $this->utils);
         $view->render(null, null);
     }
+
+    /**
+     * Renders the Logs page.
+     */
+    public function render_logs_page() {
+        echo '<div class="wrap">';
+        echo '<h1>' . __('All Logged Events', 'wp2-update') . '</h1>';
+        echo '<p>' . __('A log of all system events, from API calls to update checks.', 'wp2-update') . '</p>';
+        
+        // Placeholder for the table
+        echo '<div id="wp2-logs-table"></div>';
+        echo '</div>';
+    }
+}
+
+// Fetch log data from the Logger class
+function wp2_get_logs_data() {
+    $logs = Logger::get_logs(); // Assuming Logger::get_logs() fetches all logs
+
+    $data = [];
+    foreach ($logs as $log) {
+        $data[] = [
+            'timestamp' => $log['timestamp'],
+            'type'      => $log['type'],
+            'context'   => $log['context'],
+            'message'   => is_array($log['message']) ? print_r($log['message'], true) : $log['message'],
+        ];
+    }
+
+    return $data;
+}
+
+// Render the logs table
+function wp2_render_logs_table() {
+    $logs_table = new WP2_Logs_Table();
+    $logs_table->items = wp2_get_logs_data();
+    $logs_table->prepare_items();
+    $logs_table->display();
+}
+
+// Render the logs page
+function wp2_render_logs_page() {
+    echo '<div class="wrap">';
+    echo '<h1>' . __('All Logged Events', 'wp2-update') . '</h1>';
+    echo '<p>' . __('A log of all system events, from API calls to update checks.', 'wp2-update') . '</p>';
+
+    wp2_render_logs_table();
+
+    echo '</div>';
 }

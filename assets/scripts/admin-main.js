@@ -38,7 +38,8 @@ const updateConnectionStatus = async () => {
         });
         connectionState.set({ connected: data.connected, message: data.message, isLoading: false });
     } catch (error) {
-        connectionState.set({ connected: false, message: `Error: ${error.message}`, isLoading: false });
+        console.error('Failed to fetch connection status:', error);
+        connectionState.set({ connected: false, message: 'Error fetching connection status.', isLoading: false });
     }
 };
 
@@ -110,30 +111,6 @@ const initSystemHealthPage = () => {
 };
 
 /**
- * Handles the example action via REST API.
- */
-const handleExampleAction = async () => {
-    const exampleActionBtn = document.getElementById('example-action-button');
-    if (!exampleActionBtn) return;
-
-    exampleActionBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        try {
-            const response = await apiRequest('/wp2-update/v1/example-action', {
-                method: 'POST',
-                headers: {
-                    'X-WP-Nonce': wpApiSettings.nonce,
-                },
-            });
-
-            showToast(response.data.message, response.success ? 'success' : 'error');
-        } catch (error) {
-            showToast(`Error: ${error.message}`, 'error');
-        }
-    });
-};
-
-/**
  * Initializes GitHub App creation button.
  */
 const initGithubAppButton = () => {
@@ -197,12 +174,80 @@ const initApp = () => {
     initTooltips();
     initTabs();
 
-    // Initialize the example action handler
-    handleExampleAction();
-
     // Initialize GitHub App button
     initGithubAppButton();
 };
 
 // Run the application once the DOM is fully loaded.
-document.addEventListener('DOMContentLoaded', initApp);
+document.addEventListener('DOMContentLoaded', () => {
+    initApp();
+
+    if (!import.meta.env.DEV) {
+        return;
+    }
+
+    const postIdInput = document.querySelector('#post_ID');
+    if (!postIdInput) {
+        console.warn('Post ID not found on the edit screen. Debug tools require a valid post context.');
+        return;
+    }
+
+    const postId = postIdInput.value;
+    const debugButton = document.createElement('button');
+    debugButton.textContent = 'Run App Debug';
+    debugButton.style.margin = '10px';
+    debugButton.classList.add('button', 'button-primary');
+
+    debugButton.addEventListener('click', async () => {
+        try {
+            const response = await fetch(`/wp-json/wp/v2/posts/${postId}`);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch post meta. HTTP status: ${response.status}`);
+            }
+
+            const postData = await response.json();
+            const appId = postData.meta?._wp2_app_id;
+            const installationId = postData.meta?._wp2_installation_id;
+
+            if (!appId || !installationId) {
+                alert('App ID or Installation ID is missing in the post meta.');
+                return;
+            }
+
+            const debugResponse = await fetch('/wp-json/wp2-update/v1/debug-app', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    app_id: appId,
+                    installation_id: installationId,
+                }),
+            });
+
+            if (!debugResponse.ok) {
+                throw new Error(`Debug request failed. HTTP status: ${debugResponse.status}`);
+            }
+
+            const debugResult = await debugResponse.json();
+
+            if (debugResult.success) {
+                alert('Debug action completed successfully. Check the admin notice for details.');
+            } else {
+                alert(`Debug action failed: ${debugResult.data}`);
+            }
+        } catch (error) {
+            console.error('Error during debug action:', error);
+            alert('An error occurred while running the debug action. Check the console for details.');
+        }
+    });
+
+    const submitBox = document.querySelector('#submitdiv .inside');
+    if (submitBox) {
+        submitBox.appendChild(debugButton);
+    } else {
+        console.warn('Submit box not found. Unable to add debug button.');
+    }
+});
+
+//# sourceMappingURL=app.js.map

@@ -86,7 +86,12 @@ final class Scheduler {
     }
     
     public static function run_all_app_checks() {
-        $query = new \WP_Query(['post_type' => 'wp2_github_app', 'fields' => 'ids', 'posts_per_page' => -1]);
+        $query = new \WP_Query([
+            'post_type'      => 'wp2_github_app',
+            'fields'         => 'ids',
+            'posts_per_page' => -1,
+            'no_found_rows'  => true, // Optimization: Disable pagination overhead
+        ]);
         if ($query->have_posts()) {
             foreach ($query->posts as $app_post_id) {
                 as_enqueue_async_action(self::HEALTH_CHECK_SINGLE_APP_HOOK, ['app_post_id' => $app_post_id], 'WP2 Update');
@@ -102,7 +107,12 @@ final class Scheduler {
     }
     
     public static function run_all_repo_checks() {
-        $query = new \WP_Query(['post_type' => 'wp2_repository', 'fields' => 'ids', 'posts_per_page' => -1]);
+        $query = new \WP_Query([
+            'post_type'      => 'wp2_repository',
+            'fields'         => 'ids',
+            'posts_per_page' => -1,
+            'no_found_rows'  => true, // Optimization: Disable pagination overhead
+        ]);
         if ($query->have_posts()) {
             foreach ($query->posts as $repo_post_id) {
                 self::schedule_health_check_for_repo($repo_post_id);
@@ -117,7 +127,10 @@ final class Scheduler {
         }
     }
 
-    public static function run_sync_for_app(array $args) {
+    public static function run_sync_for_app($args) {
+        if (!is_array($args)) {
+            $args = ['app_post_id' => $args];
+        }
         if (isset($args['app_post_id'])) {
             // Use the DI container to fetch the GitHubService instance.
             $github_service = apply_filters('wp2_update_di_container', null)->get(GitHubService::class);

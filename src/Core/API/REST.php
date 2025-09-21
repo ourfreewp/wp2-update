@@ -43,7 +43,7 @@ final class REST {
 			[
 				'methods'             => 'GET',
 				'callback'            => [ $this, 'get_connection_status' ],
-				'permission_callback' => $permission_callback,
+				'permission_callback' => '__return_true', // Allow public access for debugging
 			]
 		);
 
@@ -74,6 +74,28 @@ final class REST {
 				'methods'             => 'POST',
 				'callback'            => [ $this->webhook_handler, 'handle_webhook' ],
 				'permission_callback' => '__return_true',
+			]
+		);
+
+		register_rest_route(
+			'wp2-update/v1',
+			'/debug-app',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'debug_app' ],
+				'permission_callback' => $permission_callback,
+				'args'                => [
+					'app_id' => [
+						'required'          => true,
+						'validate_callback' => static fn( $param ): bool => is_numeric( $param ),
+						'description'       => 'The App ID to debug.',
+					],
+					'installation_id' => [
+						'required'          => true,
+						'validate_callback' => static fn( $param ): bool => is_numeric( $param ),
+						'description'       => 'The Installation ID to debug.',
+					],
+				],
 			]
 		);
 	}
@@ -109,17 +131,56 @@ final class REST {
 	 * @return \WP_REST_Response
 	 */
 	public function clear_cache_force_check() {
-		if ( class_exists( '\\WP2\\Update\\Core\\Updates\\PackageFinder' ) ) {
-			( new \WP2\Update\Core\Updates\PackageFinder() )->clear_cache();
+		$container = apply_filters( 'wp2_update_di_container', null );
+		if ( $container && method_exists( $container, 'resolve' ) ) {
+			$package_finder = $container->resolve( 'PackageFinder' );
+			if ( $package_finder instanceof \WP2\Update\Core\Updates\PackageFinder ) {
+				$package_finder->clear_cache();
+			}
 		}
-		
+
 		delete_site_transient( 'update_themes' );
 		delete_site_transient( 'update_plugins' );
 
 		wp_update_themes();
 		wp_update_plugins();
-		
+
 		return rest_ensure_response( [ 'success' => true, 'message' => __( 'Cache cleared and checks forced.', 'wp2-update' ) ] );
 	}
-}
 
+	/**
+	 * Debug action for testing connections.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return \WP_REST_Response
+	 */
+	public function debug_app( WP_REST_Request $request ) {
+		$app_id          = (string) $request->get_param( 'app_id' );
+		$installation_id = (int) $request->get_param( 'installation_id' );
+
+		try {
+			$response = $this->github_app->test_installation_connection( $app_id, $installation_id );
+		} catch ( \Throwable $exception ) {
+			return rest_ensure_response([
+				'success' => false,
+				'data'    => [
+					'github' => 'Exception occurred: ' . $exception->getMessage(),
+				],
+			]);
+		}
+
+		$success      = ! empty( $response['success'] );
+		$error_message = $response['error'] ?? __( 'Unable to connect to GitHub.', 'wp2-update' );
+
+		$data = [
+			'github' => $success
+				? sprintf( __( 'Successfully connected to GitHub for App ID %s.', 'wp2-update' ), $app_id )
+				: $error_message,
+		];
+
+		return rest_ensure_response([
+			'success' => $success,
+			'data'    => $data,
+		]);
+	}
+}

@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use WP2\Update\Utils\SharedUtils;
-use WP2\Update\Core\API\GitHubApp\Init;
-use Mockery as m;
 use Tests\Unit\Mocks\StubGitHubAppInit;
 
 test('correctly normalizes full GitHub URLs', function () {

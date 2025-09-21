@@ -59,6 +59,20 @@ class Logger {
     }
 
 	/**
+	 * Logs a debug message when WP2_UPDATE_DEBUG is enabled.
+	 *
+	 * @param string|array|object $message The message to log.
+	 * @param string              $context The log context (e.g., 'api').
+	 */
+	public static function log_debug( $message, string $context = 'general' ): void {
+		if ( ! defined( 'WP2_UPDATE_DEBUG' ) || ! WP2_UPDATE_DEBUG ) {
+			return;
+		}
+
+		self::log( $message, 'debug', $context );
+	}
+
+	/**
      * Retrieves log entries filtered by context.
      *
      * @param string $context The context to filter logs by.

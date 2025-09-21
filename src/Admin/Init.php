@@ -115,16 +115,6 @@ class Init {
             [ $this->pages_handler, 'render_system_health_page' ]
         );
 
-        add_submenu_page(
-            'wp2-update-overview',
-            __( 'Events', 'wp2-update' ),
-            __( 'Events', 'wp2-update' ),
-            'manage_wp2_updates',
-            'wp2-update-events',
-            [ $this->pages_handler, 'render_events_page' ]
-        );
-
-        // Add submenu pages for specific post types
         $post_types = [
             'wp2_repository' => __( 'Repos', 'wp2-update' ),
             'wp2_github_app' => __( 'Apps', 'wp2-update' )

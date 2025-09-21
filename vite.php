@@ -45,11 +45,11 @@ class Vite
 
     /**
      * Checks if the Vite development server is active.
+     * Always returns false to ensure production assets are used.
      */
     private function isViteDevServerRunning(): bool
     {
-        // Define WP_DEBUG as true in your wp-config.php for local development
-        return defined('WP_DEBUG') && WP_DEBUG;
+        return false; // Always use production assets
     }
 
     /**
@@ -77,7 +77,7 @@ class Vite
      */
     private function enqueueProdAssets(string $entry)
     {
-        $manifest_path = plugin_dir_path(__FILE__) . '../dist/.vite/manifest.json';
+        $manifest_path = plugin_dir_path(__FILE__) . 'dist/.vite/manifest.json';
 
         // Debugging: Log the manifest file path
         error_log('Manifest path: ' . $manifest_path);
@@ -103,7 +103,7 @@ class Vite
                 error_log('Enqueuing JS file: ' . $entry_manifest['file']);
                 wp_enqueue_script(
                     'main-script',
-                    plugin_dir_url(__FILE__) . '../dist/' . $entry_manifest['file'],
+                    plugin_dir_url(__FILE__) . 'dist/' . $entry_manifest['file'],
                     [], // Add dependencies like 'jquery' if needed
                     null,
                     true // Load in footer
@@ -116,7 +116,7 @@ class Vite
                     error_log('Enqueuing CSS file: ' . $css_file);
                     wp_enqueue_style(
                         'main-style',
-                        plugin_dir_url(__FILE__) . '../dist/' . $css_file
+                        plugin_dir_url(__FILE__) . 'dist/' . $css_file
                     );
                 }
             }
@@ -128,7 +128,7 @@ class Vite
                 error_log('Enqueuing standalone CSS file: ' . $value['file']);
                 wp_enqueue_style(
                     'vite-' . sanitize_title($key), // Prefix to avoid conflicts
-                    plugins_url('../dist/' . $value['file'], __FILE__) // Correct path resolution
+                    plugins_url('dist/' . $value['file'], __FILE__) // Correct path resolution
                 );
             }
         }

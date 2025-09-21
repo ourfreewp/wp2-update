@@ -43,7 +43,7 @@ final class Init {
 				'meta_key'       => '_health_status',
 				'meta_value'     => 'ok',
 				'fields'         => 'ids',
-				'no_found_rows'  => true,
+				'no_found_rows'  => true, // Optimization: Disable pagination overhead
 			]
 		);
 
@@ -56,7 +56,7 @@ final class Init {
 				'post_type'      => 'wp2_github_app',
 				'posts_per_page' => 1,
 				'fields'         => 'ids',
-				'no_found_rows'  => true,
+				'no_found_rows'  => true, // Optimization: Disable pagination overhead
 			]
 		);
 		if ( ! $any_apps->have_posts() ) {
@@ -83,6 +83,38 @@ final class Init {
 		$error_message = $response['error'] ?? __( 'Unknown error.', 'wp2-update' );
 		Logger::log( "Connection test failed for app: {$app_slug}. Error: " . $error_message, 'error', 'connection-test' );
 		return [ 'success' => false, 'data' => $error_message ];
+	}
+
+	/**
+	 * Tests the connection for a specific GitHub App installation.
+	 *
+	 * @param string $app_slug The slug of the GitHub App.
+	 * @param int    $installation_id The ID of the installation to test.
+	 * @return array<string,mixed> The result of the connection test.
+	 */
+	public function test_installation_connection( string $app_slug, int $installation_id ): array {
+		try {
+			$response = $this->gh( $app_slug, 'GET', "/app/installations/{$installation_id}" );
+
+			if ( isset( $response['error'] ) ) {
+				return [
+					'success' => false,
+					'error'   => $response['error'],
+				];
+			}
+
+			return [
+				'success' => true,
+				'data'    => $response,
+			];
+		} catch ( \Exception $e ) {
+			Logger::log( 'GitHub connection test failed: ' . $e->getMessage(), 'error', 'github-app' );
+
+			return [
+				'success' => false,
+				'error'   => $e->getMessage(),
+			];
+		}
 	}
 
 	/**

@@ -91,7 +91,6 @@ register_activation_hook(__FILE__, '\\WP2\\Update\\wp2_update_activate');
  * Remove the manage_wp2_updates capability from the administrator role on deactivation.
  */
 function wp2_update_deactivate() {
-    error_log('wp2_update_deactivate function executed.');
     $admin_role = get_role('administrator');
     if ($admin_role) {
         $admin_role->remove_cap('manage_wp2_updates');

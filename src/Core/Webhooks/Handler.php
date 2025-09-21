@@ -76,6 +76,9 @@ class Handler {
                     continue;
                 }
                 $calculated_signature = 'sha256=' . hash_hmac('sha256', $payload, $secret);
+                
+                Logger::log_debug( sprintf( 'Checking webhook signature for app ID %d', $app_post_id ), 'webhook' );
+                
                 if (hash_equals($calculated_signature, $signature)) {
                     return $app_post_id;
                 }
@@ -94,6 +97,11 @@ class Handler {
     private function process_event(string $event, string $payload, int $app_post_id): void {
         $data = json_decode($payload, true);
         
+        Logger::log_debug( sprintf( 'Processing event: %s', $event ), 'webhook' );
+        if ( is_array( $data ) ) {
+            Logger::log_debug( 'Webhook payload keys: ' . implode( ', ', array_keys( $data ) ), 'webhook' );
+        }
+
         switch ($event) {
             case 'release':
                 if (isset($data['action']) && $data['action'] === 'published') {
@@ -112,6 +120,14 @@ class Handler {
                 Logger::log('Repository list updated. Triggering a new sync.', 'info', 'webhook');
                 // Asynchronously re-sync repositories for this app.
                 \WP2\Update\Core\Tasks\Scheduler::schedule_sync_for_app($app_post_id);
+                break;
+            case 'installation':
+                // NEW: Handle installation event to save the ID.
+                if (isset($data['action']) && $data['action'] === 'created') {
+                    Logger::log('New installation created. Saving the Installation ID.', 'info', 'webhook');
+                    $models_init = new \WP2\Update\Admin\Models\Init();
+                    $models_init->handle_github_installation_event($data);
+                }
                 break;
             default:
                 Logger::log("Webhook event '{$event}' not handled. Skipping.", 'info', 'webhook');

@@ -85,26 +85,6 @@ class OverviewPage {
 									</div>
 								</div>
 							</div>
-
-							<div>
-								<h3><?php esc_html_e( '2. Create and Configure a GitHub App', 'wp2-update' ); ?></h3>
-								<p><?php esc_html_e( 'Navigate to GitHub Developer Settings and create a new GitHub App. Use the following details:', 'wp2-update' ); ?></p>
-								<ul>
-									<li><strong><?php esc_html_e( 'Homepage URL:', 'wp2-update' ); ?></strong> <code><?php echo esc_html( $homepage_url ); ?></code></li>
-									<li><strong><?php esc_html_e( 'Callback URL:', 'wp2-update' ); ?></strong> <code><?php echo esc_html( $callback_url ); ?></code></li>
-									<li><strong><?php esc_html_e( 'Webhook URL:', 'wp2-update' ); ?></strong> <code><?php echo esc_html( $webhook_url ); ?></code></li>
-								</ul>
-							</div>
-
-							<div>
-								<h3><?php esc_html_e( '3. Finalize Setup in WordPress', 'wp2-update' ); ?></h3>
-								<p><?php esc_html_e( 'Go to Settings and ensure the following are configured for your app:', 'wp2-update' ); ?></p>
-								<ul>
-									<?php foreach ( $installation_requirements as $key => $value ) : ?>
-										<li><strong><?php echo esc_html( $key ); ?>:</strong> <?php echo esc_html( $value ); ?></li>
-									<?php endforeach; ?>
-								</ul>
-							</div>
 						</div>
 					</section>
 				</div>

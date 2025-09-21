@@ -29,6 +29,7 @@ class Init {
             'post_type'      => 'wp2_github_app',
             'posts_per_page' => -1,
             'fields'         => 'ids',
+            'no_found_rows'  => true, // Optimization: Disable pagination overhead
         ]);
         if ($app_query->have_posts()) {
             foreach ($app_query->posts as $app_post_id) {
@@ -42,6 +43,7 @@ class Init {
             'post_type'      => 'wp2_repository',
             'posts_per_page' => -1,
             'fields'         => 'ids',
+            'no_found_rows'  => true, // Optimization: Disable pagination overhead
         ]);
         if ($repo_query->have_posts()) {
             foreach ($repo_query->posts as $repo_post_id) {

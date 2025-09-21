@@ -24,6 +24,17 @@ final class Service {
 	private static array $credentials_cache = [];
 
 	/**
+	 * Constructor.
+	 *
+	 * Automatically clears the client and credentials cache on instantiation
+	 * to handle any bad data.
+	 */
+	public function __construct() {
+		// Automatically clear cache on instantiation to handle bad data.
+		self::clear_cache();
+	}
+
+	/**
 	 * @param string $app_slug
 	 * @return GitHubClient|null
 	 */
@@ -41,8 +52,7 @@ final class Service {
 		try {
 			$client = new GitHubClient();
 
-			// Debug: Log the App ID and Installation ID
-			Logger::log("GitHub Service: Using App ID: {$credentials['app_id']} and Installation ID: {$credentials['installation_id']}", 'debug', 'api');
+			$this->debug_log( sprintf( "GitHub Service: Authenticating client for app slug '%s'.", $app_slug ) );
 
 			$client->authenticate(
 				$credentials['app_id'],
@@ -50,13 +60,12 @@ final class Service {
 				AuthMethod::JWT
 			);
 
-			// Debug: Log JWT generation success
-			Logger::log("GitHub Service: JWT generated successfully for App ID: {$credentials['app_id']}", 'debug', 'api');
+			$this->debug_log( sprintf( "GitHub Service: JWT generated for app slug '%s'.", $app_slug ) );
 
 			$token_data = $client->apps()->createInstallationToken( $credentials['installation_id'] );
 
-			// Debug: Log the installation token
-			Logger::log("GitHub Service: Installation token generated successfully: " . substr($token_data['token'], 0, 10) . "...", 'debug', 'api');
+			$expires_at = $token_data['expires_at'] ?? 'unknown';
+			$this->debug_log( sprintf( "GitHub Service: Installation token issued for app slug '%s'. Expires at %s.", $app_slug, $expires_at ) );
 
 			$client->authenticate( $token_data['token'], AuthMethod::ACCESS_TOKEN );
 
@@ -84,18 +93,53 @@ final class Service {
 		}
 
 		try {
-			$response = $client->getHttpClient()->request(
-				$method,
-				$path,
-				[ 'headers' => [ 'Accept' => 'application/vnd.github.v3+json' ] ] + $params
-			);
-			$data = json_decode( $response->getBody()->getContents(), true );
+			$this->debug_log( sprintf( "GitHub Service: %s %s", strtoupper( $method ), $path ) );
+
+			// Normalize method to lowercase and validate
+			$http_method = strtolower($method);
+			if ( ! in_array( $http_method, [ 'get', 'post', 'patch', 'put', 'delete' ], true ) ) {
+				return [ 'ok' => false, 'error' => "Invalid HTTP method: {$method}" ];
+			}
+
+			if ( ! empty( $params ) ) {
+				$this->debug_log( sprintf( "GitHub Service: Request params keys - %s", implode( ', ', array_keys( $params ) ) ) );
+			}
+
+			// Call the GitHub API using the HttpClient directly
+			$response = $client->getHttpClient()->{$http_method}( $path, $params );
+
+			// Parse JSON response
+			$data = json_decode( (string) $response->getBody(), true );
+
+			$status = method_exists( $response, 'getStatusCode' ) ? $response->getStatusCode() : 'unknown';
+			$this->debug_log( sprintf( "GitHub Service: Response received for %s %s (status %s).", strtoupper( $method ), $path, $status ) );
 			return [ 'ok' => true, 'data' => $data ];
-		} catch ( ExceptionInterface $e ) {
-			Logger::log( 'API call failed: ' . $e->getMessage(), 'error', 'api' );
+		} catch (ExceptionInterface $e) {
+			Logger::log("GitHub Service: API call failed - Message: " . $e->getMessage(), 'error', 'api');
+			return [ 'ok' => false, 'error' => $e->getMessage() ];
+		} catch (\Throwable $e) {
+			Logger::log("GitHub Service: Unexpected error - Message: " . $e->getMessage(), 'error', 'api');
 			return [ 'ok' => false, 'error' => $e->getMessage() ];
 		}
 	}
+
+	/**
+	 * Writes a debug log entry when debugging is enabled.
+	 */
+	private function debug_log( string $message ): void {
+		Logger::log_debug( $message, 'api' );
+	}
+
+	/**
+     * Debugging: Log credentials and app_slug.
+     */
+    private function debug_credentials( string $app_slug, ?array $credentials ): void {
+        if ( $credentials ) {
+            $this->debug_log( sprintf( "GitHub Service: Credentials loaded for app slug '%s'.", $app_slug ) );
+        } else {
+            $this->debug_log( sprintf( "GitHub Service: No credentials found for app slug '%s'.", $app_slug ) );
+        }
+    }
 
 	/**
 	 * @param string $app_slug
@@ -103,6 +147,7 @@ final class Service {
 	 */
 	private function get_app_credentials( string $app_slug ): ?array {
 		if ( isset( self::$credentials_cache[ $app_slug ] ) ) {
+			$this->debug_credentials($app_slug, self::$credentials_cache[ $app_slug ]);
 			return self::$credentials_cache[ $app_slug ];
 		}
 
@@ -119,6 +164,7 @@ final class Service {
 
 		if ( ! $query->have_posts() ) {
 			self::$credentials_cache[ $app_slug ] = null;
+			$this->debug_credentials($app_slug, null);
 			return null;
 		}
 
@@ -130,6 +176,7 @@ final class Service {
 
 		if ( '' === $app_id || '' === $installation_id || '' === $encrypted_key ) {
 			self::$credentials_cache[ $app_slug ] = null;
+			$this->debug_credentials($app_slug, null);
 			return null;
 		}
 
@@ -138,6 +185,7 @@ final class Service {
 		} catch ( \RuntimeException $e ) {
 			Logger::log( 'GitHub Service: Failed to decrypt private key. ' . $e->getMessage(), 'error', 'api' );
 			self::$credentials_cache[ $app_slug ] = null;
+			$this->debug_credentials($app_slug, null);
 			return null;
 		}
 
@@ -148,7 +196,16 @@ final class Service {
 		];
 
 		self::$credentials_cache[ $app_slug ] = $credentials;
+		$this->debug_credentials($app_slug, $credentials);
 		return $credentials;
 	}
+
+	/**
+     * Clears the client and credentials cache.
+     */
+    public static function clear_cache(): void {
+        self::$client_cache = [];
+        self::$credentials_cache = [];
+    }
 }
 

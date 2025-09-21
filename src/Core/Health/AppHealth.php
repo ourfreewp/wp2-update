@@ -8,6 +8,8 @@ use WP2\Update\Utils\SharedUtils;
 use RuntimeException;
 use OpenSSLAsymmetricKey;
 
+use WP2\Update\Utils\Logger;
+
 /**
  * Validates the health of a wp2_github_app configuration.
  *
@@ -76,6 +78,9 @@ class AppHealth {
             return;
         }
 
+        // Debugging: Log the app_slug retrieved from the database
+        Logger::log_debug( sprintf( 'Running health checks for app post %d (slug "%s").', $this->app_post_id, $app_slug ), 'health' );
+
         // 2. Local Credential Validation
         $app_id = get_post_meta($this->app_post_id, '_wp2_app_id', true);
         if (empty($app_id)) {
@@ -104,7 +109,7 @@ class AppHealth {
             return;
         }
 
-        if (false === openssl_pkey_get_private($private_key)) {
+        if (false === openssl_pkey_get_private((string) $private_key)) {
              $this->update_status('error', 'Private Key is Invalid. The saved private key is corrupted or not a valid PEM format key. Please re-upload the correct .pem file.');
             return;
         }

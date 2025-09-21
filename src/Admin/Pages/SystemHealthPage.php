@@ -16,27 +16,6 @@ class SystemHealthPage {
         $this->utils = $utils;
     }
 
-    public function render() {
-        ?>
-        <div class="wrap wp2-update-page">
-            <div class="wp2-update-header">
-                <h1><?php esc_html_e( 'System Health', 'wp2-update' ); ?></h1>
-                <p class="description"><?php esc_html_e( 'Detailed debug and environment information for troubleshooting.', 'wp2-update' ); ?></p>
-            </div>
-
-            <div class="wp2-update-card">
-                <div class="wp2-container">
-                    <?php $this->render_health_section('GitHub App Status', $this->get_github_api_status()); ?>
-                    <?php $this->render_health_section('Repository Health', $this->get_repo_health()); ?>
-                    <?php $this->render_health_section('Plugin & Cache Status', $this->get_plugin_cache_status()); ?>
-                    <?php $this->render_health_section('WordPress Environment', $this->get_wp_environment()); ?>
-                    <?php $this->render_health_section('Server Environment', $this->get_server_environment()); ?>
-                </div>
-            </div>
-        </div>
-        <?php
-    }
-
     private function render_health_section($title, $items) {
         ?>
         <h2 class="wp2-health-header"><?php echo esc_html($title); ?></h2>
@@ -76,16 +55,25 @@ class SystemHealthPage {
 
     public function get_github_api_status() {
         $items = [];
-        $apps_query = new \WP_Query(['post_type' => 'wp2_github_app', 'posts_per_page' => -1]);
+        $apps_query = new \WP_Query([
+            'post_type'      => 'wp2_github_app',
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true, // Optimization: Disable pagination overhead
+        ]);
         if (!$apps_query->have_posts()) {
             $items[] = ['label' => 'Status', 'value' => 'No GitHub Apps configured.'];
         } else {
             foreach ($apps_query->posts as $post) {
+                if (!is_object($post)) {
+                    continue; // Skip invalid posts
+                }
+
                 $status = get_post_meta($post->ID, '_health_status', true);
                 $message = get_post_meta($post->ID, '_health_message', true);
                 $last_checked = get_post_meta($post->ID, '_last_checked_timestamp', true);
                 $status_text = $status === 'ok' ? '<span class="status-success">Connected</span>' : '<span class="status-danger">Error</span>';
-                
+
                 $items[] = ['label' => 'App: ' . esc_html($post->post_title), 'value' => $status_text];
                 $items[] = ['label' => 'Message', 'value' => esc_html($message)];
                 $items[] = ['label' => 'Last Checked', 'value' => $last_checked ? human_time_diff($last_checked) . ' ago' : 'Never'];
@@ -96,7 +84,12 @@ class SystemHealthPage {
     
     public function get_repo_health() {
         $items = [];
-        $repos_query = new \WP_Query(['post_type' => 'wp2_repository', 'posts_per_page' => -1]);
+        $repos_query = new \WP_Query([
+            'post_type'      => 'wp2_repository',
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true, // Optimization: Disable pagination overhead
+        ]);
         if (!$repos_query->have_posts()) {
             $items[] = ['label' => 'Status', 'value' => 'No managed repositories found.'];
         } else {
@@ -127,5 +120,40 @@ class SystemHealthPage {
                 'value' => '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin.php?page=wp2-update-system-health&force-check=1' ), 'wp2-force-check' ) ) . '" class="button button-secondary wp2-clear-cache-button">' . esc_html__( 'Clear All Caches & Force Check', 'wp2-update' ) . '</a>'
             ]
         ];
+    }
+
+    private function get_events_log() {
+        $events_list_table = new \WP2\Update\Admin\Tables\EventsListTable();
+        ob_start();
+        $events_list_table->prepare_items();
+        $events_list_table->display();
+        return ob_get_clean();
+    }
+
+    public function render() {
+        ?>
+        <div class="wrap wp2-update-page">
+            <div class="wp2-update-header">
+                <h1><?php esc_html_e( 'System Health', 'wp2-update' ); ?></h1>
+                <p class="description"><?php esc_html_e( 'Detailed debug and environment information for troubleshooting.', 'wp2-update' ); ?></p>
+            </div>
+
+            <div class="wp2-update-card">
+                <div class="wp2-container">
+                    <?php $this->render_health_section('GitHub App Status', $this->get_github_api_status()); ?>
+                    <?php $this->render_health_section('Repository Health', $this->get_repo_health()); ?>
+                    <?php $this->render_health_section('Plugin & Cache Status', $this->get_plugin_cache_status()); ?>
+                    <?php $this->render_health_section('WordPress Environment', $this->get_wp_environment()); ?>
+                    <?php $this->render_health_section('Server Environment', $this->get_server_environment()); ?>
+                    
+                    <!-- Add Events Log Section -->
+                    <h2 class="wp2-health-header"><?php esc_html_e( 'Events Log', 'wp2-update' ); ?></h2>
+                    <div class="wp2-events-log">
+                        <?php echo $this->get_events_log(); ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php
     }
 }

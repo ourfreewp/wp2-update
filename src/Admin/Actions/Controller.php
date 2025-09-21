@@ -32,8 +32,19 @@ class Controller {
     /**
      * Logs GitHub App-related actions for debugging.
      */
-    private function log_github_app_action($message, $data = []) {
-        Logger::log( $message, 'debug', 'github-app', $data );
+    private function log_github_app_action( string $message, array $data = [] ): void {
+        if ( empty( $data ) ) {
+            Logger::log_debug( $message, 'github-app' );
+            return;
+        }
+
+        Logger::log_debug(
+            [
+                'message' => $message,
+                'data'    => $data,
+            ],
+            'github-app'
+        );
     }
     /**
      * Main action router for events on standard admin pages.

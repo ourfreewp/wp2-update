@@ -57,7 +57,7 @@ class ThemeUpdater {
 
             $latest_release = $response['data'];
             $current_version = wp_get_theme($slug)->get('Version');
-            $new_version = SharedUtils::normalize_version($latest_release['tag_name'] ?? '0');
+            $new_version = $this->utils->normalize_version( $latest_release['tag_name'] ?? '0' );
 
             if (version_compare($new_version, $current_version, '>')) {
                 $package_info = [

@@ -62,7 +62,7 @@ class PluginUpdater {
 
             $latest_release = $response['data'];
             $current_version = get_plugin_data(WP_PLUGIN_DIR . '/' . $slug)['Version'];
-            $new_version = SharedUtils::normalize_version($latest_release['tag_name'] ?? '0');
+            $new_version = $this->utils->normalize_version( $latest_release['tag_name'] ?? '0' );
 
             if (version_compare($new_version, $current_version, '>')) {
                 $package_info = (object) [

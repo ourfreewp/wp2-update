@@ -24,7 +24,11 @@ class PackageFinder {
     /** @var array|null Cached map of repositories to their managing app slugs. */
     private $repo_to_app_map = null;
 
-    public function __construct() {
+    /** @var SharedUtils */
+    private SharedUtils $utils;
+
+    public function __construct( SharedUtils $utils ) {
+        $this->utils = $utils;
         $this->scan_for_managed_themes();
         $this->scan_for_managed_plugins();
     }
@@ -44,7 +48,7 @@ class PackageFinder {
         $found_themes = [];
         foreach ( wp_get_themes() as $slug => $theme ) {
             $uri  = $theme->get( 'UpdateURI' ) ?: $theme->get( 'Update URI' );
-            $repo = SharedUtils::normalize_repo( $uri );
+            $repo = $this->utils->normalize_repo( $uri );
 
             if ( $repo ) {
                 $app_slug = $this->find_app_for_repo( $repo );
@@ -83,7 +87,7 @@ class PackageFinder {
 
         foreach ( get_plugins() as $slug => $plugin ) {
             $uri  = $plugin['UpdateURI'] ?? $plugin['Update URI'] ?? '';
-            $repo = SharedUtils::normalize_repo( $uri );
+            $repo = $this->utils->normalize_repo( $uri );
 
             if ( $repo ) {
                 $app_slug = $this->find_app_for_repo( $repo );

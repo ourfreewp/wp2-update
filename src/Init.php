@@ -13,11 +13,12 @@ use WP2\Update\Core\Webhooks\Handler as WebhookHandler;
 use WP2\Update\Core\API\REST as RestRouter;
 use WP2\Update\Core\Tasks\Scheduler as TaskScheduler;
 use WP2\Update\Utils\DIContainer;
+use WP2\Update\Admin\Models\Init as ModelsInit;
 
 /**
  * This is the main orchestrator for the plugin.
  * * It instantiates and wires together all core components. It is a best practice to
- * have a single main entry point for the plugin, which then loads all other components.
+ * to have a single main entry point for the plugin, which then loads all other components.
  */
 final class Init {
     /**
@@ -32,12 +33,16 @@ final class Init {
         // Register services
         $container->register('GitHubService', fn() => new GitHubService());
         $container->register('GitHubApp', fn($c) => new GitHubApp($c->resolve('GitHubService')));
-        $container->register('PackageFinder', fn() => new PackageFinder());
-        $container->register('Connection', fn($c) => new Connection($c->resolve('PackageFinder')));
         $container->register('SharedUtils', fn($c) => new SharedUtils($c->resolve('GitHubApp')));
+        $container->register('PackageFinder', fn($c) => new PackageFinder($c->resolve('SharedUtils')));
+        $container->register('Connection', fn($c) => new Connection($c->resolve('PackageFinder')));
+        $container->register('ModelsInit', fn() => new ModelsInit());
         $container->register('WebhookHandler', fn($c) => new WebhookHandler($c->resolve('GitHubApp'), $c->resolve('PackageFinder')));
         $container->register('ThemeUpdater', fn($c) => new ThemeUpdater($c->resolve('Connection'), $c->resolve('GitHubApp'), $c->resolve('SharedUtils')));
         $container->register('PluginUpdater', fn($c) => new PluginUpdater($c->resolve('Connection'), $c->resolve('GitHubApp'), $c->resolve('SharedUtils')));
+        
+        // Pass the container instance via a filter so it can be used elsewhere.
+        add_filter('wp2_update_di_container', fn() => $container);
 
         // Resolve and initialize services
         $container->resolve('WebhookHandler');
@@ -58,17 +63,18 @@ final class Init {
             $container->resolve('ThemeUpdater'),
             $container->resolve('PluginUpdater'),
             $container->resolve('SharedUtils'),
-            $container->resolve('GitHubService') // Added missing GitHubService dependency
+            $container->resolve('GitHubService')
         );
 
         // Register all necessary hooks.
         $admin->register_hooks();
         $container->resolve('ThemeUpdater')->register_hooks();
         $container->resolve('PluginUpdater')->register_hooks();
+        $container->resolve('ModelsInit')->register();
 
         // Initialize and schedule recurring background tasks.
-        $scheduler = new TaskScheduler($container->resolve('GitHubService')); // Instantiate Scheduler
-        $scheduler->init_hooks(); // Register hooks using instance methods
+        $scheduler = new TaskScheduler($container->resolve('GitHubService'));
+        $scheduler->init_hooks();
         $scheduler->schedule_recurring_tasks();
 
         // Text domain

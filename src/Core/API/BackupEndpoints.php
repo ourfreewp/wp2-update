@@ -1,6 +1,10 @@
 <?php
 namespace WP2\Update\Core\API;
 
+use WP_Error;
+use WP_REST_Request;
+use WP_REST_Response;
+
 /**
  * Registers REST API endpoints for managing backups.
  */
@@ -18,33 +22,63 @@ class BackupEndpoints {
      */
     public static function register_routes() {
         register_rest_route('wp2-update/v1', '/backups', [
-            'methods'  => 'GET',
-            'callback' => [__CLASS__, 'list_backups'],
+            'methods'             => 'GET',
+            'callback'            => [__CLASS__, 'list_backups'],
+            'permission_callback' => [__CLASS__, 'authorize'],
         ]);
 
         register_rest_route('wp2-update/v1', '/backups/(?P<id>\d+)', [
-            'methods'  => 'DELETE',
-            'callback' => [__CLASS__, 'delete_backup'],
+            'methods'             => 'DELETE',
+            'callback'            => [__CLASS__, 'delete_backup'],
+            'permission_callback' => [__CLASS__, 'authorize'],
         ]);
     }
 
     /**
      * Lists all backups.
      */
-    public static function list_backups() {
-        // Placeholder: Replace with actual logic to fetch backups
-        return rest_ensure_response([
-            ['id' => 1, 'name' => 'Backup 1', 'date' => '2023-10-01'],
-            ['id' => 2, 'name' => 'Backup 2', 'date' => '2023-10-02'],
-        ]);
+    public static function list_backups(): WP_REST_Response {
+        $backups = apply_filters( 'wp2_update_backups_list', [] );
+        if ( ! is_array( $backups ) ) {
+            $backups = [];
+        }
+
+        return rest_ensure_response( [
+            'backups' => array_values( $backups ),
+        ] );
     }
 
     /**
      * Deletes a backup by ID.
      */
-    public static function delete_backup($request) {
-        $id = $request['id'];
-        // Placeholder: Replace with actual logic to delete a backup
-        return rest_ensure_response(['success' => true, 'message' => "Backup $id deleted."]);
+    public static function delete_backup( WP_REST_Request $request ) {
+        $id = (int) $request['id'];
+
+        if ( ! has_action( 'wp2_update_delete_backup' ) ) {
+            return new WP_Error(
+                'wp2_backups_not_configured',
+                __( 'Backup deletion is not configured.', 'wp2-update' ),
+                [ 'status' => 501 ]
+            );
+        }
+
+        /**
+         * Fires when a backup deletion is requested via the REST API.
+         *
+         * @param int $id The backup identifier requested for deletion.
+         */
+        do_action( 'wp2_update_delete_backup', $id );
+
+        return rest_ensure_response( [
+            'success' => true,
+            'message' => sprintf( __( 'Requested deletion for backup %d.', 'wp2-update' ), $id ),
+        ] );
+    }
+
+    /**
+     * Determines if the current user may interact with backup endpoints.
+     */
+    public static function authorize(): bool {
+        return current_user_can( 'manage_options' );
     }
 }
