@@ -6,7 +6,7 @@ use Mockery;
 use Mockery\MockInterface;
 use WP2\Update\Admin\Pages\SystemHealthPage;
 use WP2\Update\Core\Connection\Init as Connection;
-use WP2\Update\Core\GitHubApp\Init as GitHubApp;
+use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Utils\SharedUtils;
 
 class SystemHealthPageTest extends TestCase

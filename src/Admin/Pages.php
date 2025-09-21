@@ -2,13 +2,16 @@
 namespace WP2\Update\Admin;
 
 use WP2\Update\Core\Connection\Init as Connection;
-use WP2\Update\Core\GitHubApp\Init as GitHubApp;
+use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Admin\Pages\ChangelogPage;
 use WP2\Update\Admin\Pages\OverviewPage;
 use WP2\Update\Admin\Pages\PackageEventsPage;
 use WP2\Update\Admin\Pages\PackagesPage;
 use WP2\Update\Admin\Pages\SystemHealthPage;
+use WP2\Update\Admin\Pages\BackupManagementPage;
+use WP2\Update\Admin\Pages\PackageHistoryPage;
+use WP2\Update\Admin\Pages\PackageStatusPage;
 
 
 /**
@@ -111,5 +114,37 @@ class Pages {
     public function render_events_page() {
         $events_page = new PackageEventsPage();
         $events_page->render_as_view();
+    }
+
+    /**
+     * Renders the Backup Management page.
+     */
+    public function render_backup_management_page() {
+        $view = new BackupManagementPage($this->utils);
+        $view->render();
+    }
+
+    /**
+     * Renders the Package Events page.
+     */
+    public function render_package_events_page() {
+        $view = new PackageEventsPage();
+        $view->render_as_view();
+    }
+
+    /**
+     * Renders the Package History page.
+     */
+    public function render_package_history_page() {
+        $view = new PackageHistoryPage($this->connection, $this->utils);
+        $view->render(null, null);
+    }
+
+    /**
+     * Renders the Package Status page.
+     */
+    public function render_package_status_page() {
+        $view = new PackageStatusPage($this->connection, $this->github_app, $this->utils);
+        $view->render(null, null);
     }
 }

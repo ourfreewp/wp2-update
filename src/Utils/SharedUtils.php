@@ -1,138 +1,148 @@
 <?php
 namespace WP2\Update\Utils;
 
-use WP2\Update\Core\GitHubApp\Init as GitHubApp;
-use WP2\Update\Core\API\Service as GitHubService;
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 
 use const HOUR_IN_SECONDS;
 
-class SharedUtils {
-    private $github_app;
+/**
+ * A collection of stateless, static utility methods used across the plugin.
+ */
+final class SharedUtils {
 
-    public function __construct(GitHubApp $github_app) {
-        $this->github_app = $github_app;
-    }
+	/**
+	 * @param GitHubApp $github_app
+	 * @param string    $app_slug
+	 * @param string    $repo
+	 * @param int       $count
+	 * @return array<int,mixed>
+	 */
+	public static function get_all_releases( GitHubApp $github_app, string $app_slug, string $repo, int $count = 10 ): array {
+		$cache_key = 'wp2_releases_' . md5( $repo );
+		$cached    = get_transient( $cache_key );
+		if ( false !== $cached ) {
+			return is_array( $cached ) ? $cached : [];
+		}
 
-    public function get_all_releases(string $app_slug, string $repo, int $count = 10): array {
-        $cache_key = 'wp2_releases_' . md5($repo);
-        if (false !== ($cached = get_transient($cache_key))) {
-            return is_array($cached) ? $cached : [];
-        }
+		$res = $github_app->gh( $app_slug, 'GET', "/repos/{$repo}/releases", [ 'query' => [ 'per_page' => $count ] ] );
 
-        $res = $this->github_app->gh($app_slug, 'GET', "/repos/{$repo}/releases", ['per_page' => $count]);
+		if ( empty( $res['ok'] ) ) {
+			Logger::log( 'Error fetching releases for repository: ' . $repo, 'error', 'github' );
+			return [];
+		}
 
-        if (!$res['ok']) {
-            Logger::log('Error fetching releases for repository: ' . $repo, 'error', 'github');
-            return [];
-        }
+		$releases = is_array( $res['data'] )
+			? array_values(
+				array_filter(
+					$res['data'],
+					static fn( $r ): bool => is_array( $r ) && empty( $r['draft'] ) && empty( $r['prerelease'] )
+				)
+			)
+			: [];
 
-        $releases = is_array($res['data']) ? array_filter($res['data'], fn($r) => is_array($r) && empty($r['draft']) && empty($r['prerelease'])) : [];
-        set_transient($cache_key, $releases, HOUR_IN_SECONDS);
-        return $releases;
-    }
+		set_transient( $cache_key, $releases, HOUR_IN_SECONDS );
+		return $releases;
+	}
 
-    public function get_updates_count(): int {
-        $themes = get_site_transient('update_themes');
-        $plugins = get_site_transient('update_plugins');
+	/**
+	 * @return int
+	 */
+	public static function get_updates_count(): int {
+		$themes  = get_site_transient( 'update_themes' );
+		$plugins = get_site_transient( 'update_plugins' );
 
-        $updates_count = 0;
+		$updates_count = 0;
 
-        if (!empty($themes->response)) {
-            $updates_count += count($themes->response);
-        }
+		if ( ! empty( $themes->response ) && is_array( $themes->response ) ) {
+			$updates_count += count( $themes->response );
+		}
 
-        if (!empty($plugins->response)) {
-            $updates_count += count($plugins->response);
-        }
+		if ( ! empty( $plugins->response ) && is_array( $plugins->response ) ) {
+			$updates_count += count( $plugins->response );
+		}
 
-        return $updates_count;
-    }
+		return $updates_count;
+	}
 
-    public static function normalize_version(?string $version): string {
-        if ($version === null) {
-            return '0.0.0'; // Default version if null is provided
-        }
+	/**
+	 * @param string|null $version
+	 * @return string
+	 */
+	public static function normalize_version( ?string $version ): string {
+		return ltrim( $version ?? '0.0.0', 'v' );
+	}
 
-        return ltrim($version, 'v');
-    }
+	/**
+	 * @param array<string,mixed> $release
+	 * @return string|null
+	 */
+	public static function get_zip_url_from_release( array $release ): ?string {
+		foreach ( ( $release['assets'] ?? [] ) as $asset ) {
+			if (
+				isset( $asset['browser_download_url'] )
+				&& in_array( $asset['content_type'] ?? '', [ 'application/zip', 'application/x-zip-compressed' ], true )
+			) {
+				return (string) $asset['browser_download_url'];
+			}
+		}
 
-    public function get_zip_url_from_release(array $release): ?string {
-        foreach (($release['assets'] ?? []) as $asset) {
-            if (isset($asset['browser_download_url']) && in_array($asset['content_type'], ['application/zip', 'application/x-zip-compressed'], true)) {
-                // Prioritize the direct download URL
-                return $asset['browser_download_url'];
-            }
-        }
+		return isset( $release['zipball_url'] ) ? (string) $release['zipball_url'] : null;
+	}
 
-        // Log a warning if no valid ZIP URL is found in assets
-        Logger::log('No valid ZIP URL found in release assets.', 'warning', 'release');
+	/**
+	 * @param string|null $uri
+	 * @return string|null
+	 */
+	public static function normalize_repo( ?string $uri ): ?string {
+		if ( empty( $uri ) ) {
+			return null;
+		}
+		if ( preg_match( '/(?:https?:\/\/github\.com\/)?([^\/]+\/[^\/]+)/', $uri, $matches ) ) {
+			return rtrim( $matches[1], '/' );
+		}
+		return null;
+	}
 
-        return $release['zipball_url'] ?? null;
-    }
+	/**
+	 * @return string
+	 */
+	public static function get_last_checked_time(): string {
+		$last_checked = get_site_transient( 'update_themes' )->last_checked ?? 0;
+		return empty( $last_checked ) ? __( 'Never', 'wp2-update' ) : sprintf( __( '%s ago', 'wp2-update' ), human_time_diff( $last_checked ) );
+	}
 
-    public static function normalize_repo(?string $uri): ?string {
-        if (empty($uri)) {
-            return null;
-        }
+	/**
+	 * @param string $data
+	 * @return string
+	 */
+	public static function encrypt( string $data ): string {
+		$key = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'insecure-fallback-key';
+		$iv  = openssl_random_pseudo_bytes( openssl_cipher_iv_length( 'aes-256-cbc' ) );
+		$enc = openssl_encrypt( $data, 'aes-256-cbc', $key, 0, $iv );
+		return base64_encode( $iv . '::' . $enc );
+	}
 
-        // Handle full github.com URLs
-        if (preg_match('/^https?:\/\/github\.com\/([^\/]+\/[^\/]+)\/?$/', $uri, $matches)) {
-            return rtrim($matches[1], '/');
-        }
-
-        // Handle simple owner/repo slugs
-        if (preg_match('/^([^\/]+\/[^\/]+)$/', $uri, $matches)) {
-            return rtrim($matches[1], '/');
-        }
-
-        // Return null for invalid URIs
-        return null;
-    }
-
-    /**
-     * Gets the last time WordPress checked for updates.
-     *
-     * @return string A human-readable time difference.
-     */
-    public function get_last_checked_time(): string {
-        $themes_transient = get_site_transient('update_themes');
-        $last_checked = $themes_transient->last_checked ?? 0;
-
-        if (empty($last_checked)) {
-            return __('Never', 'wp2-update');
-        }
-        return sprintf(__('%s ago', 'wp2-update'), human_time_diff($last_checked));
-    }
-
-    /**
-     * Finds the main plugin file in a given directory.
-     *
-     * @param string $directory The directory to search.
-     * @return string|null The path to the main plugin file, or null if not found.
-     */
-    public function get_plugin_file(string $directory): ?string {
-        $files = scandir($directory);
-        if (!$files) {
-            return null;
-        }
-
-        foreach ($files as $file) {
-            if (preg_match('/^[a-zA-Z0-9-_]+\.php$/', $file)) {
-                $file_path = trailingslashit($directory) . $file;
-                $contents = file_get_contents($file_path);
-                if (strpos($contents, 'Plugin Name:') !== false) {
-                    return $file_path;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Retrieves the GitHubService instance from GitHubApp.
-     */
-    public function get_github_service(): GitHubService {
-        return $this->github_app->get_service();
-    }
+	/**
+	 * @param string $data
+	 * @return string
+	 * @throws \RuntimeException
+	 */
+	public static function decrypt( string $data ): string {
+		$key     = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'insecure-fallback-key';
+		$decoded = base64_decode( $data, true );
+		if ( false === $decoded || false === strpos( $decoded, '::' ) ) {
+			throw new \RuntimeException( __( 'Failed to decode encrypted data.', 'wp2-update' ) );
+		}
+		list( $iv, $enc ) = explode( '::', $decoded, 2 );
+		$dec = openssl_decrypt( (string) $enc, 'aes-256-cbc', $key, 0, $iv );
+		if ( false === $dec ) {
+			throw new \RuntimeException( __( 'Failed to decrypt data. The WordPress AUTH_KEY may have changed.', 'wp2-update' ) );
+		}
+		return $dec;
+	}
 }
+

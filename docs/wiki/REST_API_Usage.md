@@ -75,6 +75,30 @@ All endpoints are prefixed with:
 }
 ```
 
+## Using Client ID and Client Secret
+
+GitHub Apps can use OAuth credentials to identify users. Below are the steps to use Client ID and Client Secret for authentication:
+
+1. **Client ID**: This is a unique identifier for your GitHub App. Example: `Iv23likg3XVaGw76jDJ5`
+2. **Client Secret**: This is used to authenticate as the application to the API. Ensure it is stored securely and not exposed publicly.
+
+### Steps to Authenticate
+- Use your Client ID to initiate the OAuth flow.
+- Exchange the authorization code for an access token using the Client Secret.
+
+### Example
+```bash
+curl -X POST https://github.com/login/oauth/access_token \
+  -H "Accept: application/json" \
+  -d "client_id=Iv23likg3XVaGw76jDJ5" \
+  -d "client_secret=YOUR_CLIENT_SECRET" \
+  -d "code=AUTHORIZATION_CODE"
+```
+
+### Notes
+- Always keep your Client Secret confidential.
+- Refer to the [GitHub Developer Documentation](https://docs.github.com/en/developers/apps) for more details.
+
 ---
 
 For more details, refer to the plugin's README or contact support.

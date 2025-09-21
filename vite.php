@@ -1,16 +1,11 @@
 <?php
-
 class Vite
 {
     public function __construct()
     {
-        add_action('wp_enqueue_scripts', function () {
-            $this->enqueueProdAssets('assets/scripts/admin-main.js');
-        });
-
-        add_action('admin_enqueue_scripts', function () {
-            $this->enqueueProdAssets('assets/scripts/admin-main.js');
-        });
+        add_action('wp_enqueue_scripts', [$this, 'enqueueAssets']);
+        // Use 'admin_enqueue_scripts' for admin-specific assets
+        add_action('admin_enqueue_scripts', [$this, 'enqueueAdminAssets']);
     }
 
     /**
@@ -20,7 +15,6 @@ class Vite
     {
         // Adjust the entry point to match your file structure
         $this->enqueue('src/main.js');
-
     }
 
     /**
@@ -30,8 +24,6 @@ class Vite
     {
         // Enqueue admin-specific assets using the manifest.json
         $this->enqueue('assets/scripts/admin-main.js');
-
-
     }
 
     /**
@@ -49,8 +41,6 @@ class Vite
         else {
             $this->enqueueProdAssets($entry);
         }
-
-
     }
 
     /**
@@ -87,29 +77,34 @@ class Vite
      */
     private function enqueueProdAssets(string $entry)
     {
+        $manifest_path = plugin_dir_path(__FILE__) . '../dist/.vite/manifest.json';
 
-        // Use dynamic path for the manifest file
-        $manifest_path = plugin_dir_path(__FILE__) . 'dist/.vite/manifest.json';
+        // Debugging: Log the manifest file path
+        error_log('Manifest path: ' . $manifest_path);
+
+        if (!file_exists($manifest_path)) {
+            error_log('Manifest file does not exist.');
+            return;
+        }
 
         $manifest = json_decode(file_get_contents($manifest_path), true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            error_log('Error decoding Vite manifest: ' . json_last_error_msg());
-            return; // Exit early if the manifest file cannot be parsed
-        }
 
-        // Debugging: Log manifest keys
-        if (! isset($manifest)) {
-            error_log('Manifest is not set.');
-        }
+        // Debugging: Log the manifest content
+        error_log('Manifest content: ' . print_r($manifest, true));
 
         if (isset($manifest[$entry])) {
             $entry_manifest = $manifest[$entry];
+
+            // Debugging: Log the entry manifest
+            error_log('Entry manifest: ' . print_r($entry_manifest, true));
+
             // Enqueue the main JavaScript file
             if (isset($entry_manifest['file'])) {
+                error_log('Enqueuing JS file: ' . $entry_manifest['file']);
                 wp_enqueue_script(
                     'main-script',
-                    plugins_url('dist/' . $entry_manifest['file'], __FILE__),
-                    [],
+                    plugin_dir_url(__FILE__) . '../dist/' . $entry_manifest['file'],
+                    [], // Add dependencies like 'jquery' if needed
                     null,
                     true // Load in footer
                 );
@@ -118,6 +113,7 @@ class Vite
             // Enqueue associated CSS files
             if (isset($entry_manifest['css'])) {
                 foreach ($entry_manifest['css'] as $css_file) {
+                    error_log('Enqueuing CSS file: ' . $css_file);
                     wp_enqueue_style(
                         'main-style',
                         plugin_dir_url(__FILE__) . '../dist/' . $css_file
@@ -129,22 +125,12 @@ class Vite
         // Enqueue standalone CSS files
         foreach ($manifest as $key => $value) {
             if (isset($value['file']) && pathinfo($value['file'], PATHINFO_EXTENSION) === 'css') {
+                error_log('Enqueuing standalone CSS file: ' . $value['file']);
                 wp_enqueue_style(
                     'vite-' . sanitize_title($key), // Prefix to avoid conflicts
                     plugins_url('../dist/' . $value['file'], __FILE__) // Correct path resolution
                 );
             }
-        }
-
-        // Update enqueue logic to dynamically use Vite manifest
-        if (isset($manifest['assets/styles/admin-main.scss']['file'])) {
-            $hashed_css_file = $manifest['assets/styles/admin-main.scss']['file'];
-            wp_enqueue_style(
-                'admin-style',
-                plugins_url('dist/' . $hashed_css_file, __FILE__),
-                [],
-                null
-            );
         }
     }
 }

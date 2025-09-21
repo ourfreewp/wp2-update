@@ -3,7 +3,7 @@ namespace WP2\Update;
 
 use WP2\Update\Admin\Init as AdminInit;
 use WP2\Update\Core\Connection\Init as Connection;
-use WP2\Update\Core\GitHubApp\Init as GitHubApp;
+use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\Updates\PluginUpdater; 
 use WP2\Update\Core\Updates\ThemeUpdater;
 use WP2\Update\Utils\SharedUtils;

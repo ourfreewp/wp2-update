@@ -53,7 +53,6 @@ final class Scheduler {
     public static function schedule_recurring_tasks() {
         // Ensure Action Scheduler is initialized before scheduling tasks.
         if (!class_exists('ActionScheduler') || !ActionScheduler::is_initialized()) {
-            error_log('Action Scheduler is not initialized. Recurring tasks cannot be scheduled.');
             return;
         }
 

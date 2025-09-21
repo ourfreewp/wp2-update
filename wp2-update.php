@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme updates.
- * Version:           0.0.5
+ * Version:           0.0.6
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -99,15 +99,3 @@ function wp2_update_deactivate() {
 }
 // Update the deactivation hook to include the namespace
 register_deactivation_hook(__FILE__, '\\WP2\\Update\\wp2_update_deactivate');
-
-// Add a debug log to confirm the deactivation hook is registered
-error_log('Deactivation hook registered for wp2_update_deactivate.');
-
-add_action('admin_init', function() {
-    $admin_role = get_role('administrator');
-    if ($admin_role) {
-        error_log('Administrator Capabilities: ' . print_r($admin_role->capabilities, true));
-    } else {
-        error_log('Administrator role not found.');
-    }
-});

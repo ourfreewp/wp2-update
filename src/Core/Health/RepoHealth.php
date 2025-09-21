@@ -1,7 +1,7 @@
 <?php
 namespace WP2\Update\Core\Health;
 
-use WP2\Update\Core\GitHubApp\Init as GitHubApp;
+use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\API\Service as GitHubService;
 
 /**

@@ -134,6 +134,55 @@ const handleExampleAction = async () => {
 };
 
 /**
+ * Initializes GitHub App creation button.
+ */
+const initGithubAppButton = () => {
+    fetch("/wp-json/wp2-update/v1/settings")
+        .then(response => response.json())
+        .then(settings => {
+            const createGithubAppButton = document.getElementById("create-github-app");
+
+            if (createGithubAppButton) {
+                createGithubAppButton.addEventListener("click", function() {
+                    // Validate settings.root
+                    if (!settings.root || !settings.root.endsWith('/')) {
+                        console.error("Invalid REST API root URL:", settings.root);
+                        return;
+                    }
+
+                    fetch(settings.root + "wp2-update/v1/create-github-app", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-WP-Nonce": settings.nonce
+                        },
+                        body: JSON.stringify({
+                            post_id: createGithubAppButton.dataset.postId
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            const appConfigContainer = document.getElementById("app-config-container");
+                            if (appConfigContainer) {
+                                appConfigContainer.innerHTML = `
+                                    <p><strong>Pending App Name:</strong> ${data.app_name}</p>
+                                    <p><strong>Callback URL:</strong> ${data.callback_url}</p>
+                                    <p><strong>Webhook URL:</strong> ${data.webhook_url}</p>
+                                    <a href="${data.github_url}" target="_blank">Open GitHub App Configuration</a>
+                                `;
+                            }
+                        } else {
+                            alert(data.message || "Failed to create GitHub App.");
+                        }
+                    });
+                });
+            }
+        })
+        .catch(error => console.error("Failed to fetch settings:", error));
+};
+
+/**
  * Main application initializer.
  */
 const initApp = () => {
@@ -150,6 +199,9 @@ const initApp = () => {
 
     // Initialize the example action handler
     handleExampleAction();
+
+    // Initialize GitHub App button
+    initGithubAppButton();
 };
 
 // Run the application once the DOM is fully loaded.

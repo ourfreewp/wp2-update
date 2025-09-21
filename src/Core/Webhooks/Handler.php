@@ -1,7 +1,7 @@
 <?php
 namespace WP2\Update\Core\Webhooks;
 
-use WP2\Update\Core\GitHubApp\Init as GitHubApp;
+use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\Updates\PackageFinder;
 use WP2\Update\Utils\Logger;
 use WP_REST_Request;

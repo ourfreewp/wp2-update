@@ -2,7 +2,7 @@
 namespace WP2\Update\Admin;
 
 use WP2\Update\Core\Connection\Init as Connection;
-use WP2\Update\Core\GitHubApp\Init as GitHubApp;
+use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\Updates\PluginUpdater;
 use WP2\Update\Core\Updates\ThemeUpdater;
 use WP2\Update\Utils\SharedUtils;
@@ -53,6 +53,34 @@ class Init {
 
         // Register model hooks
         $this->models->register();
+
+        // Ensure the menu item and submenu stay open for custom post types
+        add_action( 'admin_menu', function() {
+            add_filter( 'parent_file', function( $parent_file ) {
+                global $pagenow;
+                $post_types = [ 'wp2_repository', 'wp2_github_app' ];
+
+                if ( $pagenow === 'edit.php' && isset( $_GET['post_type'] ) && in_array( $_GET['post_type'], $post_types, true ) ) {
+                    $parent_file = 'wp2-update-overview';
+                }
+
+                return $parent_file;
+            });
+
+            add_filter( 'submenu_file', function( $submenu_file ) {
+                global $pagenow;
+                $post_types = [
+                    'wp2_repository' => 'edit.php?post_type=wp2_repository',
+                    'wp2_github_app' => 'edit.php?post_type=wp2_github_app'
+                ];
+
+                if ( $pagenow === 'edit.php' && isset( $_GET['post_type'] ) && isset( $post_types[ $_GET['post_type'] ] ) ) {
+                    $submenu_file = $post_types[ $_GET['post_type'] ];
+                }
+
+                return $submenu_file;
+            });
+        });
     }
 
     /**
@@ -86,5 +114,30 @@ class Init {
             'wp2-update-system-health',
             [ $this->pages_handler, 'render_system_health_page' ]
         );
+
+        add_submenu_page(
+            'wp2-update-overview',
+            __( 'Events', 'wp2-update' ),
+            __( 'Events', 'wp2-update' ),
+            'manage_wp2_updates',
+            'wp2-update-events',
+            [ $this->pages_handler, 'render_events_page' ]
+        );
+
+        // Add submenu pages for specific post types
+        $post_types = [
+            'wp2_repository' => __( 'Repos', 'wp2-update' ),
+            'wp2_github_app' => __( 'Apps', 'wp2-update' )
+        ];
+
+        foreach ( $post_types as $post_type => $label ) {
+            add_submenu_page(
+                'wp2-update-overview',
+                $label,
+                $label,
+                'manage_wp2_updates',
+                'edit.php?post_type=' . $post_type
+            );
+        }
     }
 }
