@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme updates.
- * Version:           0.0.7
+ * Version:           0.0.8
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -43,6 +43,9 @@ if ( ! defined( 'WP2_UPDATE_DEBUG' ) ) {
 }
 if ( ! defined( 'WP2_UPDATE_GITHUB_API_URL' ) ) {
     define( 'WP2_UPDATE_GITHUB_API_URL', 'https://api.github.com' );
+}
+if ( ! defined( 'WP2_UPDATE_LICENSE_URL' ) ) {
+    define( 'WP2_UPDATE_LICENSE_URL', 'https://www.gnu.org/licenses/gpl-2.0.html' );
 }
 
 /**

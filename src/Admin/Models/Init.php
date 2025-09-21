@@ -754,8 +754,13 @@ final class Init {
         // Store results in a transient to display in admin notice.
         set_transient('wp2_update_check_results', $results, 60);
 
-        // Redirect back to the admin page.
-        wp_redirect(add_query_arg('wp2_update_check', '1', wp_get_referer()));
+        // Redirect back to the admin page securely.
+        $referer = wp_get_referer();
+        if ($referer) {
+            wp_safe_redirect(add_query_arg('wp2_update_check', '1', $referer));
+        } else {
+            wp_safe_redirect(admin_url());
+        }
         exit;
     }
 

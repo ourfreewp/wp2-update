@@ -57,7 +57,7 @@ class ThemeUpdater {
 
             $latest_release = $response['data'];
             $current_version = wp_get_theme($slug)->get('Version');
-            $new_version = $this->utils->normalize_version( $latest_release['tag_name'] ?? '0' );
+            $new_version = $this->normalize_version( $latest_release['tag_name'] ?? '0' );
 
             if (version_compare($new_version, $current_version, '>')) {
                 $package_info = [
@@ -180,6 +180,16 @@ class ThemeUpdater {
         do_action('wp2_update_after_theme_install', $app_slug, $repo, $version, $result);
 
         return true;
+    }
+
+    /**
+     * Normalizes a version string.
+     *
+     * @param string $version The version string to normalize.
+     * @return string The normalized version string.
+     */
+    private function normalize_version($version) {
+        return $this->utils->normalize_version($version);
     }
 
     /**

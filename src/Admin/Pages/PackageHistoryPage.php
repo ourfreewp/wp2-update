@@ -56,16 +56,30 @@ class PackageHistoryPage {
         } else {
             $installed = wp_get_theme( $slug )->get( 'Version' );
         }
+
+        // Ensure all dynamic content is properly validated and sanitized.
+        $slug = sanitize_text_field( $slug );
+        $type = sanitize_text_field( $type );
+
+        // Sanitize item data before usage.
+        $item_data['name'] = esc_html( $item_data['name'] );
+
         ?>
         <h2><?php echo esc_html( $item_data['name'] . ' ' . __( 'Version History', 'wp2-update' ) ); ?></h2>
-        <table class="wp2-data-table">
-            <thead><tr><th>Version</th><th>Release Date</th><th>Action</th></tr></thead>
+        <table class="wp2-data-table" aria-label="Version History Table">
+            <thead>
+                <tr>
+                    <th scope="col">Version</th>
+                    <th scope="col">Release Date</th>
+                    <th scope="col">Action</th>
+                </tr>
+            </thead>
             <tbody>
                 <?php if ( empty( $releases ) ) : ?>
                     <tr><td colspan="3"><?php esc_html_e( 'No releases found.', 'wp2-update' ); ?></td></tr>
                 <?php else : foreach ( $releases as $release ) :
-                        $norm_release_v = $this->utils->normalize_version( $release['tag_name'] ?? '' );
-                        $norm_installed_v = $this->utils->normalize_version( $installed );
+                        $norm_release_v = $this->normalize_version( $release['tag_name'] ?? '' );
+                        $norm_installed_v = $this->normalize_version( $installed );
                         $is_current   = version_compare( $norm_release_v, $norm_installed_v, '==' );
                         $is_older     = version_compare( $norm_release_v, $norm_installed_v, '<' );
 
@@ -79,6 +93,14 @@ class PackageHistoryPage {
                             $button_text = __('Rollback', 'wp2-update');
                             $button_class = 'wp2-button--destructive'; // A new class for caution
                         }
+
+                        // Sanitize release data.
+                        $release['tag_name'] = esc_html( $release['tag_name'] ?? 'Unknown' );
+                        $release['published_at'] = esc_html( isset( $release['published_at'] ) ? wp_date( 'M j, Y', strtotime( $release['published_at'] ) ) : 'Unknown' );
+
+                        // Sanitize button attributes.
+                        $button_text = esc_html( $button_text );
+                        $button_class = esc_attr( $button_class );
                         ?>
                         <tr class="<?php echo $is_current ? 'current-version' : ''; ?>">
                             <td data-label="Version"><strong><?php echo esc_html( $release['tag_name'] ?? 'Unknown' ); ?></strong></td>
@@ -99,5 +121,15 @@ class PackageHistoryPage {
             </tbody>
         </table>
         <?php
+    }
+
+    /**
+     * Normalizes a version string.
+     *
+     * @param string $version The version string to normalize.
+     * @return string The normalized version string.
+     */
+    private function normalize_version($version) {
+        return $this->utils->normalize_version($version);
     }
 }

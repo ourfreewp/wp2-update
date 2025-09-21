@@ -133,7 +133,7 @@ final class Scheduler {
         }
         if (isset($args['app_post_id'])) {
             // Use the DI container to fetch the GitHubService instance.
-            $github_service = apply_filters('wp2_update_di_container', null)->get(GitHubService::class);
+            $github_service = apply_filters('wp2_update_di_container', null)->resolve(GitHubService::class);
             $repos = new Repos($github_service);
             $repos->sync_repositories_for_app($args['app_post_id']);
         }

@@ -20,7 +20,8 @@ const renderConnectionStatus = () => {
     // Listen for changes in the connection state and update the DOM.
     connectionState.listen(state => {
         const noticeClass = state.connected ? 'notice-success' : (state.connected === false ? 'notice-error' : 'notice-info');
-        statusBlock.innerHTML = `<p class="notice ${noticeClass}">${state.message}</p>`;
+        // Safely update the status block content.
+        statusBlock.textContent = state.message;
     });
 };
 
@@ -142,11 +143,12 @@ const initGithubAppButton = () => {
                         if (data.success) {
                             const appConfigContainer = document.getElementById("app-config-container");
                             if (appConfigContainer) {
+                                // Safely update the app configuration container.
                                 appConfigContainer.innerHTML = `
-                                    <p><strong>Pending App Name:</strong> ${data.app_name}</p>
-                                    <p><strong>Callback URL:</strong> ${data.callback_url}</p>
-                                    <p><strong>Webhook URL:</strong> ${data.webhook_url}</p>
-                                    <a href="${data.github_url}" target="_blank">Open GitHub App Configuration</a>
+                                    <p><strong>Pending App Name:</strong> ${_.escape(data.app_name)}</p>
+                                    <p><strong>Callback URL:</strong> ${_.escape(data.callback_url)}</p>
+                                    <p><strong>Webhook URL:</strong> ${_.escape(data.webhook_url)}</p>
+                                    <a href="${_.escape(data.github_url)}" target="_blank">Open GitHub App Configuration</a>
                                 `;
                             }
                         } else {

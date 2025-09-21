@@ -207,5 +207,34 @@ final class Service {
         self::$client_cache = [];
         self::$credentials_cache = [];
     }
+
+	/**
+     * Fetches all paginated repositories for a GitHub App.
+     *
+     * @param string $app_slug
+     * @param string $context
+     * @param string $method
+     * @param array<string,mixed> $params
+     * @return array<string,mixed>
+     */
+    public function fetch_all_paginated(string $app_slug, string $context, string $method, array $params = []): array {
+        $client = $this->get_client($app_slug);
+        if (!$client) {
+            Logger::log("GitHub Service: Client not authenticated for app slug '{$app_slug}'.", 'error', 'api');
+            return [];
+        }
+
+        try {
+            $pager = new ResultPager($client);
+            $api = $client->{$context}();
+            $results = $pager->fetchAll($api, $method, $params);
+
+            Logger::log("GitHub Service: Successfully fetched paginated results for app slug '{$app_slug}'.", 'info', 'api');
+            return $results;
+        } catch (ExceptionInterface $e) {
+            Logger::log("GitHub Service: Failed to fetch paginated results for app slug '{$app_slug}'. Message: " . $e->getMessage(), 'error', 'api');
+            return [];
+        }
+    }
 }
 

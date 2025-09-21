@@ -4,7 +4,7 @@ namespace WP2\Update\Admin\Tables;
 use WP_List_Table;
 
 if (!class_exists('WP_List_Table')) {
-    require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
+    require_once WPINC . '/class-wp-list-table.php';
 }
 
 class LogsTable extends WP_List_Table {

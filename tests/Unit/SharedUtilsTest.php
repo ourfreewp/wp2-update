@@ -27,3 +27,17 @@ test('returns null for invalid URIs', function () {
     $invalid_uri = 'https://not-github.com/owner/repo';
     expect($utils->normalize_repo($invalid_uri))->toBeNull();
 });
+
+test('correctly normalizes version strings', function () {
+    $mockGitHubApp = new StubGitHubAppInit();
+    $utils = new SharedUtils($mockGitHubApp);
+
+    $version = 'v1.2.3';
+    expect($utils->normalize_version($version))->toBe('1.2.3');
+
+    $version = '1.2.3';
+    expect($utils->normalize_version($version))->toBe('1.2.3');
+
+    $version = null;
+    expect($utils->normalize_version($version))->toBe('0.0.0');
+});

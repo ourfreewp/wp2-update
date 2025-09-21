@@ -38,6 +38,13 @@ class BackupEndpoints {
      * Lists all backups.
      */
     public static function list_backups(): WP_REST_Response {
+        /**
+         * Filters the list of backups returned by the REST API.
+         *
+         * @since 1.0.0
+         *
+         * @param array $backups The list of backups.
+         */
         $backups = apply_filters( 'wp2_update_backups_list', [] );
         if ( ! is_array( $backups ) ) {
             $backups = [];
@@ -65,6 +72,8 @@ class BackupEndpoints {
         /**
          * Fires when a backup deletion is requested via the REST API.
          *
+         * @since 1.0.0
+         *
          * @param int $id The backup identifier requested for deletion.
          */
         do_action( 'wp2_update_delete_backup', $id );
@@ -79,6 +88,7 @@ class BackupEndpoints {
      * Determines if the current user may interact with backup endpoints.
      */
     public static function authorize(): bool {
-        return current_user_can( 'manage_options' );
+        // Ensure the user has the required capability to manage backups.
+        return current_user_can('manage_options');
     }
 }

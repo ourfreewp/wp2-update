@@ -62,7 +62,7 @@ class PluginUpdater {
 
             $latest_release = $response['data'];
             $current_version = get_plugin_data(WP_PLUGIN_DIR . '/' . $slug)['Version'];
-            $new_version = $this->utils->normalize_version( $latest_release['tag_name'] ?? '0' );
+            $new_version = $this->normalize_version( $latest_release['tag_name'] ?? '0' );
 
             if (version_compare($new_version, $current_version, '>')) {
                 $package_info = (object) [
@@ -185,6 +185,16 @@ class PluginUpdater {
 
         Logger::log( "Plugin {$repo} version {$version} installed successfully.", 'success', 'install' );
         return true;
+    }
+
+    /**
+     * Normalizes a version string.
+     *
+     * @param string $version The version string to normalize.
+     * @return string The normalized version string.
+     */
+    private function normalize_version($version) {
+        return $this->utils->normalize_version($version);
     }
 
     /**

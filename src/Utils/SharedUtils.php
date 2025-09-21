@@ -155,7 +155,10 @@ final class SharedUtils {
 	 * Encrypts sensitive values using AES-256-CBC and the AUTH_KEY salt.
 	 */
 	public static function encrypt( string $data ): string {
-		$key = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'insecure-fallback-key';
+		if ( ! defined( 'AUTH_KEY' ) ) {
+			throw new \RuntimeException( __( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) );
+		}
+		$key = AUTH_KEY;
 		$iv  = openssl_random_pseudo_bytes( openssl_cipher_iv_length( 'aes-256-cbc' ) );
 		$enc = openssl_encrypt( $data, 'aes-256-cbc', $key, 0, $iv );
 		return base64_encode( $iv . '::' . $enc );
@@ -169,7 +172,10 @@ final class SharedUtils {
 	 * @throws \RuntimeException When the payload cannot be decoded or decrypted.
 	 */
 	public static function decrypt( string $data ): string {
-		$key     = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'insecure-fallback-key';
+		if ( ! defined( 'AUTH_KEY' ) ) {
+			throw new \RuntimeException( __( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) );
+		}
+		$key     = AUTH_KEY;
 		$decoded = base64_decode( $data, true );
 		if ( false === $decoded || false === strpos( $decoded, '::' ) ) {
 			throw new \RuntimeException( __( 'Failed to decode encrypted data.', 'wp2-update' ) );
@@ -180,5 +186,24 @@ final class SharedUtils {
 			throw new \RuntimeException( __( 'Failed to decrypt data. The WordPress AUTH_KEY may have changed.', 'wp2-update' ) );
 		}
 		return $dec;
+	}
+
+	/**
+	 * Finds the main plugin file in a given directory.
+	 *
+	 * @param string $directory The directory to search for the plugin file.
+	 * @return string|null The path to the main plugin file, or null if not found.
+	 */
+	public function get_plugin_file( string $directory ): ?string {
+		$plugin_files = glob( trailingslashit( $directory ) . '*.php' );
+
+		foreach ( $plugin_files as $file ) {
+			$contents = file_get_contents( $file );
+			if ( strpos( $contents, 'Plugin Name:' ) !== false ) {
+				return $file;
+			}
+		}
+
+		return null;
 	}
 }

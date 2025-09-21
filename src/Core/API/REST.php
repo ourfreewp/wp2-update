@@ -43,7 +43,7 @@ final class REST {
 			[
 				'methods'             => 'GET',
 				'callback'            => [ $this, 'get_connection_status' ],
-				'permission_callback' => '__return_true', // Allow public access for debugging
+				'permission_callback' => $permission_callback,
 			]
 		);
 
@@ -73,7 +73,7 @@ final class REST {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ $this->webhook_handler, 'handle_webhook' ],
-				'permission_callback' => '__return_true',
+				'permission_callback' => $permission_callback,
 			]
 		);
 

@@ -13,9 +13,11 @@ class Logger {
 	/**
 	 * Logs a message with improved handling for arrays and objects.
 	 *
-	 * @param string|array|object $message The message to log.
-	 * @param string $type    The type of log (e.g., 'info', 'error', 'success', 'debug').
-	 * @param string $context The context of the log (e.g., 'github-app', 'update-check').
+	 * @param string|array|object $message The message to log. If an array or object is provided, it will be JSON-encoded.
+	 * @param string $type The type of log (e.g., 'info', 'error', 'success', 'debug'). Defaults to 'info'.
+	 * @param string $context The context of the log (e.g., 'github-app', 'update-check'). Defaults to 'general'.
+	 *
+	 * @throws JsonException If the message cannot be JSON-encoded.
 	 */
 	public static function log( $message, $type = 'info', $context = 'general' ) {
 		$logs = get_site_option( self::LOG_OPTION_KEY, [] );
@@ -45,7 +47,7 @@ class Logger {
 	/**
 	 * Retrieves all log entries.
 	 *
-	 * @return array The list of log entries.
+	 * @return array The list of log entries. Returns an empty array if no logs are found.
 	 */
 	public static function get_logs(): array {
 		return get_site_option( self::LOG_OPTION_KEY, [] );
@@ -53,6 +55,8 @@ class Logger {
 
     /**
      * Clears all log entries.
+     *
+     * @return void
      */
     public static function clear_logs(): void {
         delete_site_option(self::LOG_OPTION_KEY);
@@ -61,8 +65,10 @@ class Logger {
 	/**
 	 * Logs a debug message when WP2_UPDATE_DEBUG is enabled.
 	 *
-	 * @param string|array|object $message The message to log.
-	 * @param string              $context The log context (e.g., 'api').
+	 * @param string|array|object $message The message to log. If an array or object is provided, it will be JSON-encoded.
+	 * @param string $context The log context (e.g., 'api'). Defaults to 'general'.
+	 *
+	 * @throws JsonException If the message cannot be JSON-encoded.
 	 */
 	public static function log_debug( $message, string $context = 'general' ): void {
 		if ( ! defined( 'WP2_UPDATE_DEBUG' ) || ! WP2_UPDATE_DEBUG ) {
@@ -76,7 +82,7 @@ class Logger {
      * Retrieves log entries filtered by context.
      *
      * @param string $context The context to filter logs by.
-     * @return array The filtered list of log entries.
+     * @return array The filtered list of log entries. Returns an empty array if no logs match the context.
      */
     public static function get_logs_by_context(string $context): array {
         $logs = self::get_logs();
@@ -88,10 +94,12 @@ class Logger {
 	/**
      * Logs a message with an associated package slug.
      *
-     * @param string|array|object $message The message to log.
-     * @param string $type    The type of log (e.g., 'info', 'error', 'success', 'debug').
-     * @param string $context The context of the log (e.g., 'github-app', 'update-check').
-     * @param string|null $package_slug The slug of the package associated with the log entry.
+     * @param string|array|object $message The message to log. If an array or object is provided, it will be JSON-encoded.
+     * @param string $type The type of log (e.g., 'info', 'error', 'success', 'debug'). Defaults to 'info'.
+     * @param string $context The context of the log (e.g., 'github-app', 'update-check'). Defaults to 'general'.
+     * @param string|null $package_slug The slug of the package associated with the log entry. Optional.
+     *
+     * @throws JsonException If the message cannot be JSON-encoded.
      */
     public static function log_with_package($message, $type = 'info', $context = 'general', $package_slug = null) {
         $logs = get_site_option(self::LOG_OPTION_KEY, []);

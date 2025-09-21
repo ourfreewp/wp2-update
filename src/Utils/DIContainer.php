@@ -25,9 +25,11 @@ class DIContainer {
      */
     public function resolve(string $key) {
         if (!isset($this->services[$key])) {
-            throw new \Exception("Service not found: {$key}");
+            throw new ServiceNotFoundException("Service not found: {$key}");
         }
 
         return $this->services[$key]($this);
     }
 }
+
+class ServiceNotFoundException extends \Exception {}
