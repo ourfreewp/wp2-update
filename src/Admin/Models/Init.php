@@ -26,9 +26,13 @@ final class Init {
 
 		add_action( 'admin_notices', [ $this, 'show_automated_setup_success_notice' ] );
 		add_action( 'admin_notices', [ $this, 'show_automated_setup_error_notice' ] );
+		add_action( 'admin_notices', [ $this, 'show_installation_saved_notice' ] );
 
 		// Hook into the standard post save redirect to trigger our flow.
 		add_filter( 'redirect_post_location', [ $this, 'trigger_github_flow_on_new_post_save' ], 10, 2 );
+
+		// Handle the installation ID callback from GitHub.
+		add_action( 'admin_init', [ $this, 'handle_installation_id_callback' ] );
 	}
 
 	/**
@@ -50,7 +54,7 @@ final class Init {
 				'show_ui'      => true,
 				'show_in_menu' => false,
 				'menu_icon'    => 'dashicons-github',
-				'supports'     => [ 'title' ],
+				'supports'     => [ 'title', 'editor' ],
 				'rewrite'      => false,
 				'map_meta_cap' => true,
 			]
@@ -64,7 +68,7 @@ final class Init {
 				'show_ui'       => true,
 				'show_in_menu'  => false,
 				'menu_icon'     => 'dashicons-book-alt',
-				'supports'      => [ 'title'],
+				'supports'      => [ 'title', 'editor' ],
 				'rewrite'       => false,
 				'capabilities'  => [
 					'create_posts' => 'do_not_allow',
@@ -170,6 +174,8 @@ final class Init {
 		wp_nonce_field( 'wp2_github_app_save_meta', 'wp2_github_app_nonce' );
 		$private_key_set = (bool) get_post_meta( $post->ID, '_wp2_private_key_content', true );
 		$organization    = get_post_meta( $post->ID, '_wp2_github_organization', true );
+		$app_id_is_set   = (bool) get_post_meta( $post->ID, '_wp2_app_id', true );
+
 		?>
 		<p class="description">
 			<?php esc_html_e( 'After creating the app on GitHub, copy the generated credentials into the fields below, upload the private key, and save this connection.', 'wp2-update' ); ?>
@@ -216,8 +222,30 @@ final class Init {
 					<th><label for="_wp2_webhook_secret"><?php esc_html_e( 'Webhook Secret', 'wp2-update' ); ?></label></th>
 					<td><input type="text" id="_wp2_webhook_secret" name="_wp2_webhook_secret" value="<?php echo esc_attr( get_post_meta( $post->ID, '_wp2_webhook_secret', true ) ); ?>" class="widefat" /></td>
 				</tr>
+				<tr>
+					<th><label for="_wp2_installation_id"><?php esc_html_e( 'Installation ID', 'wp2-update' ); ?></label></th>
+					<td>
+						<input type="text" id="_wp2_installation_id" name="_wp2_installation_id" value="<?php echo esc_attr( get_post_meta( $post->ID, '_wp2_installation_id', true ) ); ?>" class="widefat" readonly />
+						<p class="description"><?php esc_html_e( 'This is populated automatically when you install the app on a repository.', 'wp2-update' ); ?></p>
+					</td>
+				</tr>
 			</tbody>
 		</table>
+
+		<?php if ( $app_id_is_set && $private_key_set ) : ?>
+			<div style="padding:10px; background:#f0f6fc; border:1px solid #ccd0d4; margin-top:20px; border-left-width: 4px; border-left-color: #0969da;">
+				<h3><?php esc_html_e( 'Step 3: Install App on Repositories', 'wp2-update' ); ?></h3>
+				<p><?php esc_html_e( 'Now that your credentials are saved, you can install this app on your personal or organization\'s repositories to grant access.', 'wp2-update' ); ?></p>
+				<?php
+				$site_hash        = substr( md5( (string) home_url() ), 0, 8 );
+				$app_name         = 'WP2 Update (' . $site_hash . ') - Post ' . $post->ID;
+				$app_slug         = sanitize_title( $app_name );
+				$installation_url = 'https://github.com/apps/' . $app_slug . '/installations/new';
+				?>
+				<a href="<?php echo esc_url( $installation_url ); ?>" class="button button-primary" target="_blank" rel="noopener"><?php esc_html_e( 'Install GitHub App', 'wp2-update' ); ?></a>
+			</div>
+		<?php endif; ?>
+
 		<?php
 	}
 
@@ -328,6 +356,7 @@ final class Init {
 		update_post_meta( $post_id, '_wp2_app_id', sanitize_text_field( $_POST['_wp2_app_id'] ?? '' ) );
 		update_post_meta( $post_id, '_wp2_webhook_secret', sanitize_text_field( $_POST['_wp2_webhook_secret'] ?? '' ) );
 		update_post_meta( $post_id, '_wp2_client_id', sanitize_text_field( $_POST['_wp2_client_id'] ?? '' ) );
+		update_post_meta( $post_id, '_wp2_installation_id', sanitize_text_field( $_POST['_wp2_installation_id'] ?? '' ) );
 
 		if ( isset( $_POST['_wp2_client_secret'] ) && '' !== (string) $_POST['_wp2_client_secret'] ) {
 			update_post_meta( $post_id, '_wp2_client_secret', SharedUtils::encrypt( sanitize_text_field( (string) $_POST['_wp2_client_secret'] ) ) );
@@ -416,6 +445,17 @@ final class Init {
 		}
 	}
 
+	/**
+	 * Success notice after installation ID is saved.
+	 */
+	public function show_installation_saved_notice(): void {
+		if ( isset( $_GET['message'] ) && 'installation_saved' === $_GET['message'] ) {
+			echo '<div class="notice notice-success is-dismissible"><p>' .
+				esc_html__( 'Success! The Installation ID has been saved.', 'wp2-update' ) .
+				'</p></div>';
+		}
+	}
+
     /**
      * Error notice after automated setup failure.
      */
@@ -430,6 +470,45 @@ final class Init {
 			echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
         }
     }
+
+	/**
+	 * Handles the callback from GitHub after an app is installed, capturing the installation_id.
+	 */
+	public function handle_installation_id_callback(): void {
+		global $pagenow;
+		// Only run on our specific post type's edit screen.
+		if ( 'post.php' !== $pagenow || ! isset( $_GET['post'] ) || 'wp2_github_app' !== get_post_type( (int) $_GET['post'] ) ) {
+			return;
+		}
+
+		// Check if the installation_id is present in the URL.
+		if ( isset( $_GET['installation_id'] ) ) {
+			$post_id         = (int) $_GET['post'];
+			$installation_id = (int) $_GET['installation_id'];
+
+			if ( ! current_user_can( 'edit_post', $post_id ) ) {
+				return;
+			}
+
+			// Save the installation ID.
+			update_post_meta( $post_id, '_wp2_installation_id', $installation_id );
+
+			// Trigger a sync immediately.
+			$this->trigger_post_save_actions( $post_id );
+
+			// Redirect to a clean URL to remove the query parameters from the browser history.
+			$redirect_url = add_query_arg(
+				[
+					'post'    => $post_id,
+					'action'  => 'edit',
+					'message' => 'installation_saved',
+				],
+				admin_url( 'post.php' )
+			);
+			wp_safe_redirect( $redirect_url );
+			exit;
+		}
+	}
 
 	/**
 	 * @param array<string,mixed> $payload
