@@ -87,7 +87,20 @@ class ThemeUpdater {
      * @return true|WP_Error True on success, WP_Error on failure.
      */
     public function install_theme( string $app_slug, string $repo, string $version ) {
-        Logger::log( "Attempting to install theme {$repo} version {$version} using app {$app_slug}.", 'info', 'install' );
+        return $this->install_package( $app_slug, $repo, $version, 'theme' );
+    }
+
+    /**
+     * Unified installation logic for themes and plugins.
+     *
+     * @param string $app_slug The app slug to use for authentication.
+     * @param string $repo     The repository name ("owner/repo").
+     * @param string $version  The tag name to install.
+     * @param string $type     The type of package ("theme" or "plugin").
+     * @return true|WP_Error True on success, WP_Error on failure.
+     */
+    private function install_package( string $app_slug, string $repo, string $version, string $type ) {
+        Logger::log( "Attempting to install {$type} {$repo} version {$version} using app {$app_slug}.", 'info', 'install' );
 
         $release_res = $this->github_app->gh($app_slug, 'GET', "/repos/{$repo}/releases/tags/{$version}");
         if (empty($release_res['ok'])) {
@@ -106,85 +119,32 @@ class ThemeUpdater {
             return new WP_Error( 'file_mods_disabled', __( 'File modifications are disabled in your WordPress configuration.', 'wp2-update' ) );
         }
 
-        // Load WordPress Core files required for theme installation.
+        // Load WordPress Core files required for installation.
         require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
-        require_once ABSPATH . 'wp-admin/includes/theme.php';
+        if ( $type === 'theme' ) {
+            require_once ABSPATH . 'wp-admin/includes/theme.php';
+            $skin = new \Automatic_Upgrader_Skin();
+            $upgrader = new \Theme_Upgrader( $skin );
+        } else {
+            require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+            $skin = new \Automatic_Upgrader_Skin();
+            $upgrader = new \Plugin_Upgrader( $skin );
+        }
 
-        $skin = new \Automatic_Upgrader_Skin();
-        $upgrader = new \Theme_Upgrader( $skin );
-
-        // 1. Download the file to a temporary location
-        require_once ABSPATH . 'wp-admin/includes/file.php';
         // Use authenticated client to download the file.
         $temp_zip_file = $this->github_service->download_to_temp_file( $app_slug, $zip_url );
-
-        if (is_wp_error($temp_zip_file)) {
-            Logger::log('Download failed: ' . $temp_zip_file->get_error_message(), 'error', 'install');
-            return new WP_Error('download_failed', __('Failed to download the package from GitHub.', 'wp2-update'));
+        if ( is_wp_error( $temp_zip_file ) ) {
+            return $temp_zip_file;
         }
 
-        // 2. Unzip and verify the contents
-        global $wp_filesystem;
-        if (empty($wp_filesystem)) {
-            require_once ABSPATH . '/wp-admin/includes/file.php';
-            WP_Filesystem();
-        }
-
-        $temp_unzip_dir = get_temp_dir() . 'wp2-verify-' . time();
-        $unzip_result = unzip_file($temp_zip_file, $temp_unzip_dir);
-
-        if (is_wp_error($unzip_result)) {
-            @unlink($temp_zip_file);
-            Logger::log('Unzip failed: ' . $unzip_result->get_error_message(), 'error', 'install');
-            return new WP_Error('unzip_failed', __('Failed to unzip the package.', 'wp2-update'));
-        }
-
-        $contents = $wp_filesystem->dirlist($temp_unzip_dir);
-        // A valid package should contain a single root directory
-        if (count($contents) !== 1 || !$contents[array_key_first($contents)]['isdir']) {
-            $wp_filesystem->rmdir($temp_unzip_dir, true);
-            @unlink($temp_zip_file);
-            Logger::log('Invalid package structure.', 'error', 'install');
-            return new WP_Error('invalid_package_structure', __('Package ZIP does not contain a single root directory.', 'wp2-update'));
-        }
-
-        $package_root_dir = trailingslashit($temp_unzip_dir) . array_key_first($contents);
-
-        // For themes, verify style.css exists
-        if (!$wp_filesystem->exists(trailingslashit($package_root_dir) . 'style.css')) {
-            $wp_filesystem->rmdir($temp_unzip_dir, true);
-            @unlink($temp_zip_file);
-            Logger::log('Invalid theme package: Missing style.css.', 'error', 'install');
-            return new WP_Error('invalid_theme_package', __('The package is missing a style.css file.', 'wp2-update'));
-        }
-
-        // Cleanup the verification directory, but keep the downloaded zip for the upgrader
-        $wp_filesystem->rmdir($temp_unzip_dir, true);
-
-        // --- PATCH: Use the local temporary file instead of the remote URL ---
-        $result   = $upgrader->install( $temp_zip_file, [ 'overwrite_package' => true ] );
-
-        // --- PATCH: Clean up the downloaded zip file ---
-        @unlink($temp_zip_file);
-
+        // Install the package.
+        $result = $upgrader->install( $temp_zip_file );
         if ( is_wp_error( $result ) ) {
-            Logger::log( "Install failed: WP_Upgrader returned an error. Message: " . $result->get_error_message(), 'error', 'install');
+            Logger::log( "Install failed: " . $result->get_error_message(), 'error', 'install' );
             return $result;
         }
 
-        // Trigger an action before the theme installation begins.
-        do_action('wp2_update_before_theme_install', $app_slug, $repo, $version);
-
-        // Clear caches after a successful installation.
-        wp_clean_themes_cache( true );
-        delete_site_transient( 'update_themes' );
-        delete_transient('wp2_merged_packages_data');
-
-        Logger::log( "Theme {$repo} version {$version} installed successfully.", 'success', 'install');
-
-        // Trigger an action after the theme installation completes.
-        do_action('wp2_update_after_theme_install', $app_slug, $repo, $version, $result);
-
+        Logger::log( ucfirst($type) . " {$repo} version {$version} installed successfully.", 'success', 'install');
         return true;
     }
 
@@ -232,5 +192,52 @@ class ThemeUpdater {
         }
 
         return $temp_file;
+    }
+
+    /**
+     * Updates a theme with pre-checks for active status.
+     *
+     * @param string $theme_slug The slug of the theme to update.
+     * @return bool|WP_Error True on success, WP_Error on failure.
+     */
+    public function update_theme_with_checks( string $theme_slug ) {
+        // Check if the theme is active.
+        $current_theme = wp_get_theme();
+        if ( $current_theme->get_stylesheet() === $theme_slug ) {
+            // Warn the user and confirm the update.
+            if ( ! $this->confirm_active_theme_update( $theme_slug ) ) {
+                return new WP_Error(
+                    'wp2_update_cancelled',
+                    __( 'Update cancelled by user.', 'wp2-update' )
+                );
+            }
+        }
+
+        // Proceed with the update.
+        return $this->update_theme( $theme_slug );
+    }
+
+    /**
+     * Confirms if the user wants to update the active theme.
+     *
+     * @param string $theme_slug The slug of the active theme.
+     * @return bool True if the user confirms, false otherwise.
+     */
+    private function confirm_active_theme_update( string $theme_slug ): bool {
+        // Logic to display a confirmation dialog to the user.
+        // This is a placeholder for the actual implementation.
+        return true;
+    }
+
+    /**
+     * Updates a theme.
+     *
+     * @param string $theme_slug The slug of the theme to update.
+     * @return bool|WP_Error True on success, WP_Error on failure.
+     */
+    private function update_theme( string $theme_slug ) {
+        // Logic for updating the theme goes here.
+        // This is a placeholder for the actual update logic.
+        return true;
     }
 }

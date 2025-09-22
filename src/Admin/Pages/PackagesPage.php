@@ -38,7 +38,7 @@ class PackagesPage {
     }
 
 	/**
-	 * Renders the packages table view.
+	 * Renders the packages table view with a refresh button.
 	 */
 	public function render() {
 		$this->print_notices();
@@ -53,15 +53,11 @@ class PackagesPage {
 							? esc_html__( 'Package Details', 'wp2-update' )
 							: esc_html__( 'Managed Packages', 'wp2-update' ); ?>
 					</h1>
-					<?php if ( $current_package_key ) : ?>
-						<?php
-// Ensure the update-check parameter is removed from the URL.
-        $current_url = remove_query_arg( 'update-check', admin_url( 'admin.php?page=wp2-update-packages' ) );
-        ?>
-        <a href="<?php echo esc_url( $current_url ); ?>" class="page-title-action">
-            <?php esc_html_e( 'Back to All Packages', 'wp2-update' ); ?>
-        </a>
-        <?php endif; ?>
+					<?php if ( ! $current_package_key ) : ?>
+						<a href="<?php echo esc_url( add_query_arg( 'force-check', '1', admin_url( 'admin.php?page=wp2-update-packages' ) ) ); ?>" class="page-title-action">
+							<?php esc_html_e( 'Refresh Packages', 'wp2-update' ); ?>
+						</a>
+					<?php endif; ?>
 				</div>
 
 				<div class="wp2-tab-content" style="padding: 1.5rem;">
@@ -85,6 +81,21 @@ class PackagesPage {
             <?php wp_nonce_field( 'wp2_bulk_action_packages', 'wp2_bulk_action_nonce' ); ?>
             <?php $list_table->display(); ?>
         </form>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                const installButtons = document.querySelectorAll('.install-button');
+
+                installButtons.forEach(button => {
+                    button.addEventListener('click', function () {
+                        button.disabled = true;
+                        const spinner = document.createElement('span');
+                        spinner.className = 'spinner is-active';
+                        button.appendChild(spinner);
+                    });
+                });
+            });
+        </script>
         <?php
     }
 

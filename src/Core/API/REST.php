@@ -8,6 +8,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\Webhooks\Handler as WebhookHandler;
 use WP_REST_Request;
+use WP2\Update\Utils\Logger;
+use WP2\Update\Core\Tasks\Scheduler;
 
 /**
  * Handles all REST API route registration and callbacks for the plugin.
@@ -16,10 +18,12 @@ final class REST {
 
 	private GitHubApp $github_app;
 	private WebhookHandler $webhook_handler;
+	private Scheduler $scheduler;
 
-	public function __construct( GitHubApp $github_app, WebhookHandler $webhook_handler ) {
+	public function __construct( GitHubApp $github_app, WebhookHandler $webhook_handler, Scheduler $scheduler ) {
 		$this->github_app     = $github_app;
 		$this->webhook_handler = $webhook_handler;
+		$this->scheduler       = $scheduler;
 	}
 
 	/**
@@ -34,7 +38,7 @@ final class REST {
 	 */
 	public function setup_routes(): void {
 		$permission_callback = static function (): bool {
-			return current_user_can( 'manage_wp2_updates' );
+			return current_user_can( 'manage_options' );
 		};
 
 		register_rest_route(
@@ -96,6 +100,28 @@ final class REST {
 						'description'       => 'The Installation ID to debug.',
 					],
 				],
+			]
+		);
+
+		register_rest_route(
+			'wp2-update/v1',
+			'/settings',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'get_settings' ],
+				'permission_callback' => $permission_callback,
+			]
+		);
+
+		register_rest_route(
+			'wp2-update/v1',
+			'/manual-sync',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'handle_manual_sync' ],
+				'permission_callback' => static function (): bool {
+					return current_user_can( 'manage_options' );
+				},
 			]
 		);
 	}
@@ -187,9 +213,56 @@ final class REST {
 				: $error_message,
 		];
 
+		// Ensure all code paths return a value.
 		return rest_ensure_response([
 			'success' => $success,
 			'data'    => $data,
 		]);
+	}
+
+	/**
+	 * Retrieves the plugin settings.
+	 *
+	 * @return \WP_REST_Response The REST response containing the settings.
+	 */
+	public function get_settings() {
+		$settings = [
+			'root'         => esc_url_raw( rest_url() ),
+			'nonce'        => wp_create_nonce( 'wp_rest' ),
+			'app_name'     => $this->github_app->get_app_name(),
+			'callback_url' => $this->github_app->get_callback_url(),
+			'webhook_url'  => $this->github_app->get_webhook_url(),
+			'github_url'   => $this->github_app->get_github_url(),
+		];
+
+		return rest_ensure_response( $settings );
+	}
+
+	/**
+	 * Handles manual sync requests.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return \WP_REST_Response
+	 */
+	public function handle_manual_sync( WP_REST_Request $request ) {
+		// Implement the manual sync logic here.
+		try {
+			Logger::log('Manual sync triggered via REST API.', 'info', 'manual-sync');
+
+			// Assuming $this->scheduler is available and properly initialized
+			$this->scheduler->run_sync_all_repos();
+
+			return rest_ensure_response([
+				'success' => true,
+				'message' => __( 'Manual sync completed successfully.', 'wp2-update' ),
+			]);
+		} catch (\Throwable $exception) {
+			Logger::log('Manual sync failed: ' . $exception->getMessage(), 'error', 'manual-sync');
+
+			return rest_ensure_response([
+				'success' => false,
+				'message' => __( 'Manual sync failed. Check the logs for details.', 'wp2-update' ),
+			]);
+		}
 	}
 }

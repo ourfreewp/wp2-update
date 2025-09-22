@@ -40,6 +40,13 @@ class Handler {
             return ['status' => 'error', 'message' => 'Invalid request'];
         }
 
+        // Validate the IP address of the incoming request.
+		$remote_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+		if ( ! $this->is_github_ip($remote_ip) ) {
+			Logger::log("Webhook request from unauthorized IP: {$remote_ip}", 'error', 'webhook');
+			return ['status' => 'error', 'message' => 'Unauthorized IP address'];
+		}
+
         // Find the correct app by the webhook secret.
         $app_post_id = $this->find_app_by_webhook_secret($signature, $payload);
         if (!$app_post_id) {
@@ -139,4 +146,40 @@ class Handler {
                 break;
         }
     }
+
+    /**
+	 * Checks if the given IP address belongs to GitHub's trusted IP ranges.
+	 *
+	 * @param string $ip The IP address to validate.
+	 * @return bool True if the IP is trusted, false otherwise.
+	 */
+	private function is_github_ip(string $ip): bool {
+		$github_ips = [
+			'192.30.252.0/22', // GitHub IP ranges
+			'185.199.108.0/22',
+			'140.82.112.0/20',
+			'143.55.64.0/20',
+		];
+
+		foreach ($github_ips as $cidr) {
+			if ($this->ip_in_cidr($ip, $cidr)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Checks if an IP address is within a given CIDR range.
+	 *
+	 * @param string $ip The IP address to check.
+	 * @param string $cidr The CIDR range.
+	 * @return bool True if the IP is within the range, false otherwise.
+	 */
+	private function ip_in_cidr(string $ip, string $cidr): bool {
+		list($subnet, $mask) = explode('/', $cidr);
+		$mask = ~((1 << (32 - $mask)) - 1);
+		return (ip2long($ip) & $mask) === (ip2long($subnet) & $mask);
+	}
 }

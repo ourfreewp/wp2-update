@@ -8,8 +8,6 @@ import { showToast, initTooltips, initTabs } from './modules/ui.js';
 import { apiRequest } from './modules/api.js';
 
 // Import CSS - Vite will extract this into a separate .css file during build
-import '../styles/toastify.css'; // Corrected path for Toastify CSS
-
 /**
  * Renders the connection status block by subscribing to the global state.
  */
@@ -38,6 +36,8 @@ const updateConnectionStatus = async () => {
             },
         });
         connectionState.set({ connected: data.connected, message: data.message, isLoading: false });
+        // Emit an event to notify other parts of the app about the updated state
+        document.dispatchEvent(new CustomEvent('connectionStatusUpdated', { detail: data }));
     } catch (error) {
         console.error('Failed to fetch connection status:', error);
         connectionState.set({ connected: false, message: 'Error fetching connection status.', isLoading: false });
@@ -57,6 +57,12 @@ const initConnectionPage = () => {
             e.preventDefault();
             if (loader) loader.style.display = 'inline-block';
             testConnectionBtn.disabled = true;
+
+            // Add spinner for visual feedback
+            const spinner = document.createElement('span');
+            spinner.className = 'spinner';
+            spinner.style.marginLeft = '8px';
+            testConnectionBtn.appendChild(spinner);
 
             try {
                 const appSlug = document.getElementById('wp2-app-slug').value;
@@ -81,6 +87,10 @@ const initConnectionPage = () => {
             } finally {
                 if (loader) loader.style.display = 'none';
                 testConnectionBtn.disabled = false;
+                // Remove spinner after operation
+                if (spinner.parentNode) {
+                    spinner.parentNode.removeChild(spinner);
+                }
             }
         });
     }
@@ -131,6 +141,51 @@ const initSystemHealthPage = () => {
                 clearCacheButton.textContent = 'Clear All Caches & Force Check';
                 clearCacheButton.disabled = false;
             }
+        });
+    }
+
+    const manualSyncButton = document.querySelector('#wp2-run-manual-sync');
+    if (manualSyncButton) {
+        manualSyncButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            const targetUrl = manualSyncButton.dataset.url;
+            if (!targetUrl) {
+                return;
+            }
+
+            console.log('Manual Sync Button Clicked');
+            console.log('Target URL:', targetUrl);
+
+            const runningLabel = manualSyncButton.dataset.runningLabel || 'Running…';
+            manualSyncButton.disabled = true;
+            manualSyncButton.textContent = runningLabel;
+
+            const endpoint = '/wp2-update/v1/manual-sync';
+            fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': wpApiSettings.nonce,
+                },
+            })
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then((data) => {
+                    console.log('Manual sync completed successfully:', data);
+                    showToast(data.message || 'Manual sync completed successfully.', 'success');
+                })
+                .catch((error) => {
+                    console.error('Manual sync failed:', error);
+                    showToast('Manual sync failed. Please check the logs for details.', 'error');
+                })
+                .finally(() => {
+                    manualSyncButton.textContent = 'Run Sync & Health Checks Now';
+                    manualSyncButton.disabled = false;
+                });
         });
     }
 };

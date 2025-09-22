@@ -5,6 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use Firebase\JWT\JWT;
 use Github\AuthMethod;
 use Github\Client as GitHubClient;
 use Github\Exception\ExceptionInterface;
@@ -199,39 +200,21 @@ final class Service {
 	}
 
 	/**
-	 * Builds a short-lived JWT for authenticating as a GitHub App.
+	 * Generates a JWT for GitHub App authentication.
+	 *
+	 * @param int $app_id The GitHub App ID.
+	 * @param string $private_key The private key for the GitHub App.
+	 * @return string The generated JWT.
 	 */
-	private function create_app_jwt( string $app_id, string $private_key ): string {
-		$now      = time();
-		$payload  = [
-			'iat' => $now - 60,
-			'exp' => $now + (10 * 60),
-			'iss' => (int) $app_id,
-		];
-		$header   = [ 'alg' => 'RS256', 'typ' => 'JWT' ];
-
-		$segments = [
-			$this->base64_url_encode( wp_json_encode( $header ) ?: '' ),
-			$this->base64_url_encode( wp_json_encode( $payload ) ?: '' ),
+	private function create_app_jwt( int $app_id, string $private_key ): string {
+		$now = time();
+		$payload = [
+			'iat' => $now,
+			'exp' => $now + 600, // 10 minutes expiration
+			'iss' => $app_id,
 		];
 
-		$signing_input = implode( '.', $segments );
-		$signature     = '';
-
-		if ( ! openssl_sign( $signing_input, $signature, $private_key, OPENSSL_ALGO_SHA256 ) ) {
-			throw new \RuntimeException( 'Unable to sign JWT for GitHub App authentication.' );
-		}
-
-		$segments[] = $this->base64_url_encode( $signature );
-
-		return implode( '.', $segments );
-	}
-
-	/**
-	 * Encodes data using base64 URL-safe variant without padding.
-	 */
-	private function base64_url_encode( string $data ): string {
-		return rtrim( strtr( base64_encode( $data ), '+/', '-_' ), '=' );
+		return JWT::encode($payload, $private_key, 'RS256');
 	}
 
 	/**
@@ -285,7 +268,16 @@ final class Service {
         }
 
         try {
-            $response = $client->getHttpClient()->get( $url );
+            Logger::log_debug( 'GitHub Service: Downloading package via authenticated client. URL: ' . $url, 'api' );
+
+            $response = $client->getHttpClient()->get( $url, [ 'headers' => [ 'Accept' => 'application/octet-stream' ] ] );
+            $status   = method_exists( $response, 'getStatusCode' ) ? $response->getStatusCode() : 0;
+
+            if ( 200 !== $status ) {
+                Logger::log( 'GitHub Service: Package download returned unexpected status ' . $status, 'error', 'api' );
+                return new \WP_Error( 'github_download_http_error', sprintf( __( 'GitHub responded with HTTP %d while downloading the package.', 'wp2-update' ), $status ) );
+            }
+
             $body = $response->getBody()->getContents();
 
             $temp_file = wp_tempnam( $url );
@@ -294,6 +286,9 @@ final class Service {
             }
 
             file_put_contents( $temp_file, $body );
+
+            Logger::log_debug( 'GitHub Service: Package downloaded to ' . $temp_file, 'api' );
+
             return $temp_file;
         } catch ( ExceptionInterface $e ) {
             Logger::log( 'GitHub Service: File download failed - ' . $e->getMessage(), 'error', 'api' );
@@ -319,6 +314,31 @@ final class Service {
         } catch ( ExceptionInterface $e ) {
             Logger::log( "GitHub Service: Connection test failed - Message: " . $e->getMessage(), 'error', 'api' );
             return [ 'success' => false, 'error' => $e->getMessage() ];
+        }
+    }
+
+	/**
+     * Fetches details for a specific repository.
+     *
+     * @param string $app_slug The slug of the GitHub App.
+     * @param string $repo_slug The slug of the repository.
+     *
+     * @return array|null The repository details, or null on failure.
+     */
+    public function fetch_repository(string $app_slug, string $repo_slug): ?array {
+        $client = $this->get_client($app_slug);
+        if (!$client) {
+            Logger::log("Failed to fetch repository: GitHub client not available for app '{$app_slug}'.", 'error', 'api');
+            return null;
+        }
+
+        try {
+            $repo_data = $client->repo()->showById($repo_slug);
+            Logger::log("Successfully fetched repository '{$repo_slug}' for app '{$app_slug}'.", 'info', 'api');
+            return $repo_data;
+        } catch (ExceptionInterface $e) {
+            Logger::log("Error fetching repository '{$repo_slug}' for app '{$app_slug}': " . $e->getMessage(), 'error', 'api');
+            return null;
         }
     }
 }

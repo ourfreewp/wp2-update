@@ -24,6 +24,7 @@ class PackagesListTable extends AbstractListTable {
             'name'     => __('Package Name', 'wp2-update'),
             'version'  => __('Version', 'wp2-update'),
             'status'   => __('Status', 'wp2-update'),
+            'repo'     => __('Repository', 'wp2-update'), // Added column for GitHub repo links
         ];
     }
 
@@ -81,6 +82,18 @@ class PackagesListTable extends AbstractListTable {
                 $this->utils->clear_package_cache($package_id);
             }
             echo '<div class="notice notice-success"><p>Cache cleared for selected packages.</p></div>';
+        }
+    }
+
+    protected function column_default($item, $column_name) {
+        switch ($column_name) {
+            case 'repo':
+                if (!empty($item['repo'])) {
+                    return sprintf('<a href="%s" target="_blank">%s</a>', esc_url($item['repo']), esc_html__('View Repository', 'wp2-update'));
+                }
+                return esc_html__('N/A', 'wp2-update');
+            default:
+                return isset($item[$column_name]) ? esc_html($item[$column_name]) : '';
         }
     }
 }

@@ -19,6 +19,7 @@ final class Scheduler {
     const HEALTH_CHECK_ALL_REPOS_HOOK = 'wp2_health_check_all_repositories';
     const HEALTH_CHECK_SINGLE_REPO_HOOK = 'wp2_health_check_single_repository';
     const SYNC_APP_REPOS_HOOK = 'wp2_sync_app_repos'; // New hook
+    const RETRY_FAILED_SYNC_HOOK = 'wp2_retry_failed_sync'; // New hook for retrying failed syncs
 
     private GitHubService $githubService;
 
@@ -51,6 +52,9 @@ final class Scheduler {
         add_action(self::HEALTH_CHECK_SINGLE_APP_HOOK, [$this, 'run_single_app_check'], 10, 1);
         add_action(self::HEALTH_CHECK_ALL_REPOS_HOOK, [$this, 'run_all_repo_checks']);
         add_action(self::HEALTH_CHECK_SINGLE_REPO_HOOK, [$this, 'run_single_repo_check'], 10, 1);
+
+        // Retry Failed Sync Task
+        add_action(self::RETRY_FAILED_SYNC_HOOK, [$this, 'retry_failed_sync'], 10, 1);
     }
 
     // --- Scheduler Methods (Public API for our plugin) ---
@@ -83,6 +87,10 @@ final class Scheduler {
         as_enqueue_async_action(self::HEALTH_CHECK_SINGLE_APP_HOOK, ['app_post_id' => $app_post_id], 'WP2 Update');
     }
 
+    public static function schedule_retry_for_failed_sync(int $repo_post_id) {
+        as_enqueue_async_action(self::RETRY_FAILED_SYNC_HOOK, ['repo_post_id' => $repo_post_id], 'WP2 Update');
+    }
+
     // --- Action Callbacks ---
 
     public function run_sync_all_repos() {
@@ -98,8 +106,10 @@ final class Scheduler {
             'no_found_rows'  => true, // Optimization: Disable pagination overhead
         ]);
         if ($query->have_posts()) {
+            $delay = 0;
             foreach ($query->posts as $app_post_id) {
-                as_enqueue_async_action(self::HEALTH_CHECK_SINGLE_APP_HOOK, ['app_post_id' => $app_post_id], 'WP2 Update');
+                as_enqueue_async_action(self::HEALTH_CHECK_SINGLE_APP_HOOK, ['app_post_id' => $app_post_id], 'WP2 Update', time() + $delay);
+                $delay += 60; // Stagger by 1 minute
             }
         }
     }
@@ -119,8 +129,10 @@ final class Scheduler {
             'no_found_rows'  => true, // Optimization: Disable pagination overhead
         ]);
         if ($query->have_posts()) {
+            $delay = 0;
             foreach ($query->posts as $repo_post_id) {
-                self::schedule_health_check_for_repo($repo_post_id);
+                as_enqueue_async_action(self::HEALTH_CHECK_SINGLE_REPO_HOOK, ['repo_post_id' => $repo_post_id], 'WP2 Update', time() + $delay);
+                $delay += 60; // Stagger by 1 minute
             }
         }
     }
@@ -149,6 +161,22 @@ final class Scheduler {
             }
             $repos = new Repos($github_service);
             $repos->sync_repositories_for_app($args['app_post_id']);
+        }
+    }
+
+    public function retry_failed_sync(array $args) {
+        if (isset($args['repo_post_id'])) {
+            $repo_post_id = $args['repo_post_id'];
+            $github_service = $this->githubService;
+
+            try {
+                (new Repos($github_service))->sync_single_repo($repo_post_id);
+                Logger::info("Retry successful for repo ID: $repo_post_id", 'sync');
+            } catch (\Exception $e) {
+                Logger::error("Retry failed for repo ID: $repo_post_id. Error: " . $e->getMessage(), 'sync');
+                // Optionally, reschedule the retry again after a delay.
+                as_schedule_single_action(time() + 5 * MINUTE_IN_SECONDS, self::RETRY_FAILED_SYNC_HOOK, ['repo_post_id' => $repo_post_id], 'WP2 Update');
+            }
         }
     }
 

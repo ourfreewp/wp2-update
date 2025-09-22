@@ -140,5 +140,57 @@ final class Init {
             'Webhook Secret'  => get_post_meta($wp_post_id, '_wp2_webhook_secret', true) ? __( 'Set', 'wp2-update' ) : __( 'Not set', 'wp2-update' ),
         ];
 	}
+
+	/**
+     * Retrieves the GitHub App name.
+     *
+     * @return string The app name.
+     */
+    public function get_app_name(): string {
+        $app_post = get_posts([
+            'post_type'      => 'wp2_github_app',
+            'posts_per_page' => 1,
+            'post_status'    => 'publish',
+        ]);
+
+        $wp_post_id = isset($app_post[0]) ? (int) $app_post[0]->ID : 0;
+        return get_post_meta($wp_post_id, '_wp2_app_name', true) ?: __( 'Unknown App', 'wp2-update' );
+    }
+
+    /**
+     * Retrieves the callback URL for the GitHub App.
+     *
+     * @return string The callback URL.
+     */
+    public function get_callback_url(): string {
+        return home_url('/wp-json/wp2-update/v1/github/callback');
+    }
+
+    /**
+     * Retrieves the webhook URL for the GitHub App.
+     *
+     * @return string The webhook URL.
+     */
+    public function get_webhook_url(): string {
+        return home_url('/wp-json/wp2-update/v1/github/webhooks');
+    }
+
+    /**
+     * Retrieves the GitHub App configuration URL.
+     *
+     * @return string The GitHub App configuration URL.
+     */
+    public function get_github_url(): string {
+        $app_post = get_posts([
+            'post_type'      => 'wp2_github_app',
+            'posts_per_page' => 1,
+            'post_status'    => 'publish',
+        ]);
+
+        $wp_post_id = isset($app_post[0]) ? (int) $app_post[0]->ID : 0;
+        $app_id = get_post_meta($wp_post_id, '_wp2_app_id', true);
+
+        return $app_id ? "https://github.com/settings/apps/{$app_id}" : __( 'Not configured', 'wp2-update' );
+    }
 }
 

@@ -98,16 +98,33 @@ class WP2UpdateCommand {
             return;
         }
 
-        $connection = new \WP2\Update\Core\Connection\Init($package_finder);
-        $github_app = new \WP2\Update\Core\API\GitHubApp\Init(new \WP2\Update\Core\API\Service());
-        $utils = new \WP2\Update\Utils\SharedUtils($github_app);
+        $backup_service = new \WP2\Update\Core\API\BackupEndpoints();
 
         foreach ($items_to_update as $item) {
+            // Create a backup for each item before updating.
+            $request = new \WP_REST_Request();
+            $request->set_param('type', $item['type']);
+            $request->set_param('slug', $item['slug']);
+
+            $backup_result = $backup_service->create_backup($request);
+
+            if (is_wp_error($backup_result)) {
+                WP_CLI::error('Backup creation failed for ' . $item['name'] . ': ' . $backup_result->get_error_message());
+                continue;
+            }
+
+            $response_data = $backup_result->get_data();
+            WP_CLI::log('Backup created for ' . $item['name'] . ': ' . $response_data['backup_file']);
+
+            $connection = new \WP2\Update\Core\Connection\Init($package_finder);
+            $github_app = new \WP2\Update\Core\API\GitHubApp\Init(new \WP2\Update\Core\API\Service());
+            $utils = new \WP2\Update\Utils\SharedUtils($github_app);
+
             if ($item['type'] === 'theme') {
-                $updater = new \WP2\Update\Core\Updates\ThemeUpdater($connection, $github_app, $utils);
+                $updater = new \WP2\Update\Core\Updates\ThemeUpdater($connection, $github_app, $utils, $item);
                 $updater->install_theme($item['app_slug'], $item['repo'], $item['version']);
             } elseif ($item['type'] === 'plugin') {
-                $updater = new \WP2\Update\Core\Updates\PluginUpdater($connection, $github_app, $utils);
+                $updater = new \WP2\Update\Core\Updates\PluginUpdater($connection, $github_app, $utils, $item);
                 $updater->install_plugin($item['app_slug'], $item['repo'], $item['version']);
             } else {
                 WP_CLI::log("Unknown item type: {$item['type']}");

@@ -127,4 +127,24 @@ class Logger {
         array_unshift($logs, $log_entry);
         update_site_option(self::LOG_OPTION_KEY, array_slice($logs, 0, self::MAX_LOG_ENTRIES));
     }
+
+    /**
+     * Logs an informational message.
+     *
+     * @param string $message The message to log.
+     * @param string $context The context of the log.
+     */
+    public static function info(string $message, string $context = 'general'): void {
+        self::log($message, 'info', $context);
+    }
+
+    /**
+     * Logs an error message.
+     *
+     * @param string $message The message to log.
+     * @param string $context The context of the log.
+     */
+    public static function error(string $message, string $context = 'general'): void {
+        self::log($message, 'error', $context);
+    }
 }

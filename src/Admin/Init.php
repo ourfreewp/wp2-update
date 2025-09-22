@@ -8,7 +8,7 @@ use WP2\Update\Core\Updates\ThemeUpdater;
 use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Admin\Models\Init as Models;
 use WP2\Update\Admin\Actions\Controller as Actions;
-use WP2\Update\Core\API\Service as GitHubService;
+use WP2\Update\Core\Tasks\Scheduler as TaskScheduler;
 
 /**
  * Main orchestrator for the admin interface.
@@ -27,12 +27,12 @@ class Init {
     /**
      * Constructor.
      */
-    public function __construct( Connection $connection, GitHubApp $github_app, ThemeUpdater $theme_updater, PluginUpdater $plugin_updater, SharedUtils $utils, GitHubService $github_service ) {
+    public function __construct( Connection $connection, GitHubApp $github_app, ThemeUpdater $theme_updater, PluginUpdater $plugin_updater, SharedUtils $utils, TaskScheduler $task_scheduler ) {
         // Instantiate page renderers
-        $this->pages_handler = new Pages( $connection, $github_app, $utils ); // Removed extra argument $github_service
+        $this->pages_handler = new Pages( $connection, $github_app, $utils );
 
         // Instantiate action handler
-        $this->actions = new Actions( $connection, $github_app, $theme_updater, $plugin_updater, $utils, $github_service );
+        $this->actions = new Actions( $connection, $github_app, $theme_updater, $plugin_updater, $utils, $task_scheduler );
 
         // Instantiate models handler
         $this->models = new Models();
@@ -44,7 +44,6 @@ class Init {
     public function register_hooks() {
         add_action( 'admin_menu', [ $this, 'register_admin_pages' ] );
         add_action( 'admin_init', [ $this->actions, 'handle_admin_actions' ] );
-        add_action( 'admin_enqueue_scripts', [ $this->pages_handler, 'enqueue_assets' ] );
         
         add_action( 'admin_post_wp2_theme_install', [ $this->actions, 'handle_theme_install_action' ] );
         add_action( 'admin_post_wp2_plugin_install', [ $this->actions, 'handle_plugin_install_action' ] );
@@ -91,7 +90,7 @@ class Init {
         add_menu_page(
             __( 'WP2 Updates', 'wp2-update' ),
             'WP2 Updates',
-            'manage_wp2_updates',
+            'manage_options',
             'wp2-update-overview',
             [ $this->pages_handler, 'render_overview_page' ],
             'dashicons-cloud',
@@ -102,7 +101,7 @@ class Init {
             'wp2-update-overview',
             __( 'Packages', 'wp2-update' ),
             __( 'Packages', 'wp2-update' ),
-            'manage_wp2_updates',
+            'manage_options',
             'wp2-update-packages',
             [ $this->pages_handler, 'render_packages_page' ]
         );
@@ -111,7 +110,7 @@ class Init {
             'wp2-update-overview',
             __( 'System Health', 'wp2-update' ),
             __( 'System Health', 'wp2-update' ),
-            'manage_wp2_updates',
+            'manage_options',
             'wp2-update-system-health',
             [ $this->pages_handler, 'render_system_health_page' ]
         );
@@ -135,7 +134,7 @@ class Init {
                 'wp2-update-overview',
                 $label,
                 $label,
-                'manage_wp2_updates',
+                'manage_options',
                 'edit.php?post_type=' . $post_type,
                 '' // No callback needed for post type links
             );

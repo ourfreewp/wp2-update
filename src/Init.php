@@ -63,7 +63,11 @@ final class Init {
             $c->resolve('SharedUtils'),
             $c->resolve('GitHubService')
         ));
-        $container->register('RestRouter', fn($c) => new RestRouter($c->resolve('GitHubApp'), $c->resolve('WebhookHandler')));
+        $container->register('RestRouter', fn($c) => new RestRouter(
+            $c->resolve('GitHubApp'),
+            $c->resolve('WebhookHandler'),
+            $c->resolve('TaskScheduler')
+        ));
         $container->register('TaskScheduler', fn($c) => new TaskScheduler($c->resolve('GitHubService')));
 
         // Pass the container instance via a filter so it can be used elsewhere.
@@ -77,8 +81,9 @@ final class Init {
         $container->resolve('ThemeUpdater');
         $container->resolve('PluginUpdater');
         $container->resolve('RestRouter')->register_routes();
-        $container->resolve('TaskScheduler')->init_hooks();
-        $container->resolve('TaskScheduler')->schedule_recurring_tasks();
+        $task_scheduler = $container->resolve('TaskScheduler');
+        $task_scheduler->init_hooks();
+        $task_scheduler->schedule_recurring_tasks();
 
         // Pass all dependencies to the Admin orchestrator.
         $admin = new AdminInit(
@@ -87,7 +92,7 @@ final class Init {
             $container->resolve('ThemeUpdater'),
             $container->resolve('PluginUpdater'),
             $container->resolve('SharedUtils'),
-            $container->resolve('GitHubService')
+            $task_scheduler
         );
 
         // Register all necessary hooks.

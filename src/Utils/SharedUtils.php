@@ -132,6 +132,10 @@ final class SharedUtils {
 		if ( preg_match( '/(?:https?:\/\/github\.com\/)?([^\/]+\/[^\/]+)/', $uri, $matches ) ) {
 			return rtrim( $matches[1], '/' );
 		}
+		if ( strpos( $uri, '/' ) !== false && ! preg_match( '/https?:\/\//', $uri ) ) {
+			// Handle owner/repo slugs
+			return $uri;
+		}
 		return null;
 	}
 

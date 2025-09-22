@@ -15,6 +15,18 @@ const WP2_UPDATE_TEXT_DOMAIN = 'wp2-update';
  */
 final class Init {
 
+	// Define constants for post meta keys.
+    private const META_PRIVATE_KEY_CONTENT = '_wp2_private_key_content';
+    private const META_GITHUB_ORGANIZATION = '_wp2_github_organization';
+    private const META_APP_ID = '_wp2_app_id';
+    private const META_CLIENT_ID = '_wp2_client_id';
+    private const META_WEBHOOK_SECRET = '_wp2_webhook_secret';
+    private const META_INSTALLATION_ID = '_wp2_installation_id';
+    private const META_MANAGING_APP_ID = '_managing_app_post_id';
+    private const META_HEALTH_STATUS = '_health_status';
+    private const META_HEALTH_MESSAGE = '_health_message';
+    private const META_LAST_SYNCED_TIMESTAMP = '_last_synced_timestamp';
+
 	/**
 	 * Registers all necessary WordPress hooks for the models.
 	 */
@@ -264,9 +276,12 @@ final class Init {
 		}
 
 		wp_nonce_field( 'wp2_github_app_save_meta', 'wp2_github_app_nonce' );
-		$private_key_set = (bool) get_post_meta( $post->ID, '_wp2_private_key_content', true );
-		$organization    = get_post_meta( $post->ID, '_wp2_github_organization', true );
-		$app_id_is_set   = (bool) get_post_meta( $post->ID, '_wp2_app_id', true );
+		$private_key_set = (bool) get_post_meta( $post->ID, self::META_PRIVATE_KEY_CONTENT, true );
+		$organization    = get_post_meta( $post->ID, self::META_GITHUB_ORGANIZATION, true );
+		$app_id_is_set   = (bool) get_post_meta( $post->ID, self::META_APP_ID, true );
+		$client_id       = get_post_meta( $post->ID, self::META_CLIENT_ID, true );
+		$webhook_secret  = get_post_meta( $post->ID, self::META_WEBHOOK_SECRET, true );
+		$installation_id = get_post_meta( $post->ID, self::META_INSTALLATION_ID, true );
 
 		?>
 		<p class="description">
@@ -499,10 +514,28 @@ final class Init {
 			update_post_meta( $post_id, '_wp2_github_organization', sanitize_text_field( wp_unslash( $_POST['_wp2_github_organization'] ) ) );
 		}
 
-		update_post_meta( $post_id, '_wp2_app_id', sanitize_text_field( $_POST['_wp2_app_id'] ?? '' ) );
+		// Validate App ID
+        if ( isset( $_POST['_wp2_app_id'] ) ) {
+            $app_id = sanitize_text_field( $_POST['_wp2_app_id'] );
+            if ( ! preg_match( '/^\d+$/', $app_id ) ) {
+                Logger::log( 'Invalid App ID provided: ' . $app_id, 'error', 'metadata' );
+                return;
+            }
+            update_post_meta( $post_id, '_wp2_app_id', $app_id );
+        }
+
+        // Validate Installation ID
+        if ( isset( $_POST['_wp2_installation_id'] ) ) {
+            $installation_id = sanitize_text_field( $_POST['_wp2_installation_id'] );
+            if ( ! preg_match( '/^\d+$/', $installation_id ) ) {
+                Logger::log( 'Invalid Installation ID provided: ' . $installation_id, 'error', 'metadata' );
+                return;
+            }
+            update_post_meta( $post_id, '_wp2_installation_id', $installation_id );
+        }
+
 		update_post_meta( $post_id, '_wp2_webhook_secret', sanitize_text_field( $_POST['_wp2_webhook_secret'] ?? '' ) );
 		update_post_meta( $post_id, '_wp2_client_id', sanitize_text_field( $_POST['_wp2_client_id'] ?? '' ) );
-		update_post_meta( $post_id, '_wp2_installation_id', sanitize_text_field( $_POST['_wp2_installation_id'] ?? '' ) );
 
 		if ( isset( $_POST['_wp2_client_secret'] ) && '' !== (string) $_POST['_wp2_client_secret'] ) {
 			update_post_meta( $post_id, '_wp2_client_secret', SharedUtils::encrypt( sanitize_text_field( (string) $_POST['_wp2_client_secret'] ) ) );

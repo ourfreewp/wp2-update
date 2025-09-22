@@ -14,7 +14,7 @@ WP2 Update leverages the power and security of GitHub Apps to provide a seamless
 - **Modern Admin UI:** A clean, intuitive interface for viewing managed packages, checking system health, and browsing version history.
 - **Comprehensive Logging:** A detailed event log tracks every action, from API calls to update installations, for easy debugging.
 - **Developer Friendly:** Extensible with a rich set of WordPress actions and filters for custom integrations.
-- **Granular Permissions:** Uses a custom WordPress capability (`manage_wp2_updates`) to allow fine-grained access control.
+- **Granular Permissions:** Uses a custom WordPress capability (`manage_options`) to allow fine-grained access control.
 
 ## 📋 Requirements
 
@@ -103,19 +103,97 @@ For the plugin to recognize your themes and plugins, you must add an `Update URI
 
 The plugin will now automatically discover and manage updates for these packages.
 
-## ⚙️ WP-CLI Commands
+## 🛠 WP-CLI Commands
 
-WP2 Update includes a full suite of WP-CLI commands for headless management and automation.
+WP2 Update includes full WP-CLI integration, allowing you to manage updates directly from the command line. Below are the available commands:
 
-- `wp wp2-update sync`: Triggers a synchronization of all repositories from all connected GitHub Apps.
-	- `--app-slug=<slug>`: Sync repositories for a specific app only.
-- `wp wp2-update health`: Runs a health check on all apps and repositories.
-	- `--app-slug=<slug>`: Run a health check for a specific app.
-	- `--repo-slug=<slug>`: Run a health check for a specific repository.
-- `wp wp2-update list`: Lists all managed packages with their current and latest versions.
-- `wp wp2-update update <package-key>`: Updates a specific package to its latest version.
+### `wp wp2-update sync`
 
-> The `<package-key>` is in the format `theme:slug` or `plugin:slug/plugin-file.php`.
+Synchronizes all repositories managed by the plugin. This command fetches the latest information about available updates.
+
+**Usage:**
+```bash
+wp wp2-update sync
+```
+
+### `wp wp2-update list`
+
+Lists all available updates for themes and plugins.
+
+**Usage:**
+```bash
+wp wp2-update list
+```
+
+### `wp wp2-update health`
+
+Performs a health check to ensure the plugin is configured correctly and all dependencies are functioning.
+
+**Usage:**
+```bash
+wp wp2-update health
+```
+
+### `wp wp2-update update`
+
+Updates all themes and plugins to their latest versions. This command automatically creates a backup before performing updates.
+
+**Usage:**
+```bash
+wp wp2-update update
+```
+
+### `wp wp2-update backup`
+
+Manually creates a backup of a theme or plugin.
+
+**Usage:**
+```bash
+wp wp2-update backup --type=<plugin|theme> --slug=<slug>
+```
+- `type`: Specify whether the backup is for a `plugin` or `theme`.
+- `slug`: The slug of the plugin or theme to back up.
+
+### `wp wp2-update restore`
+
+Restores a backup from a `.zip` file.
+
+**Usage:**
+```bash
+wp wp2-update restore --file=<backup-file>
+```
+- `file`: The path to the backup file to restore.
+
+## 🔄 Backup and Restore
+
+WP2 Update includes a robust backup and restore system to ensure the safety of your themes and plugins during updates. Below are the details on how to use these features:
+
+### Backup Creation
+
+Before any update, the plugin automatically creates a `.zip` backup of the theme or plugin being updated. These backups are stored in the `wp-content/uploads/wp2-backups` directory.
+
+### Manual Backup Creation
+
+You can manually create a backup using the WP-CLI command:
+```bash
+wp wp2-update backup --type=<plugin|theme> --slug=<slug>
+```
+- `type`: Specify whether the backup is for a `plugin` or `theme`.
+- `slug`: The slug of the plugin or theme to back up.
+
+### Restore Backups
+
+To restore a backup, navigate to the **WP2 Updates > Backups** page in the WordPress admin dashboard. Select the backup you want to restore and click the **Restore** button.
+
+Alternatively, you can use the WP-CLI command:
+```bash
+wp wp2-update restore --file=<backup-file>
+```
+- `file`: The path to the backup file to restore.
+
+### Backup Pruning
+
+To manage storage, the plugin includes a pruning system that automatically deletes old backups based on user-defined limits. You can configure this limit in the plugin settings under **WP2 Updates > Settings**.
 
 ## 🤝 Contributing
 
@@ -138,7 +216,7 @@ This project is licensed under the GPLv2 or later – see the `wp2-update.php` f
    - Ensure that the webhook URL is correctly configured in your GitHub App settings.
 
 3. **Permission Denied Errors**
-   - Verify that the user has the `manage_wp2_updates` capability.
+   - Verify that the user has the `manage_options` capability.
    - Check the WordPress role and capability assignments.
 
 ### Debugging Tools

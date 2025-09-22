@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme updates.
- * Version:           0.0.9
+ * Version:           0.0.10
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -24,6 +24,17 @@ if ( ! file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
     return;
 }
 require_once __DIR__ . '/vendor/autoload.php';
+
+
+
+// Include the Vite class file
+require_once __DIR__ . '/vite.php';
+
+
+
+// Don't forget to instantiate the class!
+new Vite();
+
 
 // Check if Action Scheduler is already loaded.
 if ( ! class_exists( 'ActionScheduler' ) ) {
@@ -54,38 +65,23 @@ add_action('plugins_loaded', function() {
 }, 20);
 
 /**
- * Add the manage_wp2_updates capability to the administrator role on activation.
+ * Add the manage_options capability to the administrator role on activation.
  */
 function wp2_update_activate() {
     $admin_role = get_role('administrator');
     if ($admin_role) {
-        $admin_role->add_cap('manage_wp2_updates');
+        $admin_role->add_cap('manage_options');
     }
 }
 register_activation_hook(__FILE__, 'wp2_update_activate');
 
 /**
- * Remove the manage_wp2_updates capability from the administrator role on deactivation.
+ * Remove the manage_options capability from the administrator role on deactivation.
  */
 function wp2_update_deactivate() {
     $admin_role = get_role('administrator');
     if ($admin_role) {
-        $admin_role->remove_cap('manage_wp2_updates');
+        $admin_role->remove_cap('manage_options');
     }
 }
 register_deactivation_hook(__FILE__, 'wp2_update_deactivate');
-
-// Update the Vite initialization to include a null check for the DI container
-if (class_exists('Vite')) {
-    $container = \WP2\Update\Init::get_container();
-    if ($container && method_exists($container, 'resolve')) {
-        $viteInstance = $container->resolve('Vite');
-        if ($viteInstance) {
-            $viteInstance->run();
-        } else {
-            error_log('WP2 Update: Vite instance could not be resolved.');
-        }
-    } else {
-        error_log('WP2 Update: Dependency injection container is not available or invalid.');
-    }
-}

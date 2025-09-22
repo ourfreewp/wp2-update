@@ -24,7 +24,7 @@ class SystemHealthPage {
                 <?php foreach ($items as $item): ?>
                     <tr>
                         <td class="cell-label"><?php echo esc_html($item['label']); ?></td>
-                        <td><?php echo wp_kses_post($item['value']); ?></td>
+                        <td><?php echo ! empty( $item['allow_html'] ) ? $item['value'] : wp_kses_post( $item['value'] ); ?></td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -124,6 +124,7 @@ class SystemHealthPage {
         $rows[] = [
             'label' => __( 'Manual Scheduler', 'wp2-update' ),
             'value' => $this->get_manual_scheduler_form(),
+            'allow_html' => true,
         ];
 
         return $rows;
@@ -140,11 +141,21 @@ class SystemHealthPage {
     private function get_manual_scheduler_form(): string {
         ob_start();
         ?>
-        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-            <?php wp_nonce_field( 'wp2_run_scheduler_action' ); ?>
-            <input type="hidden" name="action" value="wp2_run_scheduler">
-            <button type="submit" class="button button-primary"><?php esc_html_e( 'Run Sync & Health Checks Now', 'wp2-update' ); ?></button>
-        </form>
+        <?php
+        $manual_sync_url = wp_nonce_url(
+            admin_url( 'admin-post.php?action=wp2_run_scheduler' ),
+            'wp2_run_scheduler_action'
+        );
+        ?>
+        <button
+            type="button"
+            class="button button-primary"
+            id="wp2-run-manual-sync"
+            data-url="<?php echo esc_url( $manual_sync_url ); ?>"
+            data-running-label="<?php echo esc_attr__( 'Running…', 'wp2-update' ); ?>"
+        >
+            <?php esc_html_e( 'Run Sync & Health Checks Now', 'wp2-update' ); ?>
+        </button>
         <?php
         return ob_get_clean();
     }

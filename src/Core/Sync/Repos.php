@@ -131,4 +131,35 @@ final class Repos {
         }
         return null;
     }
+
+    /**
+     * Synchronizes a single repository by its post ID.
+     */
+    public function sync_single_repo(int $repo_post_id): void {
+        $repo_slug = get_post_field('post_name', $repo_post_id);
+        if (!$repo_slug) {
+            Logger::log('Failed to sync: Repository slug not found for post ID ' . $repo_post_id, 'error', 'sync');
+            return;
+        }
+
+        $app_post_id = (int) get_post_meta($repo_post_id, '_managing_app_post_id', true);
+        if (!$app_post_id) {
+            Logger::log('Failed to sync: Managing app not found for repository ' . $repo_slug, 'error', 'sync');
+            return;
+        }
+
+        $app_slug = get_post_field('post_name', $app_post_id);
+        if (!$app_slug) {
+            Logger::log('Failed to sync: App slug not found for managing app ID ' . $app_post_id, 'error', 'sync');
+            return;
+        }
+
+        try {
+            $repo_data = $this->github_service->fetch_repository($app_slug, $repo_slug);
+            $this->create_or_update_repository_post($repo_data, $app_post_id);
+            Logger::log('Successfully synced repository: ' . $repo_slug, 'success', 'sync');
+        } catch (\Exception $e) {
+            Logger::log('Error syncing repository ' . $repo_slug . ': ' . $e->getMessage(), 'error', 'sync');
+        }
+    }
 }

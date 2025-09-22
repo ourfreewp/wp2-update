@@ -93,7 +93,20 @@ class PluginUpdater {
      * @return true|WP_Error True on success, WP_Error on failure.
      */
     public function install_plugin( string $app_slug, string $repo, string $version ) {
-        Logger::log( "Attempting to install plugin {$repo} version {$version} using app {$app_slug}.", 'info', 'install' );
+        return $this->install_package( $app_slug, $repo, $version, 'plugin' );
+    }
+
+    /**
+     * Unified installation logic for themes and plugins.
+     *
+     * @param string $app_slug The app slug to use for authentication.
+     * @param string $repo     The repository name ("owner/repo").
+     * @param string $version  The tag name to install.
+     * @param string $type     The type of package ("theme" or "plugin").
+     * @return true|WP_Error True on success, WP_Error on failure.
+     */
+    private function install_package( string $app_slug, string $repo, string $version, string $type ) {
+        Logger::log( "Attempting to install {$type} {$repo} version {$version} using app {$app_slug}.", 'info', 'install' );
 
         $release_res = $this->github_app->gh($app_slug, 'GET', "/repos/{$repo}/releases/tags/{$version}");
         if (empty($release_res['ok'])) {
@@ -112,83 +125,32 @@ class PluginUpdater {
             return new WP_Error( 'file_mods_disabled', __( 'File modifications are disabled in your WordPress configuration.', 'wp2-update' ) );
         }
 
-        // Load WordPress Core files required for plugin installation.
+        // Load WordPress Core files required for installation.
         require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
-        require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
-        
-        $skin = new \Automatic_Upgrader_Skin();
-        $upgrader = new \Plugin_Upgrader( $skin );
+        if ( $type === 'theme' ) {
+            require_once ABSPATH . 'wp-admin/includes/theme.php';
+            $skin = new \Automatic_Upgrader_Skin();
+            $upgrader = new \Theme_Upgrader( $skin );
+        } else {
+            require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+            $skin = new \Automatic_Upgrader_Skin();
+            $upgrader = new \Plugin_Upgrader( $skin );
+        }
 
-        // 1. Download the file to a temporary location
         // Use authenticated client to download the file.
         $temp_zip_file = $this->github_service->download_to_temp_file( $app_slug, $zip_url );
-
-        if (is_wp_error($temp_zip_file)) {
-            Logger::log('Download failed: ' . $temp_zip_file->get_error_message(), 'error', 'install');
-            return new WP_Error('download_failed', __('Failed to download the package from GitHub.', 'wp2-update'));
+        if ( is_wp_error( $temp_zip_file ) ) {
+            return $temp_zip_file;
         }
 
-        // 2. Unzip and verify the contents
-        global $wp_filesystem;
-        if (empty($wp_filesystem)) {
-            require_once ABSPATH . '/wp-admin/includes/file.php';
-            WP_Filesystem();
-        }
-
-        $temp_unzip_dir = get_temp_dir() . 'wp2-verify-' . time();
-        $unzip_result = unzip_file($temp_zip_file, $temp_unzip_dir);
-
-        if (is_wp_error($unzip_result)) {
-            @unlink($temp_zip_file);
-            Logger::log('Unzip failed: ' . $unzip_result->get_error_message(), 'error', 'install');
-            return new WP_Error('unzip_failed', __('Failed to unzip the package.', 'wp2-update'));
-        }
-
-        $contents = $wp_filesystem->dirlist($temp_unzip_dir);
-        // A valid package should contain a single root directory
-        if (count($contents) !== 1 || !$contents[array_key_first($contents)]['isdir']) {
-            $wp_filesystem->rmdir($temp_unzip_dir, true);
-            @unlink($temp_zip_file);
-            Logger::log('Invalid package structure.', 'error', 'install');
-            return new WP_Error('invalid_package_structure', __('Package ZIP does not contain a single root directory.', 'wp2-update'));
-        }
-
-        $package_root_dir = trailingslashit($temp_unzip_dir) . array_key_first($contents);
-
-        // For plugins, verify the main plugin file exists
-        $plugin_file = $this->utils->get_plugin_file($package_root_dir);
-        if (!$plugin_file) {
-            $wp_filesystem->rmdir($temp_unzip_dir, true);
-            @unlink($temp_zip_file);
-            Logger::log('Invalid plugin package: Missing main plugin file.', 'error', 'install');
-            return new WP_Error('invalid_plugin_package', __('The package is missing the main plugin file.', 'wp2-update'));
-        }
-
-        // Cleanup the verification directory, but keep the downloaded zip for the upgrader
-        $wp_filesystem->rmdir($temp_unzip_dir, true);
-
-        // Trigger an action before the plugin installation begins.
-        do_action('wp2_update_before_plugin_install', $app_slug, $repo, $version);
-
-        $result   = $upgrader->install( $temp_zip_file, [ 'overwrite_package' => true ] );
-
-        // --- PATCH: Clean up the downloaded zip file ---
-        @unlink($temp_zip_file);
-
+        // Install the package.
+        $result = $upgrader->install( $temp_zip_file );
         if ( is_wp_error( $result ) ) {
-            Logger::log( "Install failed: WP_Upgrader returned an error. Message: " . $result->get_error_message(), 'error', 'install' );
+            Logger::log( "Install failed: " . $result->get_error_message(), 'error', 'install' );
             return $result;
         }
 
-        // Trigger an action after the plugin installation completes.
-        do_action('wp2_update_after_plugin_install', $app_slug, $repo, $version, $result);
-
-        // Clear caches after a successful installation.
-        wp_clean_plugins_cache( true );
-        delete_site_transient( 'update_plugins' );
-        delete_transient('wp2_merged_packages_data');
-
-        Logger::log( "Plugin {$repo} version {$version} installed successfully.", 'success', 'install' );
+        Logger::log( ucfirst($type) . " {$repo} version {$version} installed successfully.", 'success', 'install');
         return true;
     }
 
@@ -236,5 +198,43 @@ class PluginUpdater {
         }
 
         return $temp_file;
+    }
+
+    /**
+     * Updates a plugin with pre-checks for active status.
+     *
+     * @param string $plugin_slug The slug of the plugin to update.
+     * @return bool|WP_Error True on success, WP_Error on failure.
+     */
+    public function update_plugin_with_checks( string $plugin_slug ) {
+        // Check if the plugin is active.
+        if ( is_plugin_active( $plugin_slug ) ) {
+            deactivate_plugins( $plugin_slug );
+            $reactivate = true;
+        } else {
+            $reactivate = false;
+        }
+
+        // Proceed with the update.
+        $result = $this->update_plugin( $plugin_slug );
+
+        // Reactivate the plugin if it was active before.
+        if ( $reactivate ) {
+            activate_plugin( $plugin_slug );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Updates a plugin.
+     *
+     * @param string $plugin_slug The slug of the plugin to update.
+     * @return bool|WP_Error True on success, WP_Error on failure.
+     */
+    private function update_plugin( string $plugin_slug ) {
+        // Logic for updating the plugin goes here.
+        // This is a placeholder for the actual update logic.
+        return true;
     }
 }

@@ -112,19 +112,30 @@ class Controller {
      * Manually triggers repository sync and health checks without relying on wp-cron.
      */
     public function handle_run_scheduler_action() {
-        if ( ! current_user_can( 'manage_wp2_updates' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
             wp_die( __( 'You do not have permission to perform this action.', 'wp2-update' ) );
         }
 
-        $nonce = isset( $_POST['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ) : '';
-        if ( ! wp_verify_nonce( $nonce, 'wp2_run_scheduler_action' ) ) {
-            wp_die( __( 'Invalid request.', 'wp2-update' ) );
-        }
+        check_admin_referer( 'wp2_run_scheduler_action' );
 
         $redirect_url = add_query_arg( 'manual-sync', 'success', admin_url( 'admin.php?page=wp2-update-system-health' ) );
 
         try {
             Logger::log( 'Manual scheduler run triggered from System Health.', 'info', 'tasks' );
+
+            Logger::log('Checking if handle_run_scheduler_action is triggered.', 'debug', 'manual-sync');
+            Logger::log('Request data: ' . print_r($_REQUEST, true), 'debug', 'manual-sync');
+
+            Logger::log('Starting manual sync process.', 'debug', 'manual-sync');
+            Logger::log('Scheduler instance: ' . print_r($this->scheduler, true), 'debug', 'manual-sync');
+            Logger::log('Connection instance: ' . print_r($this->connection, true), 'debug', 'manual-sync');
+
+            Logger::log('Nonce validation started.', 'debug', 'manual-sync');
+            if (!check_admin_referer('wp2_run_scheduler_action')) {
+                Logger::log('Nonce validation failed.', 'error', 'manual-sync');
+                wp_die(__('Nonce validation failed.', 'wp2-update'));
+            }
+            Logger::log('Nonce validation passed.', 'debug', 'manual-sync');
 
             $this->scheduler->run_sync_all_repos();
 
@@ -161,6 +172,7 @@ class Controller {
             delete_transient('wp2_merged_packages_data');
             wp_update_themes();
             wp_update_plugins();
+            do_action( 'wp2_manual_sync_completed' );
             Logger::log( 'Manual scheduler run completed successfully.', 'success', 'tasks' );
         } catch ( \Throwable $exception ) {
             Logger::log( 'Manual scheduler run failed: ' . $exception->getMessage(), 'error', 'tasks' );

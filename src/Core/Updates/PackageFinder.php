@@ -31,6 +31,9 @@ class PackageFinder {
         $this->utils = $utils;
         $this->scan_for_managed_themes();
         $this->scan_for_managed_plugins();
+
+        // Clear the transient cache when an app is saved or updated.
+        add_action( 'save_post_wp2_github_app', [ $this, 'clear_repo_to_app_map_cache' ] );
     }
 
     /**
@@ -163,6 +166,13 @@ class PackageFinder {
         delete_transient('wp2_managed_plugins');
         $this->managed_themes = [];
         $this->managed_plugins = [];
+    }
+
+    /**
+     * Clears the transient cache for the repo-to-app map.
+     */
+    public function clear_repo_to_app_map_cache() {
+        delete_transient( 'wp2_repo_app_map' );
     }
 
     /**
