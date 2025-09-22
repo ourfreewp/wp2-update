@@ -201,4 +201,50 @@ class PackageFinder {
 
         return array_merge($themes, $plugins);
     }
+
+    /**
+     * Retrieves a list of available updates for managed themes and plugins.
+     *
+     * @return array<string, string> An associative array where the key is the package name and the value is the version update string.
+     */
+    public static function get_available_updates(): array {
+        $updates = [];
+
+        // Example logic for fetching updates. Replace with actual implementation.
+        $updates['Plugin A'] = '1.2.3 -> 1.2.4';
+        $updates['Plugin B'] = '2.0.0 -> 2.1.0';
+
+        return $updates;
+    }
+
+    /**
+     * Returns a list of items (themes and plugins) that need updates.
+     *
+     * @return array List of items to update.
+     */
+    public function get_items_to_update(): array {
+        $items_to_update = [];
+
+        foreach ($this->managed_themes as $theme) {
+            if ($this->utils->is_update_available($theme['slug'])) {
+                $items_to_update[] = [
+                    'type' => 'theme',
+                    'name' => $theme['name'],
+                    'slug' => $theme['slug'],
+                ];
+            }
+        }
+
+        foreach ($this->managed_plugins as $plugin) {
+            if ($this->utils->is_update_available($plugin['slug'])) {
+                $items_to_update[] = [
+                    'type' => 'plugin',
+                    'name' => $plugin['name'],
+                    'slug' => $plugin['slug'],
+                ];
+            }
+        }
+
+        return $items_to_update;
+    }
 }

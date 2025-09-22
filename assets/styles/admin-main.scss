@@ -36,7 +36,7 @@ $bp-xl: 1200px;
  * @description Applies a distinct, WP2-style focus ring for accessibility. (CP-7)
  */
 @mixin focus-ring-light {
-	box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px #007ACC;
+	box-shadow: 0 0 0 3px #FFD700, 0 0 0 5px #000000;
 	outline: none;
 }
 

@@ -1,5 +1,11 @@
 <?php
+
 namespace WP2\Update;
+
+// Prevent multiple inclusions of this file
+if (class_exists(__NAMESPACE__ . '\\Init', false)) {
+    return;
+}
 
 use WP2\Update\Admin\Init as AdminInit;
 use WP2\Update\Core\Connection\Init as Connection;
@@ -22,6 +28,13 @@ use WP2\Update\Admin\Models\Init as ModelsInit;
  */
 final class Init {
     /**
+     * Dependency Injection container instance.
+     *
+     * @var DIContainer|null
+     */
+    private static $container = null;
+
+    /**
      * Kicks off the plugin.
      *
      * A static entry point that sets up the entire plugin.
@@ -38,23 +51,34 @@ final class Init {
         $container->register('Connection', fn($c) => new Connection($c->resolve('PackageFinder')));
         $container->register('ModelsInit', fn() => new ModelsInit());
         $container->register('WebhookHandler', fn($c) => new WebhookHandler($c->resolve('GitHubApp'), $c->resolve('PackageFinder')));
-        $container->register('ThemeUpdater', fn($c) => new ThemeUpdater($c->resolve('Connection'), $c->resolve('GitHubApp'), $c->resolve('SharedUtils')));
-        $container->register('PluginUpdater', fn($c) => new PluginUpdater($c->resolve('Connection'), $c->resolve('GitHubApp'), $c->resolve('SharedUtils')));
-        
+        $container->register('ThemeUpdater', fn($c) => new ThemeUpdater(
+            $c->resolve('Connection'),
+            $c->resolve('GitHubApp'),
+            $c->resolve('SharedUtils'),
+            $c->resolve('GitHubService')
+        ));
+        $container->register('PluginUpdater', fn($c) => new PluginUpdater(
+            $c->resolve('Connection'),
+            $c->resolve('GitHubApp'),
+            $c->resolve('SharedUtils'),
+            $c->resolve('GitHubService')
+        ));
+        $container->register('RestRouter', fn($c) => new RestRouter($c->resolve('GitHubApp'), $c->resolve('WebhookHandler')));
+        $container->register('TaskScheduler', fn($c) => new TaskScheduler($c->resolve('GitHubService')));
+
         // Pass the container instance via a filter so it can be used elsewhere.
         add_filter('wp2_update_di_container', fn() => $container);
+
+        // Debugging filter execution order
+        error_log('src/Init.php: Adding wp2_update_di_container filter.');
 
         // Resolve and initialize services
         $container->resolve('WebhookHandler');
         $container->resolve('ThemeUpdater');
         $container->resolve('PluginUpdater');
-
-        // Instantiate and register the REST API router.
-        $rest_router = new RestRouter($container->resolve('GitHubApp'), $container->resolve('WebhookHandler'));
-        $rest_router->register_routes();
-
-        // Register BackupEndpoints
-        \WP2\Update\Core\API\BackupEndpoints::init();
+        $container->resolve('RestRouter')->register_routes();
+        $container->resolve('TaskScheduler')->init_hooks();
+        $container->resolve('TaskScheduler')->schedule_recurring_tasks();
 
         // Pass all dependencies to the Admin orchestrator.
         $admin = new AdminInit(
@@ -72,13 +96,15 @@ final class Init {
         $container->resolve('PluginUpdater')->register_hooks();
         $container->resolve('ModelsInit')->register();
 
-        // Initialize and schedule recurring background tasks.
-        $scheduler = new TaskScheduler($container->resolve('GitHubService'));
-        $scheduler->init_hooks();
-        $scheduler->schedule_recurring_tasks();
-
         // Text domain
         add_action('plugins_loaded', [self::class, 'load_textdomain']);
+
+        // Debugging service resolution
+        $container->debug_resolve('WebhookHandler');
+        $container->debug_resolve('ThemeUpdater');
+        $container->debug_resolve('PluginUpdater');
+        $container->debug_resolve('RestRouter');
+        $container->debug_resolve('TaskScheduler');
     }
 
     /**
@@ -86,5 +112,14 @@ final class Init {
      */
     public static function load_textdomain() {
         load_plugin_textdomain( 'wp2-update', false, dirname( WP2_UPDATE_PLUGIN_FILE ) . '/languages' );
+    }
+
+    /**
+     * Returns the DI container instance.
+     *
+     * @return DIContainer|null
+     */
+    public static function get_container() {
+        return self::$container;
     }
 }

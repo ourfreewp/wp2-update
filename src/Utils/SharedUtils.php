@@ -46,7 +46,7 @@ final class SharedUtils {
 			'GET',
 			"/repos/{$repo}/releases",
 			[
-				'query' => [ 'per_page' => $count ],
+				'per_page' => $count, // Corrected query parameter structure
 			]
 		);
 
@@ -64,7 +64,7 @@ final class SharedUtils {
 			)
 			: [];
 
-		set_transient( $cache_key, $releases, HOUR_IN_SECONDS );
+		set_transient( $cache_key, $releases, 6 * HOUR_IN_SECONDS );
 		return $releases;
 	}
 
@@ -156,8 +156,15 @@ final class SharedUtils {
 	 */
 	public static function encrypt( string $data ): string {
 		if ( ! defined( 'AUTH_KEY' ) ) {
+			// Display admin notice if AUTH_KEY is not defined
+			if ( is_admin() ) {
+				add_action( 'admin_notices', function() {
+					echo '<div class="notice notice-error"><p>' . esc_html__( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) . '</p></div>';
+				});
+			}
 			throw new \RuntimeException( __( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) );
 		}
+
 		$key = AUTH_KEY;
 		$iv  = openssl_random_pseudo_bytes( openssl_cipher_iv_length( 'aes-256-cbc' ) );
 		$enc = openssl_encrypt( $data, 'aes-256-cbc', $key, 0, $iv );
@@ -173,8 +180,15 @@ final class SharedUtils {
 	 */
 	public static function decrypt( string $data ): string {
 		if ( ! defined( 'AUTH_KEY' ) ) {
+			// Display admin notice if AUTH_KEY is not defined
+			if ( is_admin() ) {
+				add_action( 'admin_notices', function() {
+					echo '<div class="notice notice-error"><p>' . esc_html__( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) . '</p></div>';
+				});
+			}
 			throw new \RuntimeException( __( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) );
 		}
+
 		$key     = AUTH_KEY;
 		$decoded = base64_decode( $data, true );
 		if ( false === $decoded || false === strpos( $decoded, '::' ) ) {
@@ -205,5 +219,26 @@ final class SharedUtils {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Checks if an update is available for a given theme or plugin slug.
+	 *
+	 * @param string $slug The slug of the theme or plugin.
+	 * @return bool True if an update is available, false otherwise.
+	 */
+	public function is_update_available( string $slug ): bool {
+		$themes  = get_site_transient( 'update_themes' );
+		$plugins = get_site_transient( 'update_plugins' );
+
+		if ( isset( $themes->response[ $slug ] ) ) {
+			return true;
+		}
+
+		if ( isset( $plugins->response[ $slug ] ) ) {
+			return true;
+		}
+
+		return false;
 	}
 }

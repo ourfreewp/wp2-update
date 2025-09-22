@@ -35,24 +35,49 @@ class PackagesListTable extends AbstractListTable {
     }
 
     public function prepare_items() {
-        $this->items = $this->fetch_packages();
+        $this->_column_headers = [$this->get_columns(), [], $this->get_sortable_columns()];
+
+        $data = $this->fetch_packages();
+
+        usort($data, function ($a, $b) {
+            $orderby = $_GET['orderby'] ?? 'name';
+            $order = $_GET['order'] ?? 'asc';
+
+            $result = strcmp($a[$orderby], $b[$orderby]);
+
+            return ('asc' === $order) ? $result : -$result;
+        });
+
+        $per_page = 10;
+        $current_page = $this->get_pagenum();
+        $total_items = count($data);
+
+        $this->items = array_slice($data, (($current_page - 1) * $per_page), $per_page);
+
+        $this->set_pagination_args([
+            'total_items' => $total_items,
+            'per_page'    => $per_page,
+            'total_pages' => ceil($total_items / $per_page),
+        ]);
     }
 
     private function fetch_packages() {
         // Fetch packages logic here
-        return [];
+        return $this->connection->get_managed_packages();
     }
 
     public function process_bulk_action() {
         if ( 'force-check' === $this->current_action() ) {
             // Logic for forcing update checks
-            foreach ($_POST['package'] as $package_id) {
+            $packages = isset($_POST['package']) ? array_map('sanitize_text_field', (array) $_POST['package']) : [];
+            foreach ($packages as $package_id) {
                 $this->utils->force_update_check($package_id);
             }
             echo '<div class="notice notice-success"><p>Update checks forced for selected packages.</p></div>';
         } elseif ( 'clear-cache' === $this->current_action() ) {
             // Logic for clearing package cache
-            foreach ($_POST['package'] as $package_id) {
+            $packages = isset($_POST['package']) ? array_map('sanitize_text_field', (array) $_POST['package']) : [];
+            foreach ($packages as $package_id) {
                 $this->utils->clear_package_cache($package_id);
             }
             echo '<div class="notice notice-success"><p>Cache cleared for selected packages.</p></div>';

@@ -6,6 +6,7 @@ use WP2\Update\Core\Health\RepoHealth;
 use WP2\Update\Core\Sync\Repos;
 use WP2\Update\Core\API\Service as GitHubService;
 use ActionScheduler;
+use WP2\Update\Utils\Logger;
 
 /**
  * Manages all Action Scheduler tasks.
@@ -20,6 +21,10 @@ final class Scheduler {
     const SYNC_APP_REPOS_HOOK = 'wp2_sync_app_repos'; // New hook
 
     private GitHubService $githubService;
+
+    // Define constants for scheduling delays.
+    private const SYNC_DELAY = 0; // No delay for sync.
+    private const HEALTH_CHECK_DELAY = 5 * MINUTE_IN_SECONDS;
 
     public function __construct(GitHubService $githubService) {
         $this->githubService = $githubService;
@@ -58,11 +63,11 @@ final class Scheduler {
 
         // Schedule main sync to run hourly.
         if (as_next_scheduled_action(self::SYNC_ALL_REPOS_HOOK) === false) {
-            as_schedule_recurring_action(time(), HOUR_IN_SECONDS, self::SYNC_ALL_REPOS_HOOK, [], 'WP2 Update');
+            as_schedule_recurring_action(time() + self::SYNC_DELAY, HOUR_IN_SECONDS, self::SYNC_ALL_REPOS_HOOK, [], 'WP2 Update');
         }
         // Schedule a full system health check to run daily.
         if (as_next_scheduled_action(self::HEALTH_CHECK_ALL_APPS_HOOK) === false) {
-            as_schedule_recurring_action(time() + (5 * MINUTE_IN_SECONDS), DAY_IN_SECONDS, self::HEALTH_CHECK_ALL_APPS_HOOK, [], 'WP2 Update');
+            as_schedule_recurring_action(time() + self::HEALTH_CHECK_DELAY, DAY_IN_SECONDS, self::HEALTH_CHECK_ALL_APPS_HOOK, [], 'WP2 Update');
         }
     }
 
@@ -127,13 +132,21 @@ final class Scheduler {
         }
     }
 
-    public static function run_sync_for_app($args) {
+    public static function run_sync_for_app($args, GitHubService $github_service = null) {
         if (!is_array($args)) {
             $args = ['app_post_id' => $args];
         }
         if (isset($args['app_post_id'])) {
-            // Use the DI container to fetch the GitHubService instance.
-            $github_service = apply_filters('wp2_update_di_container', null)->resolve(GitHubService::class);
+            if (!$github_service) {
+                // Use the DI container to fetch the GitHubService instance.
+                $container = apply_filters('wp2_update_di_container', null);
+                if ($container) {
+                    $github_service = $container->resolve(GitHubService::class);
+                } else {
+                    Logger::log('DI container is not available.', 'error', 'tasks');
+                    return;
+                }
+            }
             $repos = new Repos($github_service);
             $repos->sync_repositories_for_app($args['app_post_id']);
         }

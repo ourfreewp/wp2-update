@@ -59,11 +59,25 @@ const initConnectionPage = () => {
             testConnectionBtn.disabled = true;
 
             try {
-                const data = await apiRequest('/wp2-update/v1/test-connection');
+                const appSlug = document.getElementById('wp2-app-slug').value;
+                if (!appSlug) {
+                    showToast('App slug is required.', 'error');
+                    return;
+                }
+
+                const data = await apiRequest('/wp2-update/v1/test-connection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-WP-Nonce': wpApiSettings.nonce,
+                    },
+                    body: JSON.stringify({ app_slug: appSlug }),
+                });
                 showToast(data.message || 'Connection test successful!', data.success ? 'success' : 'error');
                 await updateConnectionStatus();
             } catch (error) {
-                showToast(error.message, 'error');
+                console.error('Connection test failed:', error);
+                showToast('An error occurred while testing the connection. Please check your network and try again.', 'error');
             } finally {
                 if (loader) loader.style.display = 'none';
                 testConnectionBtn.disabled = false;
@@ -74,14 +88,24 @@ const initConnectionPage = () => {
     if (disconnectBtn) {
         disconnectBtn.addEventListener('click', async (e) => {
             e.preventDefault();
-            if (confirm('Are you sure you want to disconnect? This will remove all saved settings.')) {
-                try {
-                    await apiRequest('/wp2-update/v1/disconnect');
-                    showToast('Successfully disconnected. The page will now reload.', 'success');
-                    setTimeout(() => window.location.reload(), 1500);
-                } catch (error) {
-                    showToast(error.message, 'error');
-                }
+            if (loader) loader.style.display = 'inline-block';
+            disconnectBtn.disabled = true;
+
+            try {
+                const data = await apiRequest('/wp2-update/v1/disconnect', {
+                    method: 'POST',
+                    headers: {
+                        'X-WP-Nonce': wpApiSettings.nonce,
+                    },
+                });
+                showToast(data.message || 'Disconnected successfully.', 'success');
+                await updateConnectionStatus();
+            } catch (error) {
+                console.error('Disconnection failed:', error);
+                showToast('An error occurred while disconnecting. Please try again.', 'error');
+            } finally {
+                if (loader) loader.style.display = 'none';
+                disconnectBtn.disabled = false;
             }
         });
     }
@@ -144,12 +168,11 @@ const initGithubAppButton = () => {
                             const appConfigContainer = document.getElementById("app-config-container");
                             if (appConfigContainer) {
                                 // Safely update the app configuration container.
-                                appConfigContainer.innerHTML = `
-                                    <p><strong>Pending App Name:</strong> ${_.escape(data.app_name)}</p>
-                                    <p><strong>Callback URL:</strong> ${_.escape(data.callback_url)}</p>
-                                    <p><strong>Webhook URL:</strong> ${_.escape(data.webhook_url)}</p>
-                                    <a href="${_.escape(data.github_url)}" target="_blank">Open GitHub App Configuration</a>
-                                `;
+                                appConfigContainer.textContent = `
+                                    Pending App Name: ${data.app_name}\n
+                                    Callback URL: ${data.callback_url}\n
+                                    Webhook URL: ${data.webhook_url}\n
+                                    Open GitHub App Configuration: ${data.github_url}`;
                             }
                         } else {
                             alert(data.message || "Failed to create GitHub App.");

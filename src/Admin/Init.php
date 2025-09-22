@@ -32,7 +32,7 @@ class Init {
         $this->pages_handler = new Pages( $connection, $github_app, $utils ); // Removed extra argument $github_service
 
         // Instantiate action handler
-        $this->actions = new Actions( $connection, $github_app, $theme_updater, $plugin_updater, $utils );
+        $this->actions = new Actions( $connection, $github_app, $theme_updater, $plugin_updater, $utils, $github_service );
 
         // Instantiate models handler
         $this->models = new Models();
@@ -50,6 +50,7 @@ class Init {
         add_action( 'admin_post_wp2_plugin_install', [ $this->actions, 'handle_plugin_install_action' ] );
         add_action( 'admin_post_wp2_test_connection', [ $this->actions, 'handle_test_connection_action' ] );
         add_action( 'admin_post_wp2_bulk_action', [ $this->actions, 'handle_bulk_actions' ] );
+        add_action( 'admin_post_wp2_run_scheduler', [ $this->actions, 'handle_run_scheduler_action' ] );
 
         // Register model hooks
         $this->models->register();
@@ -120,13 +121,23 @@ class Init {
             'wp2_github_app' => __( 'Apps', 'wp2-update' )
         ];
 
+        // Debugging menu registration
+        error_log('Registering admin menu: WP2 Updates');
+        error_log('Registering submenu: Packages');
+        error_log('Registering submenu: System Health');
+        foreach ( $post_types as $post_type => $label ) {
+            error_log('Registering submenu for post type: ' . $post_type);
+        }
+
+        // Ensure dynamic post type submenu pages are correctly mapped
         foreach ( $post_types as $post_type => $label ) {
             add_submenu_page(
                 'wp2-update-overview',
                 $label,
                 $label,
                 'manage_wp2_updates',
-                'edit.php?post_type=' . $post_type
+                'edit.php?post_type=' . $post_type,
+                '' // No callback needed for post type links
             );
         }
     }

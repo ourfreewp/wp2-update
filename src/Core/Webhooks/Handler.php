@@ -124,9 +124,14 @@ class Handler {
             case 'installation':
                 // NEW: Handle installation event to save the ID.
                 if (isset($data['action']) && $data['action'] === 'created') {
-                    Logger::log('New installation created. Saving the Installation ID.', 'info', 'webhook');
-                    $models_init = new \WP2\Update\Admin\Models\Init();
-                    $models_init->handle_github_installation_event($data);
+                    // Ensure the payload contains the necessary data before proceeding
+                    if (isset($data['installation']['id'], $data['installation']['app_id'])) {
+                        Logger::log('New installation created. Saving the Installation ID.', 'info', 'webhook');
+                        $models_init = new \WP2\Update\Admin\Models\Init();
+                        $models_init->handle_github_installation_event($data);
+                    } else {
+                        Logger::log('Installation event payload is missing required fields.', 'error', 'webhook');
+                    }
                 }
                 break;
             default:

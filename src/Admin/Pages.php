@@ -34,7 +34,20 @@ class Pages {
         $this->github_app = $github_app;
         $this->utils      = $utils;
 
-        $this->packages_page = new PackagesPage( $this->connection, $this->utils, $this->github_app );
+        $package_finder = new \WP2\Update\Core\Updates\PackageFinder( $this->utils );
+        $history_tab = new PackageHistoryPage( $this->connection, $this->utils );
+        $status_tab = new PackageStatusPage( $this->connection, $this->github_app, $this->utils );
+        $log_tab = new PackageEventsPage();
+
+        $this->packages_page = new PackagesPage( 
+            $this->connection, 
+            $this->utils, 
+            $this->github_app, 
+            $package_finder, 
+            $history_tab, 
+            $status_tab, 
+            $log_tab 
+        );
     }
 
     /**
@@ -149,45 +162,12 @@ class Pages {
         echo '<div class="wrap">';
         echo '<h1>' . __('All Logged Events', 'wp2-update') . '</h1>';
         echo '<p>' . __('A log of all system events, from API calls to update checks.', 'wp2-update') . '</p>';
-        
-        // Placeholder for the table
-        echo '<div id="wp2-logs-table"></div>';
+
+        // Render the logs table dynamically
+        $logs_table = new \WP2\Update\Admin\Tables\LogsTable();
+        $logs_table->prepare_items();
+        $logs_table->display();
+
         echo '</div>';
     }
-}
-
-// Fetch log data from the Logger class
-function wp2_get_logs_data() {
-    $logs = Logger::get_logs(); // Assuming Logger::get_logs() fetches all logs
-
-    $data = [];
-    foreach ($logs as $log) {
-        $data[] = [
-            'timestamp' => $log['timestamp'],
-            'type'      => $log['type'],
-            'context'   => $log['context'],
-            'message'   => is_array($log['message']) ? print_r($log['message'], true) : $log['message'],
-        ];
-    }
-
-    return $data;
-}
-
-// Render the logs table
-function wp2_render_logs_table() {
-    $logs_table = new WP2_Logs_Table();
-    $logs_table->items = wp2_get_logs_data();
-    $logs_table->prepare_items();
-    $logs_table->display();
-}
-
-// Render the logs page
-function wp2_render_logs_page() {
-    echo '<div class="wrap">';
-    echo '<h1>' . __('All Logged Events', 'wp2-update') . '</h1>';
-    echo '<p>' . __('A log of all system events, from API calls to update checks.', 'wp2-update') . '</p>';
-
-    wp2_render_logs_table();
-
-    echo '</div>';
 }

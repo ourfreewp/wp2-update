@@ -129,14 +129,16 @@ final class Init {
 			]
 		);
 
-		$app_id = isset( $app_post[0] ) ? (int) $app_post[0]->ID : 0;
+		// Fetch the WordPress Post ID
+        $wp_post_id = isset($app_post[0]) ? (int) $app_post[0]->ID : 0;
 
-		return [
-			'App ID'          => get_post_meta( $app_id, '_wp2_app_id', true ) ?: __( 'Not set', 'wp2-update' ),
-			'Installation ID' => get_post_meta( $app_id, '_wp2_installation_id', true ) ?: __( 'Not set', 'wp2-update' ),
-			'Private Key'     => get_post_meta( $app_id, '_wp2_private_key_content', true ) ? __( 'Set', 'wp2-update' ) : __( 'Not set', 'wp2-update' ),
-			'Webhook Secret'  => get_post_meta( $app_id, '_wp2_webhook_secret', true ) ? __( 'Set', 'wp2-update' ) : __( 'Not set', 'wp2-update' ),
-		];
+        // Retrieve GitHub App ID and other credentials using the WordPress Post ID
+        return [
+            'GitHub App ID'   => get_post_meta($wp_post_id, '_wp2_app_id', true) ?: __( 'Not set', 'wp2-update' ),
+            'Installation ID' => get_post_meta($wp_post_id, '_wp2_installation_id', true) ?: __( 'Not set', 'wp2-update' ),
+            'Private Key'     => get_post_meta($wp_post_id, '_wp2_private_key_content', true) ? __( 'Set', 'wp2-update' ) : __( 'Not set', 'wp2-update' ),
+            'Webhook Secret'  => get_post_meta($wp_post_id, '_wp2_webhook_secret', true) ? __( 'Set', 'wp2-update' ) : __( 'Not set', 'wp2-update' ),
+        ];
 	}
 }
 

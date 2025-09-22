@@ -124,3 +124,68 @@ Contributions are welcome! Please read our [docs/wiki/Contributing.md](docs/wiki
 ## 📄 License
 
 This project is licensed under the GPLv2 or later – see the `wp2-update.php` file for details.
+
+## 🛠️ Debugging & Troubleshooting
+
+### Common Issues
+
+1. **GitHub App Authentication Fails**
+   - Ensure your GitHub App credentials (App ID, Client ID, Private Key) are correctly configured in the plugin settings.
+   - Verify that the GitHub App has the necessary permissions and is installed on the correct repositories.
+
+2. **Update Checks Not Triggering**
+   - Check the Action Scheduler logs for any failed tasks.
+   - Ensure that the webhook URL is correctly configured in your GitHub App settings.
+
+3. **Permission Denied Errors**
+   - Verify that the user has the `manage_wp2_updates` capability.
+   - Check the WordPress role and capability assignments.
+
+### Debugging Tools
+
+- **Logs:** Use the built-in logging system to view detailed logs of API calls, update checks, and other critical operations.
+- **WP-CLI Commands:** Run `wp wp2-update` commands to manually trigger syncs, updates, and other operations.
+- **Browser Console:** Check for JavaScript errors in the browser console when using the admin interface.
+
+For more detailed troubleshooting steps, refer to the [GitHub Wiki](https://github.com/your-repo/wiki).
+
+## 🏗️ Architectural Overview
+
+WP2 Update is designed with a modular architecture to ensure scalability, maintainability, and ease of testing. Below is an overview of the key components:
+
+### Core Components
+
+1. **Admin Interface**
+   - Located in the `src/Admin/` directory.
+   - Handles the WordPress admin dashboard pages, including settings, logs, and package management.
+
+2. **Core API**
+   - Located in the `src/Core/API/` directory.
+   - Manages interactions with the GitHub API, including authentication, repository syncing, and webhook handling.
+
+3. **Task Scheduler**
+   - Located in the `src/Core/Tasks/` directory.
+   - Uses the Action Scheduler library to manage background tasks like syncing repositories and checking for updates.
+
+4. **Utilities**
+   - Located in the `src/Utils/` directory.
+   - Provides shared functionality like logging, encryption, and dependency injection.
+
+5. **CLI Commands**
+   - Located in the `src/CLI/` directory.
+   - Extends WP-CLI to provide command-line tools for managing the plugin.
+
+### Data Flow
+
+1. **GitHub App Integration**
+   - The plugin authenticates with GitHub using a GitHub App. The app's credentials are securely stored in the WordPress database.
+   - Webhooks from GitHub trigger update checks and repository syncing.
+
+2. **Update Process**
+   - The plugin fetches release data from GitHub and compares it with the installed version.
+   - If an update is available, the plugin downloads the `.zip` file, creates a backup, and installs the update.
+
+3. **Logging and Debugging**
+   - All actions are logged in the event log for transparency and debugging.
+
+This modular design ensures that each component has a single responsibility, making the plugin easier to extend and maintain.

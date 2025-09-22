@@ -3,6 +3,7 @@ namespace WP2\Update\Core\Updates;
 
 use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
+use WP2\Update\Core\API\Service as GitHubService;
 use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Utils\Logger;
 use WP_Error;
@@ -20,13 +21,17 @@ class ThemeUpdater {
     /** @var SharedUtils The shared updater utilities. */
     private $utils;
 
+    /** @var GitHubService The GitHub service for authenticated requests. */
+    private $github_service;
+
     /**
      * Constructor.
      */
-    public function __construct( Connection $connection, GitHubApp $github_app, SharedUtils $utils ) {
+    public function __construct( Connection $connection, GitHubApp $github_app, SharedUtils $utils, GitHubService $github_service ) {
         $this->connection = $connection;
         $this->github_app = $github_app;
         $this->utils      = $utils;
+        $this->github_service = $github_service;
     }
 
     /**
@@ -57,7 +62,7 @@ class ThemeUpdater {
 
             $latest_release = $response['data'];
             $current_version = wp_get_theme($slug)->get('Version');
-            $new_version = $this->normalize_version( $latest_release['tag_name'] ?? '0' );
+            $new_version = $this->utils->normalize_version( $latest_release['tag_name'] ?? '0' );
 
             if (version_compare($new_version, $current_version, '>')) {
                 $package_info = [
@@ -110,7 +115,8 @@ class ThemeUpdater {
 
         // 1. Download the file to a temporary location
         require_once ABSPATH . 'wp-admin/includes/file.php';
-        $temp_zip_file = download_url($zip_url);
+        // Use authenticated client to download the file.
+        $temp_zip_file = $this->github_service->download_to_temp_file( $app_slug, $zip_url );
 
         if (is_wp_error($temp_zip_file)) {
             Logger::log('Download failed: ' . $temp_zip_file->get_error_message(), 'error', 'install');
@@ -183,19 +189,48 @@ class ThemeUpdater {
     }
 
     /**
-     * Normalizes a version string.
-     *
-     * @param string $version The version string to normalize.
-     * @return string The normalized version string.
-     */
-    private function normalize_version($version) {
-        return $this->utils->normalize_version($version);
-    }
-
-    /**
      * Registers WordPress hooks for theme updates.
      */
     public function register_hooks() {
         add_filter('pre_set_site_transient_update_themes', [$this, 'check_for_updates']);
+        add_filter('upgrader_pre_download', [$this, 'maybe_provide_authenticated_package'], 10, 4);
+    }
+
+    /**
+     * Provides an authenticated download for private GitHub theme packages.
+     *
+     * @param mixed               $reply
+     * @param string              $package
+     * @param \WP_Upgrader        $upgrader
+     * @param array<string,mixed> $hook_extra
+     * @return mixed
+     */
+    public function maybe_provide_authenticated_package( $reply, string $package, $upgrader, array $hook_extra ) {
+        if ( empty( $hook_extra['theme'] ) ) {
+            return $reply;
+        }
+
+        $theme_slug = $hook_extra['theme'];
+        $managed_themes = $this->connection->get_managed_themes();
+
+        if ( ! isset( $managed_themes[ $theme_slug ] ) ) {
+            return $reply;
+        }
+
+        $managed = $managed_themes[ $theme_slug ];
+        $app_slug = $managed['app_slug'] ?? '';
+
+        if ( '' === $app_slug ) {
+            return $reply;
+        }
+
+        $temp_file = $this->github_service->download_to_temp_file( $app_slug, $package );
+
+        if ( is_wp_error( $temp_file ) ) {
+            Logger::log( 'Authenticated download failed for theme ' . $theme_slug . ': ' . $temp_file->get_error_message(), 'error', 'install' );
+            return $temp_file;
+        }
+
+        return $temp_file;
     }
 }

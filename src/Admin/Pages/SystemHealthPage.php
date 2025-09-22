@@ -110,7 +110,7 @@ class SystemHealthPage {
         $themes_transient = get_site_transient('update_themes');
         $plugins_transient = get_site_transient('update_plugins');
 
-        return [
+        $rows = [
             ['label' => 'Managed Themes (Cached)', 'value' => count($this->connection->get_managed_themes())],
             ['label' => 'Managed Plugins (Cached)', 'value' => count($this->connection->get_managed_plugins())],
             ['label' => 'Update Check Transient (Themes)', 'value' => $themes_transient ? '<span class="status-success">Exists</span>' : '<span class="status-info">Not set</span>'],
@@ -118,8 +118,15 @@ class SystemHealthPage {
             [
                 'label' => 'Actions',
                 'value' => '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin.php?page=wp2-update-system-health&force-check=1' ), 'wp2-force-check' ) ) . '" class="button button-secondary wp2-clear-cache-button">' . esc_html__( 'Clear All Caches & Force Check', 'wp2-update' ) . '</a>'
-            ]
+            ],
         ];
+
+        $rows[] = [
+            'label' => __( 'Manual Scheduler', 'wp2-update' ),
+            'value' => $this->get_manual_scheduler_form(),
+        ];
+
+        return $rows;
     }
 
     private function get_events_log() {
@@ -130,9 +137,52 @@ class SystemHealthPage {
         return ob_get_clean();
     }
 
+    private function get_manual_scheduler_form(): string {
+        ob_start();
+        ?>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <?php wp_nonce_field( 'wp2_run_scheduler_action' ); ?>
+            <input type="hidden" name="action" value="wp2_run_scheduler">
+            <button type="submit" class="button button-primary"><?php esc_html_e( 'Run Sync & Health Checks Now', 'wp2-update' ); ?></button>
+        </form>
+        <?php
+        return ob_get_clean();
+    }
+
+    public function handle_update_check() {
+        if ( isset( $_GET['update-check'] ) && '1' === $_GET['update-check'] ) {
+            // Verify nonce to ensure the request is valid.
+            $nonce = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
+            if ( ! wp_verify_nonce( $nonce, 'wp2-force-check' ) ) {
+                error_log('SystemHealthPage: Invalid nonce for update-check.');
+                wp_die( __( 'Invalid request.', 'wp2-update' ) );
+            }
+
+            // Log the redirection for debugging
+            error_log('SystemHealthPage: Handling update-check redirection.');
+
+            // Clear the parameter to prevent redirection loops
+            $redirect_url = remove_query_arg( 'update-check' );
+            if ( strpos( $redirect_url, 'update-check' ) === false ) {
+                wp_safe_redirect( $redirect_url );
+                exit;
+            } else {
+                error_log('SystemHealthPage: Redirection failed to remove update-check parameter.');
+            }
+        }
+    }
+
     public function render() {
         ?>
         <div class="wrap wp2-update-page">
+            <?php
+            $manual_sync_status = isset( $_GET['manual-sync'] ) ? sanitize_text_field( wp_unslash( $_GET['manual-sync'] ) ) : '';
+            if ( 'success' === $manual_sync_status ) {
+                echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Manual sync completed successfully.', 'wp2-update' ) . '</p></div>';
+            } elseif ( 'error' === $manual_sync_status ) {
+                echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Manual sync failed. Check the logs for details.', 'wp2-update' ) . '</p></div>';
+            }
+            ?>
             <div class="wp2-update-header">
                 <h1><?php esc_html_e( 'System Health', 'wp2-update' ); ?></h1>
                 <p class="description"><?php esc_html_e( 'Detailed debug and environment information for troubleshooting.', 'wp2-update' ); ?></p>

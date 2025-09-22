@@ -1,11 +1,12 @@
 <?php
 namespace WP2\Update\Admin\Tables;
 
-use WP_List_Table;
-
-if (!class_exists('WP_List_Table')) {
-    require_once WPINC . '/class-wp-list-table.php';
+// Ensure the WordPress list table base class is available first.
+if ( ! class_exists( 'WP_List_Table' ) ) {
+    require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
 }
+
+use WP_List_Table;
 
 class LogsTable extends WP_List_Table {
     public function __construct() {
@@ -26,7 +27,7 @@ class LogsTable extends WP_List_Table {
     }
 
     public function prepare_items() {
-        $this->items = []; // Placeholder for log data
+        $this->items = \WP2\Update\Utils\Logger::get_logs(); // Fetch log data from Logger
         $this->_column_headers = [$this->get_columns(), [], []];
     }
 

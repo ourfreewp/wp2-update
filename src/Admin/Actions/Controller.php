@@ -5,6 +5,7 @@ use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\Updates\PluginUpdater;
 use WP2\Update\Core\Updates\ThemeUpdater;
+use WP2\Update\Core\Tasks\Scheduler;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Utils\SharedUtils;
 
@@ -17,16 +18,18 @@ class Controller {
     private $theme_updater;
     private $plugin_updater;
     private $utils;
+    private Scheduler $scheduler;
 
     /**
      * Constructor.
      */
-    public function __construct( Connection $connection, GitHubApp $github_app, ThemeUpdater $theme_updater, PluginUpdater $plugin_updater, SharedUtils $utils ) {
+    public function __construct( Connection $connection, GitHubApp $github_app, ThemeUpdater $theme_updater, PluginUpdater $plugin_updater, SharedUtils $utils, Scheduler $scheduler ) {
         $this->connection     = $connection;
         $this->github_app     = $github_app;
         $this->theme_updater  = $theme_updater;
         $this->plugin_updater = $plugin_updater;
         $this->utils          = $utils;
+        $this->scheduler      = $scheduler;
     }
 
     /**
@@ -46,6 +49,17 @@ class Controller {
             'github-app'
         );
     }
+
+    /**
+     * Logs an error message with context.
+     *
+     * @param string $message The error message.
+     * @param string $context The context of the error.
+     */
+    private function log_error(string $message, string $context): void {
+        Logger::log($message, 'error', $context);
+    }
+
     /**
      * Main action router for events on standard admin pages.
      */
@@ -63,7 +77,8 @@ class Controller {
         // Handle the force-check action
         if ( isset( $_GET['force-check'] ) && '1' === $_GET['force-check'] ) {
             if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( $_GET['_wpnonce'] ), 'wp2-force-check' ) ) {
-                wp_die( 'Security check failed.' );
+                wp_safe_redirect( esc_url( admin_url( 'admin.php?page=wp2-update-system-health&error=security-check-failed' ) ) );
+                exit;
             }
 
             // Clear transients and force a check
@@ -76,6 +91,84 @@ class Controller {
             wp_safe_redirect( esc_url( admin_url( 'admin.php?page=wp2-update-system-health&cache-cleared=1' ) ) );
             exit;
         }
+
+        if ( isset( $_GET['update-check'] ) && '1' === sanitize_text_field( wp_unslash( $_GET['update-check'] ) ) ) {
+            // Trigger WordPress update checks only when explicitly requested.
+            wp_update_themes();
+            wp_update_plugins();
+
+            // Add a success notice for the next page load.
+            set_transient( 'wp2_update_admin_notice', esc_html__( 'Update check triggered successfully.', 'wp2-update' ), 60 );
+
+            // Redirect back to the originating WP2 admin page without the update-check flag.
+            $target_page = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : 'wp2-update-system-health';
+            $redirect_url = admin_url( 'admin.php?page=' . $target_page );
+            wp_safe_redirect( $redirect_url );
+            exit;
+        }
+    }
+
+    /**
+     * Manually triggers repository sync and health checks without relying on wp-cron.
+     */
+    public function handle_run_scheduler_action() {
+        if ( ! current_user_can( 'manage_wp2_updates' ) ) {
+            wp_die( __( 'You do not have permission to perform this action.', 'wp2-update' ) );
+        }
+
+        $nonce = isset( $_POST['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ) : '';
+        if ( ! wp_verify_nonce( $nonce, 'wp2_run_scheduler_action' ) ) {
+            wp_die( __( 'Invalid request.', 'wp2-update' ) );
+        }
+
+        $redirect_url = add_query_arg( 'manual-sync', 'success', admin_url( 'admin.php?page=wp2-update-system-health' ) );
+
+        try {
+            Logger::log( 'Manual scheduler run triggered from System Health.', 'info', 'tasks' );
+
+            $this->scheduler->run_sync_all_repos();
+
+            $apps_query = new \WP_Query([
+                'post_type'      => 'wp2_github_app',
+                'posts_per_page' => -1,
+                'post_status'    => 'publish',
+                'fields'         => 'ids',
+                'no_found_rows'  => true,
+            ]);
+
+            if ( $apps_query->have_posts() ) {
+                foreach ( $apps_query->posts as $app_post_id ) {
+                    $this->scheduler->run_single_app_check( [ 'app_post_id' => $app_post_id ] );
+                }
+            }
+
+            $repos_query = new \WP_Query([
+                'post_type'      => 'wp2_repository',
+                'posts_per_page' => -1,
+                'post_status'    => 'publish',
+                'fields'         => 'ids',
+                'no_found_rows'  => true,
+            ]);
+
+            if ( $repos_query->have_posts() ) {
+                foreach ( $repos_query->posts as $repo_post_id ) {
+                    $this->scheduler->run_single_repo_check( [ 'repo_post_id' => $repo_post_id ] );
+                }
+            }
+
+            $this->connection->clear_package_cache();
+            delete_transient('wp2_repo_app_map');
+            delete_transient('wp2_merged_packages_data');
+            wp_update_themes();
+            wp_update_plugins();
+            Logger::log( 'Manual scheduler run completed successfully.', 'success', 'tasks' );
+        } catch ( \Throwable $exception ) {
+            Logger::log( 'Manual scheduler run failed: ' . $exception->getMessage(), 'error', 'tasks' );
+            $redirect_url = add_query_arg( 'manual-sync', 'error', admin_url( 'admin.php?page=wp2-update-system-health' ) );
+        }
+
+        wp_safe_redirect( $redirect_url );
+        exit;
     }
 
     /**
@@ -123,8 +216,9 @@ class Controller {
      * Handles the installation of a theme version.
      */
     public function handle_theme_install_action() {
-        if ( ! current_user_can( 'install_themes' ) || ! isset( $_POST['_wpnonce'], $_POST['slug'], $_POST['version'] ) ) {
-            wp_die( __( 'You do not have permission to install themes.', 'wp2-update' ) );
+        if ( ! current_user_can( 'install_themes' ) || ! isset( $_POST['_wpnonce'], $_POST['slug'], $_POST['version'] ) || ! wp_verify_nonce( sanitize_key( $_POST['_wpnonce'] ), 'wp2_install_theme_action' ) ) {
+            wp_safe_redirect( esc_url( admin_url( 'admin.php?page=wp2-update-themes&error=permission-denied' ) ) );
+            exit;
         }
 
         $slug        = sanitize_key( $_POST['slug'] );
@@ -150,7 +244,7 @@ class Controller {
                 esc_html( $version ),
                 esc_html( $result->get_error_message() )
             );
-            Logger::log( $error_message, 'error', 'theme-install' );
+            $this->log_error( $error_message, 'theme-install' );
             set_transient( 'wp2_update_error_notice', $error_message, 60 );
             $redirect_url .= '&error=install_failed';
         } else {
@@ -193,7 +287,7 @@ class Controller {
                 esc_html( $version ),
                 esc_html( $result->get_error_message() )
             );
-            Logger::log( $error_message, 'error', 'plugin-install' );
+            $this->log_error( $error_message, 'plugin-install' );
             set_transient( 'wp2_update_error_notice', $error_message, 60 );
             $redirect_url .= '&error=install_failed';
         } else {

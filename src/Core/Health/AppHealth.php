@@ -82,8 +82,11 @@ class AppHealth {
         Logger::log_debug( sprintf( 'Running health checks for app post %d (slug "%s").', $this->app_post_id, $app_slug ), 'health' );
 
         // 2. Local Credential Validation
-        $app_id = get_post_meta($this->app_post_id, '_wp2_app_id', true);
-        if (empty($app_id)) {
+        // Fetch the WordPress Post ID and GitHub App ID separately
+        $wp_post_id = $this->app_post_id;
+        $github_app_id = get_post_meta($wp_post_id, '_wp2_app_id', true);
+
+        if (empty($github_app_id)) {
             $this->update_status('error', 'Configuration error: The GitHub App ID is missing.');
             return;
         }
@@ -116,8 +119,8 @@ class AppHealth {
         
         // 4. Create Debug Information. This will be added to error messages.
         $debug_info = sprintf(
-            ' Attempting to connect with App ID: "%s" and Installation ID: "%s".',
-            esc_html($app_id),
+            ' Attempting to connect with GitHub App ID: "%s" and Installation ID: "%s".',
+            esc_html($github_app_id),
             esc_html($installation_id)
         );
 
@@ -138,13 +141,13 @@ class AppHealth {
                 return;
             }
 
-            if ((string) $response['id'] !== (string) $app_id) {
-                 $this->update_status('error', 
+            if ((string) $response['id'] !== (string) $github_app_id) {
+                $this->update_status('error', 
                     sprintf(
-                        'Credential mismatch. Successfully authenticated as App "%s" (ID: %s), but settings are configured for App ID %s.',
+                        'Credential mismatch. Successfully authenticated as App "%s" (ID: %s), but settings are configured for GitHub App ID %s.',
                         $response['name'] ?? 'Unknown',
                         $response['id'],
-                        esc_html($app_id)
+                        esc_html($github_app_id)
                     )
                 );
                 return;
@@ -168,7 +171,8 @@ class AppHealth {
         } catch (ExceptionInterface $e) {
             $error_message = 'GitHub API error: ' . $e->getMessage();
             if (strpos($e->getMessage(), 'Bad credentials') !== false) {
-                $error_message = 'Authentication failed: GitHub rejected the credentials as invalid.' . $debug_info . ' A common cause for this is a server time mismatch. Please ensure your server\'s clock is synchronized with an NTP service.';
+                $server_time = current_time('mysql');
+                $error_message = 'Authentication failed: GitHub rejected the credentials as invalid.' . $debug_info . ' A common cause for this is a server time mismatch. Your server time: ' . $server_time . '. Please ensure your server\'s clock is synchronized with an NTP service.';
             }
             $this->update_status('error', $error_message);
             return;

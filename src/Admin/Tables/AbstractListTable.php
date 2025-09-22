@@ -2,6 +2,11 @@
 
 namespace WP2\Update\Admin\Tables;
 
+// Ensure the core list table base class is available before extending it.
+if ( ! class_exists( 'WP_List_Table' ) ) {
+	require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
+}
+
 use WP_List_Table;
 
 abstract class AbstractListTable extends WP_List_Table {
@@ -13,5 +18,8 @@ abstract class AbstractListTable extends WP_List_Table {
         // Optionally, you can provide a default implementation or leave it empty.
     }
 
-    abstract public function get_columns();
+    public function get_columns() {
+        // Provide a default implementation or leave it empty.
+        return [];
+    }
 }

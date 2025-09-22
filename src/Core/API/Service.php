@@ -11,6 +11,7 @@ use Github\Exception\ExceptionInterface;
 use Github\ResultPager;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Utils\SharedUtils;
+use WP_Error;
 
 /**
  * Manages the GitHub API client and authentication.
@@ -54,11 +55,8 @@ final class Service {
 
 			$this->debug_log( sprintf( "GitHub Service: Authenticating client for app slug '%s'.", $app_slug ) );
 
-			$client->authenticate(
-				$credentials['app_id'],
-				$credentials['private_key'],
-				AuthMethod::JWT
-			);
+			$jwt = $this->create_app_jwt( $credentials['app_id'], $credentials['private_key'] );
+			$client->authenticate( $jwt, null, AuthMethod::JWT );
 
 			$this->debug_log( sprintf( "GitHub Service: JWT generated for app slug '%s'.", $app_slug ) );
 
@@ -201,6 +199,42 @@ final class Service {
 	}
 
 	/**
+	 * Builds a short-lived JWT for authenticating as a GitHub App.
+	 */
+	private function create_app_jwt( string $app_id, string $private_key ): string {
+		$now      = time();
+		$payload  = [
+			'iat' => $now - 60,
+			'exp' => $now + (10 * 60),
+			'iss' => (int) $app_id,
+		];
+		$header   = [ 'alg' => 'RS256', 'typ' => 'JWT' ];
+
+		$segments = [
+			$this->base64_url_encode( wp_json_encode( $header ) ?: '' ),
+			$this->base64_url_encode( wp_json_encode( $payload ) ?: '' ),
+		];
+
+		$signing_input = implode( '.', $segments );
+		$signature     = '';
+
+		if ( ! openssl_sign( $signing_input, $signature, $private_key, OPENSSL_ALGO_SHA256 ) ) {
+			throw new \RuntimeException( 'Unable to sign JWT for GitHub App authentication.' );
+		}
+
+		$segments[] = $this->base64_url_encode( $signature );
+
+		return implode( '.', $segments );
+	}
+
+	/**
+	 * Encodes data using base64 URL-safe variant without padding.
+	 */
+	private function base64_url_encode( string $data ): string {
+		return rtrim( strtr( base64_encode( $data ), '+/', '-_' ), '=' );
+	}
+
+	/**
      * Clears the client and credentials cache.
      */
     public static function clear_cache(): void {
@@ -236,5 +270,55 @@ final class Service {
             return [];
         }
     }
-}
 
+	/**
+     * Downloads a file from GitHub to a temporary location.
+     *
+     * @param string $app_slug The app slug for authentication.
+     * @param string $url The URL of the file to download.
+     * @return string|WP_Error The path to the temporary file or a WP_Error on failure.
+     */
+    public function download_to_temp_file( string $app_slug, string $url ) {
+        $client = $this->get_client( $app_slug );
+        if ( ! $client ) {
+            return new \WP_Error( 'github_client_error', __( 'Failed to authenticate GitHub client.', 'wp2-update' ) );
+        }
+
+        try {
+            $response = $client->getHttpClient()->get( $url );
+            $body = $response->getBody()->getContents();
+
+            $temp_file = wp_tempnam( $url );
+            if ( ! $temp_file ) {
+                return new \WP_Error( 'temp_file_error', __( 'Failed to create a temporary file.', 'wp2-update' ) );
+            }
+
+            file_put_contents( $temp_file, $body );
+            return $temp_file;
+        } catch ( ExceptionInterface $e ) {
+            Logger::log( 'GitHub Service: File download failed - ' . $e->getMessage(), 'error', 'api' );
+            return new \WP_Error( 'download_error', $e->getMessage() );
+        }
+    }
+
+	/**
+     * Test GitHub API connection by retrieving app details.
+     *
+     * @param string $app_slug
+     * @return array{success:bool,data?:mixed,error?:string}
+     */
+    public function test_github_connection( string $app_slug ): array {
+        $client = $this->get_client( $app_slug );
+        if ( ! $client ) {
+            return [ 'success' => false, 'error' => 'Client not authenticated' ];
+        }
+
+        try {
+            $response = $client->apps()->getAuthenticatedApp();
+            return [ 'success' => true, 'data' => $response ];
+        } catch ( ExceptionInterface $e ) {
+            Logger::log( "GitHub Service: Connection test failed - Message: " . $e->getMessage(), 'error', 'api' );
+            return [ 'success' => false, 'error' => $e->getMessage() ];
+        }
+    }
+}

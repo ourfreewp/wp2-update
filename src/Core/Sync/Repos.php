@@ -54,22 +54,25 @@ final class Repos {
             ['installation_id' => get_post_meta($app_post_id, '_wp2_installation_id', true)]
         );
 
-        if (empty($accessible_repos['repositories'])) {
+        $repositories = [];
+
+        if (isset($accessible_repos['repositories']) && is_array($accessible_repos['repositories'])) {
+            $repositories = $accessible_repos['repositories'];
+        } elseif (is_array($accessible_repos)) {
+            $first = reset($accessible_repos);
+            if (is_array($first) && isset($first['full_name'])) {
+                $repositories = $accessible_repos;
+            }
+        }
+
+        if (empty($repositories)) {
             Logger::log('No repositories found in the API response for app: ' . $app_slug, 'info', 'sync');
             update_post_meta($app_post_id, '_wp2_accessible_repos', []);
             return;
         }
 
-        // Ensure the 'repositories' key exists and is an array
-        if (!isset($accessible_repos['repositories']) || !is_array($accessible_repos['repositories'])) {
-            Logger::log('Invalid API response: Missing or invalid "repositories" key for app: ' . $app_slug, 'error', 'sync');
-            update_post_meta($app_post_id, '_wp2_accessible_repos', []);
-            return;
-        }
-
-        // Proceed with processing repositories
         $repo_slugs = [];
-        foreach ($accessible_repos['repositories'] as $repo_data) {
+        foreach ($repositories as $repo_data) {
             if (!isset($repo_data['full_name'])) {
                 Logger::log('Skipping repository with missing "full_name" in API response.', 'warning', 'sync');
                 continue;
@@ -83,11 +86,10 @@ final class Repos {
                 TaskManager::schedule_health_check_for_repo($repo_post_id);
             }
         }
-        
-        // CRITICAL FIX: Update the accessible repositories meta for the app post.
-        // This is the missing link that allows Connection to map repos to apps.
+
+        // Update the accessible repositories meta for the app post.
         update_post_meta($app_post_id, '_wp2_accessible_repos', $repo_slugs);
-        
+
         Logger::log(
             'Successfully synced ' . count($repo_slugs) . ' repositories for app: ' . $app_slug, 
             'success', 

@@ -8,6 +8,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Utils\Logger;
 
+const WP2_UPDATE_TEXT_DOMAIN = 'wp2-update';
+
 /**
  * Registers CPTs, Meta Boxes, Columns, and related admin flows.
  */
@@ -60,7 +62,7 @@ final class Init {
 		register_post_type(
 			'wp2_github_app',
 			[
-				'label'        => __( 'App Connections', 'wp2-update' ),
+				'label'        => __( 'App Connections', WP2_UPDATE_TEXT_DOMAIN ),
 				'public'       => false,
 				'show_ui'      => true,
 				'show_in_menu' => false,
@@ -74,7 +76,7 @@ final class Init {
 		register_post_type(
 			'wp2_repository',
 			[
-				'label'         => __( 'Managed Repositories', 'wp2-update' ),
+				'label'         => __( 'Managed Repositories', WP2_UPDATE_TEXT_DOMAIN ),
 				'public'        => false,
 				'show_ui'       => true,
 				'show_in_menu'  => false,
@@ -95,7 +97,7 @@ final class Init {
 				'show_in_rest' => true,
 				'single'       => true,
 				'type'         => 'string',
-				'description'  => __( 'Custom description for the GitHub App.', 'wp2-update' ),
+				'description'  => __( 'Custom description for the GitHub App.', WP2_UPDATE_TEXT_DOMAIN ),
 			]
 		);
 
@@ -106,7 +108,7 @@ final class Init {
 				'show_in_rest' => true,
 				'single'       => true,
 				'type'         => 'string',
-				'description'  => __( 'Custom description for the repository.', 'wp2-update' ),
+				'description'  => __( 'Custom description for the repository.', WP2_UPDATE_TEXT_DOMAIN ),
 			]
 		);
 	}
@@ -117,7 +119,7 @@ final class Init {
 	public function add_meta_boxes(): void {
 		add_meta_box(
 			'wp2_github_app_credentials',
-			__( 'GitHub App Setup', 'wp2-update' ),
+			__( 'GitHub App Setup', WP2_UPDATE_TEXT_DOMAIN ),
 			[ $this, 'render_github_app_meta_box' ],
 			'wp2_github_app',
 			'normal',
@@ -126,7 +128,7 @@ final class Init {
 
 		add_meta_box(
 			'wp2_repository_details',
-			__( 'Repository Details', 'wp2-update' ),
+			__( 'Repository Details', WP2_UPDATE_TEXT_DOMAIN ),
 			[ $this, 'render_repository_meta_box' ],
 			'wp2_repository',
 			'normal',
@@ -136,7 +138,7 @@ final class Init {
 		// Add the App Logs metabox.
 		add_meta_box(
 			'wp2_app_logs',
-			__( 'App Logs', 'wp2-update' ),
+			__( 'App Logs', WP2_UPDATE_TEXT_DOMAIN ),
 			[ $this, 'render_app_logs_metabox' ],
 			'wp2_github_app',
 			'normal',
@@ -146,7 +148,7 @@ final class Init {
 		// debug panel
 		add_meta_box(
 			'wp2_debug_panel',
-			__( 'Debug Panel', 'wp2-update' ),
+			__( 'Debug Panel', WP2_UPDATE_TEXT_DOMAIN ),
 			[ $this, 'render_debug_panel_metabox' ],
 			'wp2_github_app',
 			'normal',
@@ -160,14 +162,14 @@ final class Init {
 	public function render_debug_panel_metabox(): void {
 		?>
 		<div id="wp2-debug-panel">
-			<h3><?php esc_html_e( 'Debug Information', 'wp2-update' ); ?></h3>
-			<p><?php esc_html_e( 'Here you can find debug information related to the GitHub App.', 'wp2-update' ); ?></p>
+			<h3><?php esc_html_e( 'Debug Information', WP2_UPDATE_TEXT_DOMAIN ); ?></h3>
+			<p><?php esc_html_e( 'Here you can find debug information related to the GitHub App.', WP2_UPDATE_TEXT_DOMAIN ); ?></p>
 		</div>
 		<?php
 		// structured dump of all post meta for this post
 		global $post;
 		$post_meta = get_post_meta( $post->ID );
-		echo '<h4>' . esc_html__( 'Post Meta:', 'wp2-update' ) . '</h4>';
+		echo '<h4>' . esc_html__( 'Post Meta:', WP2_UPDATE_TEXT_DOMAIN ) . '</h4>';
 		if ( ! empty( $post_meta ) ) {
 			echo '<ul style="list-style:disc; margin-left:20px;">';
 			foreach ( $post_meta as $key => $values ) {
@@ -175,9 +177,9 @@ final class Init {
 				// Obfuscate sensitive fields
 				if ( in_array( $key, [ '_wp2_webhook_secret', '_wp2_client_secret', '_wp2_private_key_content' ], true ) ) {
 					if ( is_array( $values ) ) {
-						echo '<em>' . esc_html__( 'Obfuscated', 'wp2-update' ) . '</em>';
+						echo '<em>' . esc_html__( 'Obfuscated', WP2_UPDATE_TEXT_DOMAIN ) . '</em>';
 					} else {
-						echo '<em>' . esc_html__( 'Obfuscated', 'wp2-update' ) . '</em>';
+						echo '<em>' . esc_html__( 'Obfuscated', WP2_UPDATE_TEXT_DOMAIN ) . '</em>';
 					}
 				} elseif ( is_array( $values ) && count( $values ) === 1 ) {
 					echo esc_html( $values[0] );
@@ -194,7 +196,7 @@ final class Init {
 			}
 			echo '</ul>';
 		} else {
-			echo '<p>' . esc_html__( 'No post meta found.', 'wp2-update' ) . '</p>';
+			echo '<p>' . esc_html__( 'No post meta found.', WP2_UPDATE_TEXT_DOMAIN ) . '</p>';
 		}
 	}
 
@@ -204,7 +206,7 @@ final class Init {
 	public function add_app_health_metabox(): void {
 		add_meta_box(
 			'wp2_app_health',
-			__( 'App Health', 'wp2-update' ),
+			__( 'App Health', WP2_UPDATE_TEXT_DOMAIN ),
 			[ $this, 'render_app_health_metabox' ],
 			'wp2_github_app',
 			'side',
@@ -225,29 +227,30 @@ final class Init {
 		if ( 'post-new.php' === $pagenow ) {
 			wp_nonce_field( 'wp2_github_app_save_meta', 'wp2_github_app_nonce' );
 			?>
-			<h3><?php esc_html_e( 'App Ownership', 'wp2-update' ); ?></h3>
-			<p><?php esc_html_e( 'Before creating the App Connection, specify if it will be owned by a GitHub Organization.', 'wp2-update' ); ?></p>
+			<h3><?php esc_html_e( 'App Ownership', WP2_UPDATE_TEXT_DOMAIN ); ?></h3>
+			<p><?php esc_html_e( 'Before creating the App Connection, specify if it will be owned by a GitHub Organization.', WP2_UPDATE_TEXT_DOMAIN ); ?></p>
 			<table class="form-table">
 				<tbody>
 					<tr>
 						<th scope="row">
-							<label for="_wp2_github_organization"><?php esc_html_e( 'GitHub Organization (Optional)', 'wp2-update' ); ?></label>
+							<label for="_wp2_github_organization"><?php esc_html_e( 'GitHub Organization (Optional)', WP2_UPDATE_TEXT_DOMAIN ); ?></label>
 						</th>
 						<td>
 							<input type="text" name="_wp2_github_organization" id="_wp2_github_organization" class="regular-text" placeholder="e.g., my-company">
-							<p class="description"><?php esc_html_e( 'If this app should be owned by an organization, enter its name here. Otherwise, leave it blank to create it under your personal account.', 'wp2-update' ); ?></p>
+							<p class="description"><?php esc_html_e( 'If this app should be owned by an organization, enter its name here. Otherwise, leave it blank to create it under your personal account.', WP2_UPDATE_TEXT_DOMAIN ); ?></p>
 						</td>
 					</tr>
 				</tbody>
 			</table>
-			<p><em><?php esc_html_e( 'After specifying the owner, enter a title for this connection above and click "Publish". You will then be redirected here, and the GitHub App creation page will open in a new tab.', 'wp2-update' ); ?></em></p>
+			<p><em><?php esc_html_e( 'After specifying the owner, enter a title for this connection above and click "Publish". You will then be redirected here, and the GitHub App creation page will open in a new tab.', WP2_UPDATE_TEXT_DOMAIN ); ?></em></p>
 			<?php
 			return; // Stop rendering for the "new post" screen.
 		}
 
 		// --- On the "Edit" screen, show the full configuration form ---
 		if ( isset( $_GET['wp2_init_flow_nonce'] ) && wp_verify_nonce( sanitize_key( $_GET['wp2_init_flow_nonce'] ), 'wp2_init_flow_' . $post->ID ) ) {
-			$github_url = get_transient( 'wp2_github_url_' . $post->ID );
+			// Ensure the nonce is sanitized before verification.
+			$github_url = esc_url_raw( get_transient( 'wp2_github_url_' . $post->ID ) );
 			if ( $github_url ) {
 				delete_transient( 'wp2_github_url_' . $post->ID );
 				?>
@@ -267,55 +270,55 @@ final class Init {
 
 		?>
 		<p class="description">
-			<?php esc_html_e( 'After creating the app on GitHub, copy the generated credentials into the fields below, upload the private key, and save this connection.', 'wp2-update' ); ?>
+			<?php esc_html_e( 'After creating the app on GitHub, copy the generated credentials into the fields below, upload the private key, and save this connection.', WP2_UPDATE_TEXT_DOMAIN ); ?>
 		</p>
 		<table class="form-table">
 			<tbody>
 				<?php if ( ! empty( $organization ) ) : ?>
 					<tr>
-						<th><?php esc_html_e( 'GitHub Organization', 'wp2-update' ); ?></th>
+						<th><?php esc_html_e( 'GitHub Organization', WP2_UPDATE_TEXT_DOMAIN ); ?></th>
 						<td>
 							<code><?php echo esc_html( $organization ); ?></code>
-							<p class="description"><?php esc_html_e( 'This app is configured to be owned by this organization.', 'wp2-update' ); ?></p>
+							<p class="description"><?php esc_html_e( 'This app is configured to be owned by this organization.', WP2_UPDATE_TEXT_DOMAIN ); ?></p>
 						</td>
 					</tr>
 				<?php endif; ?>
 				<tr>
-					<th><label for="_wp2_app_id"><?php esc_html_e( 'App ID', 'wp2-update' ); ?></label></th>
+					<th><label for="_wp2_app_id"><?php esc_html_e( 'GitHub App ID', WP2_UPDATE_TEXT_DOMAIN ); ?></label></th>
 					<td><input type="text" id="_wp2_app_id" name="_wp2_app_id" value="<?php echo esc_attr( get_post_meta( $post->ID, '_wp2_app_id', true ) ); ?>" class="widefat" /></td>
 				</tr>
 				<tr>
-					<th><label for="_wp2_client_id"><?php esc_html_e( 'Client ID', 'wp2-update' ); ?></label></th>
+					<th><label for="_wp2_client_id"><?php esc_html_e( 'Client ID', WP2_UPDATE_TEXT_DOMAIN ); ?></label></th>
 					<td><input type="text" id="_wp2_client_id" name="_wp2_client_id" value="<?php echo esc_attr( get_post_meta( $post->ID, '_wp2_client_id', true ) ); ?>" class="widefat" autocomplete="username" /></td>
 				</tr>
 				<tr>
-					<th><label for="_wp2_client_secret"><?php esc_html_e( 'Client Secret', 'wp2-update' ); ?></label></th>
+					<th><label for="_wp2_client_secret"><?php esc_html_e( 'Client Secret', WP2_UPDATE_TEXT_DOMAIN ); ?></label></th>
 					<td>
 						<input type="password" id="_wp2_client_secret" name="_wp2_client_secret" value="" class="widefat" autocomplete="new-password" />
-						<p class="description"><?php esc_html_e( 'Enter a new Client Secret to update. Leave blank to keep the existing one.', 'wp2-update' ); ?></p>
+						<p class="description"><?php esc_html_e( 'Enter a new Client Secret to update. Leave blank to keep the existing one.', WP2_UPDATE_TEXT_DOMAIN ); ?></p>
 					</td>
 				</tr>
 				<tr>
-					<th><label for="_wp2_private_key_file"><?php esc_html_e( 'Private Key (.pem)', 'wp2-update' ); ?></label></th>
+					<th><label for="_wp2_private_key_file"><?php esc_html_e( 'Private Key (.pem)', WP2_UPDATE_TEXT_DOMAIN ); ?></label></th>
 					<td>
 						<?php if ( $private_key_set ) : ?>
-							<p style="color:#28a745;font-weight:bold;"><?php esc_html_e( '✔️ Private key is set and saved.', 'wp2-update' ); ?></p>
-							<label><input type="checkbox" name="clear_wp2_private_key" value="1"> <?php esc_html_e( 'Clear the saved key to upload a new one.', 'wp2-update' ); ?></label>
+							<p style="color:#28a745;font-weight:bold;"><?php esc_html_e( '✔️ Private key is set and saved.', WP2_UPDATE_TEXT_DOMAIN ); ?></p>
+							<label><input type="checkbox" name="clear_wp2_private_key" value="1"> <?php esc_html_e( 'Clear the saved key to upload a new one.', WP2_UPDATE_TEXT_DOMAIN ); ?></label>
 						<?php else : ?>
 							<input type="file" id="_wp2_private_key_file" name="_wp2_private_key_file" class="widefat" accept=".pem" />
-							<p class="description"><?php esc_html_e( 'Upload the .pem file generated by GitHub.', 'wp2-update' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Upload the .pem file generated by GitHub.', WP2_UPDATE_TEXT_DOMAIN ); ?></p>
 						<?php endif; ?>
 					</td>
 				</tr>
 				<tr>
-					<th><label for="_wp2_webhook_secret"><?php esc_html_e( 'Webhook Secret', 'wp2-update' ); ?></label></th>
+					<th><label for="_wp2_webhook_secret"><?php esc_html_e( 'Webhook Secret', WP2_UPDATE_TEXT_DOMAIN ); ?></label></th>
 					<td><input type="text" id="_wp2_webhook_secret" name="_wp2_webhook_secret" value="<?php echo esc_attr( get_post_meta( $post->ID, '_wp2_webhook_secret', true ) ); ?>" class="widefat" /></td>
 				</tr>
 				<tr>
-					<th><label for="_wp2_installation_id"><?php esc_html_e( 'Installation ID', 'wp2-update' ); ?></label></th>
+					<th><label for="_wp2_installation_id"><?php esc_html_e( 'Installation ID', WP2_UPDATE_TEXT_DOMAIN ); ?></label></th>
 					<td>
 						<input type="text" id="_wp2_installation_id" name="_wp2_installation_id" value="<?php echo esc_attr( get_post_meta( $post->ID, '_wp2_installation_id', true ) ); ?>" class="widefat" readonly />
-						<p class="description"><?php esc_html_e( 'This is populated automatically when you install the app on a repository.', 'wp2-update' ); ?></p>
+						<p class="description"><?php esc_html_e( 'This is populated automatically when you install the app on a repository.', WP2_UPDATE_TEXT_DOMAIN ); ?></p>
 					</td>
 				</tr>
 			</tbody>
@@ -323,15 +326,15 @@ final class Init {
 
 		<?php if ( $app_id_is_set && $private_key_set ) : ?>
 			<div style="padding:10px; background:#f0f6fc; border:1px solid #ccd0d4; margin-top:20px; border-left-width: 4px; border-left-color: #0969da;">
-				<h3><?php esc_html_e( 'Step 3: Install App on Repositories', 'wp2-update' ); ?></h3>
-				<p><?php esc_html_e( 'Now that your credentials are saved, you can install this app on your personal or organization\'s repositories to grant access.', 'wp2-update' ); ?></p>
+				<h3><?php esc_html_e( 'Step 3: Install App on Repositories', WP2_UPDATE_TEXT_DOMAIN ); ?></h3>
+				<p><?php esc_html_e( 'Now that your credentials are saved, you can install this app on your personal or organization\'s repositories to grant access.', WP2_UPDATE_TEXT_DOMAIN ); ?></p>
 				<?php
 				$site_hash        = substr( md5( (string) home_url() ), 0, 8 );
 				$app_name         = 'WP2 Update (' . $site_hash . ') - Post ' . $post->ID;
 				$app_slug         = sanitize_title( $app_name );
 				$installation_url = 'https://github.com/apps/' . $app_slug . '/installations/new';
 				?>
-				<a href="<?php echo esc_url( $installation_url ); ?>" class="button button-primary" target="_blank" rel="noopener"><?php esc_html_e( 'Install GitHub App', 'wp2-update' ); ?></a>
+				<a href="<?php echo esc_url( $installation_url ); ?>" class="button button-primary" target="_blank" rel="noopener"><?php esc_html_e( 'Install GitHub App', WP2_UPDATE_TEXT_DOMAIN ); ?></a>
 			</div>
 		<?php endif; ?>
 
@@ -346,7 +349,7 @@ final class Init {
 		if (
 			get_post_type( $post_id ) !== 'wp2_github_app' ||
 			! isset( $_POST['original_post_status'] ) ||
-			'auto-draft' !== $_POST['original_post_status']
+			'auto-draft' !== sanitize_text_field( $_POST['original_post_status'] )
 		) {
 			return $location;
 		}
@@ -399,15 +402,15 @@ final class Init {
 		$health_message  = get_post_meta( $post->ID, '_health_message', true );
 		$last_synced     = get_post_meta( $post->ID, '_last_synced_timestamp', true );
 		?>
-		<p><?php esc_html_e( 'This data is automatically managed by the background sync process.', 'wp2-update' ); ?></p>
+		<p><?php esc_html_e( 'This data is automatically managed by the background sync process.', WP2_UPDATE_TEXT_DOMAIN ); ?></p>
 		<table class="form-table">
 			<tbody>
 				<tr>
-					<th><?php esc_html_e( 'Managing App', 'wp2-update' ); ?></th>
-					<td><?php echo $managing_app_id ? esc_html( get_the_title( (int) $managing_app_id ) ) : esc_html__( 'N/A', 'wp2-update' ); ?></td>
+					<th><?php esc_html_e( 'Managing App', WP2_UPDATE_TEXT_DOMAIN ); ?></th>
+					<td><?php echo $managing_app_id ? esc_html( get_the_title( (int) $managing_app_id ) ) : esc_html__( 'N/A', WP2_UPDATE_TEXT_DOMAIN ); ?></td>
 				</tr>
 				<tr>
-					<th><?php esc_html_e( 'Health Status', 'wp2-update' ); ?></th>
+					<th><?php esc_html_e( 'Health Status', WP2_UPDATE_TEXT_DOMAIN ); ?></th>
 					<td>
 						<strong style="color: <?php echo ( 'ok' === $health_status ) ? '#28a745' : '#dc3545'; ?>;">
 							<?php echo esc_html( ucfirst( (string) $health_status ) ); ?>
@@ -416,8 +419,8 @@ final class Init {
 					</td>
 				</tr>
 				<tr>
-					<th><?php esc_html_e( 'Last Synced', 'wp2-update' ); ?></th>
-					<td><?php echo $last_synced ? esc_html( wp_date( 'Y-m-d H:i:s', (int) $last_synced ) ) : esc_html__( 'Never', 'wp2-update' ); ?></td>
+					<th><?php esc_html_e( 'Last Synced', WP2_UPDATE_TEXT_DOMAIN ); ?></th>
+					<td><?php echo $last_synced ? esc_html( wp_date( 'Y-m-d H:i:s', (int) $last_synced ) ) : esc_html__( 'Never', WP2_UPDATE_TEXT_DOMAIN ); ?></td>
 				</tr>
 			</tbody>
 		</table>
@@ -434,7 +437,7 @@ final class Init {
 
 		// Ensure the AppHealth service is available.
 		if ( ! class_exists( '\WP2\Update\Core\Health\AppHealth' ) ) {
-			echo '<p>' . esc_html__( 'AppHealth service is unavailable.', 'wp2-update' ) . '</p>';
+			echo '<p>' . esc_html__( 'AppHealth service is unavailable.', WP2_UPDATE_TEXT_DOMAIN ) . '</p>';
 			return;
 		}
 
@@ -448,8 +451,8 @@ final class Init {
 		$health_message = get_post_meta( $app_post_id, '_health_message', true );
 
 		// Display the health status and message.
-		echo '<p><strong>' . esc_html__( 'Status:', 'wp2-update' ) . '</strong> ' . esc_html( ucfirst( $health_status ) ) . '</p>';
-		echo '<p><strong>' . esc_html__( 'Message:', 'wp2-update' ) . '</strong> ' . esc_html( $health_message ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Status:', WP2_UPDATE_TEXT_DOMAIN ) . '</strong> ' . esc_html( ucfirst( $health_status ) ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Message:', WP2_UPDATE_TEXT_DOMAIN ) . '</strong> ' . esc_html( $health_message ) . '</p>';
 	}
 
 	/**
@@ -466,7 +469,7 @@ final class Init {
 		});
 
 		if ( empty( $filtered_logs ) ) {
-			echo '<p>' . esc_html__( 'No logs available for this app.', 'wp2-update' ) . '</p>';
+			echo '<p>' . esc_html__( 'No logs available for this app.', WP2_UPDATE_TEXT_DOMAIN ) . '</p>';
 			return;
 		}
 
@@ -505,7 +508,7 @@ final class Init {
 			update_post_meta( $post_id, '_wp2_client_secret', SharedUtils::encrypt( sanitize_text_field( (string) $_POST['_wp2_client_secret'] ) ) );
 		}
 
-		if ( isset( $_POST['clear_wp2_private_key'] ) && '1' === $_POST['clear_wp2_private_key'] ) {
+		if ( isset( $_POST['clear_wp2_private_key'] ) && '1' === sanitize_text_field( $_POST['clear_wp2_private_key'] ) ) {
 			delete_post_meta( $post_id, '_wp2_private_key_content' );
 		} elseif ( isset( $_FILES['_wp2_private_key_file'] ) && UPLOAD_ERR_OK === (int) $_FILES['_wp2_private_key_file']['error'] ) {
 			$uploaded_file = $_FILES['_wp2_private_key_file'];
@@ -549,9 +552,9 @@ final class Init {
 		foreach ( $columns as $key => $title ) {
 			$new_columns[ $key ] = $title;
 			if ( 'title' === $key ) {
-				$new_columns['managing_app'] = __( 'Managing App', 'wp2-update' );
-				$new_columns['health_status'] = __( 'Health Status', 'wp2-update' );
-				$new_columns['last_synced'] = __( 'Last Synced', 'wp2-update' );
+				$new_columns['managing_app'] = __( 'Managing App', WP2_UPDATE_TEXT_DOMAIN );
+				$new_columns['health_status'] = __( 'Health Status', WP2_UPDATE_TEXT_DOMAIN );
+				$new_columns['last_synced'] = __( 'Last Synced', WP2_UPDATE_TEXT_DOMAIN );
 			}
 		}
 		return $new_columns;
@@ -565,7 +568,7 @@ final class Init {
 		switch ( $column ) {
 			case 'managing_app':
 				$app_post_id = (int) get_post_meta( $post_id, '_managing_app_post_id', true );
-				echo $app_post_id ? esc_html( get_the_title( $app_post_id ) ) : esc_html__( 'N/A', 'wp2-update' );
+				echo $app_post_id ? esc_html( get_the_title( $app_post_id ) ) : esc_html__( 'N/A', WP2_UPDATE_TEXT_DOMAIN );
 				break;
 
 			case 'health_status':
@@ -578,7 +581,7 @@ final class Init {
 
 			case 'last_synced':
 				$timestamp = (int) get_post_meta( $post_id, '_last_synced_timestamp', true );
-				echo $timestamp ? esc_html( wp_date( 'Y-m-d H:i:s', $timestamp ) ) : esc_html__( 'Never', 'wp2-update' );
+				echo $timestamp ? esc_html( wp_date( 'Y-m-d H:i:s', $timestamp ) ) : esc_html__( 'Never', WP2_UPDATE_TEXT_DOMAIN );
 				break;
 		}
 	}
@@ -594,9 +597,9 @@ final class Init {
         foreach ( $columns as $key => $title ) {
             $new_columns[ $key ] = $title;
             if ( 'title' === $key ) {
-                $new_columns['app_id'] = __( 'App ID', 'wp2-update' );
-                $new_columns['client_id'] = __( 'Client ID', 'wp2-update' );
-                $new_columns['installation_id'] = __( 'Installation ID', 'wp2-update' );
+                $new_columns['app_id'] = __( 'App ID', WP2_UPDATE_TEXT_DOMAIN );
+                $new_columns['client_id'] = __( 'Client ID', WP2_UPDATE_TEXT_DOMAIN );
+                $new_columns['installation_id'] = __( 'Installation ID', WP2_UPDATE_TEXT_DOMAIN );
             }
         }
         return $new_columns;
@@ -642,9 +645,9 @@ final class Init {
 	 * Success notice after automated setup.
 	 */
 	public function show_automated_setup_success_notice(): void {
-		if ( isset( $_GET['message'] ) && 'app_created' === $_GET['message'] ) {
+		if ( isset( $_GET['message'] ) && 'app_created' === sanitize_text_field( $_GET['message'] ) ) {
 			echo '<div class="notice notice-success is-dismissible"><p>' .
-				esc_html__( 'Success! Your GitHub App has been created. Please copy the credentials into the form below.', 'wp2-update' ) .
+				esc_html__( 'Success! Your GitHub App has been created. Please copy the credentials into the form below.', WP2_UPDATE_TEXT_DOMAIN ) .
 				'</p></div>';
 		}
 	}
@@ -653,9 +656,11 @@ final class Init {
 	 * Success notice after installation ID is saved.
 	 */
 	public function show_installation_saved_notice(): void {
-		if ( isset( $_GET['message'] ) && 'installation_saved' === $_GET['message'] ) {
+		if ( isset( $_GET['message'] ) && 'installation_saved' === sanitize_text_field( $_GET['message'] ) ) {
+			$timestamp = date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) );
 			echo '<div class="notice notice-success is-dismissible"><p>' .
-				esc_html__( 'Success! The Installation ID has been saved.', 'wp2-update' ) .
+				esc_html__( 'Success! The Installation ID has been saved.', WP2_UPDATE_TEXT_DOMAIN ) . '<br>' .
+				esc_html__( 'Timestamp:', WP2_UPDATE_TEXT_DOMAIN ) . ' ' . esc_html( $timestamp ) .
 				'</p></div>';
 		}
 	}
@@ -667,9 +672,9 @@ final class Init {
         $error_code = get_transient( 'wp2_github_setup_error' );
         if ( false !== $error_code ) {
             delete_transient( 'wp2_github_setup_error' );
-            $message = __( 'An unknown error occurred during the automated setup.', 'wp2-update' );
+            $message = __( 'An unknown error occurred during the automated setup.', WP2_UPDATE_TEXT_DOMAIN );
             if ( 'invalid_request' === $error_code ) {
-                $message = __( 'Invalid callback request or session expired. Please try again.', 'wp2-update' );
+                $message = __( 'Invalid callback request or session expired. Please try again.', WP2_UPDATE_TEXT_DOMAIN );
             }
 			echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
         }
@@ -685,67 +690,97 @@ final class Init {
 			return;
 		}
 
-		// Check if the installation_id is present in the URL.
-		if ( isset( $_GET['installation_id'] ) ) {
-			$post_id         = (int) $_GET['post'];
-			$installation_id = (int) $_GET['installation_id'];
+		$nonce = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
 
-			if ( ! current_user_can( 'edit_post', $post_id ) ) {
-				return;
-			}
-
-			// Save the installation ID.
-			update_post_meta( $post_id, '_wp2_installation_id', $installation_id );
-
-			// Trigger a sync immediately.
-			$this->trigger_post_save_actions( $post_id );
-
-			// Redirect to a clean URL to remove the query parameters from the browser history.
-			$redirect_url = add_query_arg(
-				[
-					'post'    => $post_id,
-					'action'  => 'edit',
-					'message' => 'installation_saved',
-				],
-				admin_url( 'post.php' )
-			);
-			wp_safe_redirect( $redirect_url );
-			exit;
+		// If a nonce is present but invalid, surface an admin notice instead of halting execution.
+		if ( $nonce && ! wp_verify_nonce( $nonce, 'wp2_installation_id_callback' ) ) {
+			Logger::log_debug( 'GitHub installation callback received with invalid nonce; proceeding with capability checks.', 'github-app' );
 		}
+
+		if ( ! $nonce ) {
+			Logger::log_debug( 'GitHub installation callback received without nonce; proceeding with capability checks.', 'github-app' );
+		}
+
+		// Validate the installation_id parameter.
+        if ( ! isset( $_GET['installation_id'] ) || ! is_numeric( $_GET['installation_id'] ) ) {
+            Logger::log_debug( 'GitHub installation callback received with missing or invalid installation_id.', 'github-app' );
+            return;
+        }
+
+        $installation_id = absint( $_GET['installation_id'] );
+
+        // Validate the post_id parameter.
+        if ( ! isset( $_GET['post'] ) || ! is_numeric( $_GET['post'] ) ) {
+            Logger::log_debug( 'GitHub installation callback received with missing or invalid post_id.', 'github-app' );
+            return;
+        }
+
+        $post_id = absint( $_GET['post'] );
+
+        // Ensure the user has permission to edit the post.
+        if ( ! current_user_can( 'edit_post', $post_id ) ) {
+            Logger::log_debug( 'GitHub installation callback received by a user without permission to edit the post.', 'github-app' );
+            return;
+        }
+
+        // Save the installation ID.
+        update_post_meta( $post_id, '_wp2_installation_id', $installation_id );
+
+        // Trigger a sync immediately.
+        $this->trigger_post_save_actions( $post_id );
+
+        // Redirect to a clean URL to remove the query parameters from the browser history.
+        $redirect_url = add_query_arg(
+            [
+                'post'    => $post_id,
+                'action'  => 'edit',
+                'message' => 'installation_saved',
+            ],
+            admin_url( 'post.php' )
+        );
+        wp_safe_redirect( $redirect_url );
+        exit;
 	}
 
 	/**
 	 * @param array<string,mixed> $payload
 	 */
 	public function handle_github_installation_event( array $payload ): void {
-		if ( isset( $payload['installation']['id'], $payload['installation']['app_id'] ) ) {
-			$installation_id = $payload['installation']['id'];
-			$app_id          = $payload['installation']['app_id'];
+		// Validate payload for GitHub installation event.
+        if ( empty( $payload['installation']['id'] ) || empty( $payload['installation']['app_id'] ) ) {
+            Logger::log_debug( 'Invalid payload received for GitHub installation event.', 'webhook' );
+            return;
+        }
 
-			Logger::log_debug( 'Handling GitHub installation event. Payload keys: ' . implode( ', ', array_keys( (array) $payload ) ), 'webhook' );
-			Logger::log_debug( sprintf( 'Installation ID %s associated with App ID %s.', (string) $installation_id, (string) $app_id ), 'webhook' );
+        $installation_id = absint( $payload['installation']['id'] );
+        $app_id          = absint( $payload['installation']['app_id'] );
 
-			$app_query = new \WP_Query(
-				[
-					'post_type'      => 'wp2_github_app',
-					'meta_key'       => '_wp2_app_id',
-					'meta_value'     => $app_id,
-					'posts_per_page' => 1,
-					'fields'         => 'ids',
-				]
-			);
+        Logger::log_debug( 'Handling GitHub installation event. Payload keys: ' . implode( ', ', array_keys( (array) $payload ) ), 'webhook' );
+        Logger::log_debug( sprintf( 'Installation ID %s associated with App ID %s.', (string) $installation_id, (string) $app_id ), 'webhook' );
 
-			if ( ! empty( $app_query->posts ) ) {
-				$app_post_id = $app_query->posts[0];
-				update_post_meta( $app_post_id, '_wp2_installation_id', $installation_id );
-			}
-		}
+        $app_query = new \WP_Query(
+            [
+                'post_type'      => 'wp2_github_app',
+                'meta_key'       => '_wp2_app_id',
+                'meta_value'     => $app_id,
+                'posts_per_page' => 1,
+                'fields'         => 'ids',
+            ]
+        );
+
+        if ( empty( $app_query->posts ) ) {
+            Logger::log_debug( 'No app post found for App ID ' . $app_id, 'webhook' );
+            return;
+        }
+
+        $app_post_id = $app_query->posts[0];
+        update_post_meta( $app_post_id, '_wp2_installation_id', $installation_id );
 	}
 
 	public function handle_update_check(): void {
         // Verify nonce for security.
         if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'wp2_update_check')) {
-            wp_die(__('Invalid request.', 'wp2-update'));
+            wp_die(__('Invalid request.', WP2_UPDATE_TEXT_DOMAIN ));
         }
 
         // Perform the check logic here.
@@ -768,7 +803,7 @@ final class Init {
         // Simulate performing a check and returning results.
         return [
             'status' => 'success',
-            'message' => __('Update check completed successfully.', 'wp2-update'),
+            'message' => __('Update check completed successfully.', WP2_UPDATE_TEXT_DOMAIN ),
         ];
     }
 
@@ -789,4 +824,3 @@ final class Init {
         printf('<div class="notice %s is-dismissible"><p>%s</p></div>', esc_attr($class), esc_html($message));
     }
 }
-

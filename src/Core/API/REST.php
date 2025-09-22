@@ -34,7 +34,7 @@ final class REST {
 	 */
 	public function setup_routes(): void {
 		$permission_callback = static function (): bool {
-			return current_user_can( 'manage_options' );
+			return current_user_can( 'manage_wp2_updates' );
 		};
 
 		register_rest_route(
@@ -101,7 +101,9 @@ final class REST {
 	}
 
 	/**
-	 * @return \WP_REST_Response
+	 * Retrieves the connection status of the GitHub app.
+	 *
+	 * @return \WP_REST_Response The REST response containing the connection status.
 	 */
 	public function get_connection_status() {
 		$status = $this->github_app->get_connection_status();
@@ -117,13 +119,20 @@ final class REST {
 		if ( '' === $app_slug ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => __( 'No app slug provided.', 'wp2-update' ) ] );
 		}
-		
+
 		$response = $this->github_app->test_connection( $app_slug );
-		
+
 		if ( $response['success'] ) {
-			return rest_ensure_response( [ 'success' => true, 'message' => __( 'Connection test successful!', 'wp2-update' ) ] );
+			return rest_ensure_response( [
+				'success' => true,
+				'message' => __( 'Connection test successful!', 'wp2-update' ),
+				'data'    => $response['data'],
+			] );
 		} else {
-			return rest_ensure_response( [ 'success' => false, 'message' => $response['data'] ] );
+			return rest_ensure_response( [
+				'success' => false,
+				'message' => $response['data'] ?? __( 'Unknown error occurred.', 'wp2-update' ),
+			] );
 		}
 	}
 

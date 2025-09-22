@@ -1,10 +1,6 @@
 <?php
 namespace WP2\Update\Core\API;
 
-use WP_Error;
-use WP_REST_Request;
-use WP_REST_Response;
-
 /**
  * Registers REST API endpoints for managing backups.
  */
