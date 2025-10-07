@@ -46,7 +46,7 @@ final class Init {
         // Register services
         $container->register('GitHubService', fn() => new GitHubService());
         $container->register('GitHubApp', fn($c) => new GitHubApp($c->resolve('GitHubService')));
-        $container->register('SharedUtils', fn($c) => new SharedUtils($c->resolve('GitHubApp')));
+        $container->register('SharedUtils', fn($c) => new SharedUtils($c->resolve('GitHubApp'), $c->resolve('GitHubService')));
         $container->register('PackageFinder', fn($c) => new PackageFinder($c->resolve('SharedUtils')));
         $container->register('Connection', fn($c) => new Connection($c->resolve('PackageFinder')));
         $container->register('ModelsInit', fn() => new ModelsInit());

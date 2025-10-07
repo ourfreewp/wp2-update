@@ -6,6 +6,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
+use WP2\Update\Core\API\Service as GitHubService;
+use WP_Error;
 
 use const HOUR_IN_SECONDS;
 
@@ -18,12 +20,15 @@ final class SharedUtils {
 	 * @var GitHubApp
 	 */
 	private GitHubApp $github_app;
+	private GitHubService $github_service;
 
 	/**
 	 * @param GitHubApp $github_app The GitHub App facade used for API calls.
+	 * @param GitHubService $github_service The GitHub Service for API calls.
 	 */
-	public function __construct( GitHubApp $github_app ) {
+	public function __construct( GitHubApp $github_app, GitHubService $github_service ) {
 		$this->github_app = $github_app;
+		$this->github_service = $github_service;
 	}
 
 	/**
@@ -245,4 +250,68 @@ final class SharedUtils {
 
 		return false;
 	}
+
+    /**
+     * Unified installation logic for themes and plugins.
+     *
+     * @param string $app_slug The app slug to use for authentication.
+     * @param string $repo     The repository name ("owner/repo").
+     * @param string $version  The tag name to install.
+     * @param string $type     The type of package ("theme" or "plugin").
+     * @return true|WP_Error True on success, WP_Error on failure.
+     */
+    public function install_package( string $app_slug, string $repo, string $version, string $type ) {
+        Logger::log( "Attempting to install {$type} {$repo} version {$version} using app {$app_slug}.", 'info', 'install' );
+
+        $release_res = $this->github_app->gh($app_slug, 'GET', "/repos/{$repo}/releases/tags/{$version}");
+        if (empty($release_res['ok'])) {
+            Logger::log("Install failed: Could not fetch release info for tag {$version}. Error: " . ($release_res['error'] ?? 'Unknown'), 'error', 'install');
+            return new WP_Error('release_fetch_failed', __('Could not fetch release information from GitHub.', 'wp2-update'));
+        }
+
+        $zip_url = $this->get_zip_url_from_release( $release_res['data'] );
+        if ( ! $zip_url ) {
+            Logger::log( "Install failed: No ZIP asset found for tag {$version}.", 'error', 'install' );
+            return new WP_Error( 'no_zip_asset', __( 'The selected release does not contain a valid ZIP file asset.', 'wp2-update' ) );
+        }
+
+        if ( defined( 'DISALLOW_FILE_MODS' ) && DISALLOW_FILE_MODS ) {
+            Logger::log( 'Install failed: File modifications are disabled (DISALLOW_FILE_MODS).', 'error', 'install' );
+            return new WP_Error( 'file_mods_disabled', __( 'File modifications are disabled in your WordPress configuration.', 'wp2-update' ) );
+        }
+
+        // Load WordPress Core files required for installation.
+        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+        if ( $type === 'theme' ) {
+            require_once ABSPATH . 'wp-admin/includes/theme.php';
+            $skin = new \Automatic_Upgrader_Skin();
+            $upgrader = new \Theme_Upgrader( $skin );
+        } else {
+            require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+            $skin = new \Automatic_Upgrader_Skin();
+            $upgrader = new \Plugin_Upgrader( $skin );
+        }
+
+        // Use authenticated client to download the file.
+        $temp_zip_file = $this->github_service->download_to_temp_file( $app_slug, $zip_url );
+        if ( is_wp_error( $temp_zip_file ) ) {
+            return $temp_zip_file;
+        }
+
+        // Install the package.
+        $result = $upgrader->install( $temp_zip_file );
+
+        // Clean up the temporary file, regardless of success or failure.
+        if ( $temp_zip_file && file_exists( $temp_zip_file ) ) {
+            @unlink( $temp_zip_file );
+        }
+
+        if ( is_wp_error( $result ) ) {
+            Logger::log( "Install failed: " . $result->get_error_message(), 'error', 'install' );
+            return $result;
+        }
+
+        Logger::log( ucfirst($type) . " {$repo} version {$version} installed successfully.", 'success', 'install');
+        return true;
+    }
 }

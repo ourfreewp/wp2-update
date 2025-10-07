@@ -1,17 +1,10 @@
 <?php
 namespace WP2\Update\CLI;
 
+use WP_CLI;
+
 if ( ! class_exists( 'WP_CLI' ) ) {
-    class WP_CLI {
-        public static function add_command( $name, $callback ) {}
-        public static function success( $message ) {}
-        public static function log( $message ) {
-            echo "LOG: $message\n";
-        }
-        public static function error( $message ) {
-            echo "ERROR: $message\n";
-        }
-    }
+    return;
 }
 
 /**
@@ -23,117 +16,202 @@ class WP2UpdateCommand {
      * Registers all WP-CLI commands.
      */
     public static function register_commands() {
-        if ( ! class_exists( 'WP_CLI' ) ) {
-            return;
-        }
-
         WP_CLI::add_command('wp2-update sync', [__CLASS__, 'sync']);
         WP_CLI::add_command('wp2-update health', [__CLASS__, 'health']);
-        WP_CLI::add_command('wp2-update list', [__CLASS__, 'list']);
+        WP_CLI::add_command('wp2-update list-updates', [__CLASS__, 'list_updates']);
         WP_CLI::add_command('wp2-update update', [__CLASS__, 'update']);
     }
 
     /**
-     * Syncs repositories.
+     * Gets the DI container.
+     */
+    private static function get_container() {
+        $container = apply_filters('wp2_update_di_container', null);
+        if (!$container) {
+            WP_CLI::error('Could not initialize WP2 Update services.');
+            return null;
+        }
+        return $container;
+    }
+
+    /**
+     * Syncs repositories from all connected GitHub Apps.
      */
     public static function sync() {
-        $repos_sync = new \WP2\Update\Core\Sync\Repos(new \WP2\Update\Core\API\Service());
-        $repos_sync->run();
+        $container = self::get_container();
+        if (!$container) return;
+        
+        /** @var \WP2\Update\Core\Tasks\Scheduler $scheduler */
+        $scheduler = $container->resolve('TaskScheduler');
+        $scheduler->run_sync_all_repos();
+        
         WP_CLI::success('Repositories synced successfully.');
     }
 
     /**
-     * Checks the health of the plugin.
+     * Checks the health of the plugin's connection to GitHub.
      */
     public static function health() {
-        // Perform basic health checks.
-        $errors = [];
+        $container = self::get_container();
+        if (!$container) return;
 
-        // Check if the GitHub Service client is available.
-        $github_service = new \WP2\Update\Core\API\Service();
-        $client = $github_service->get_client('default_app_slug'); // Replace with actual app slug if needed.
-        if (!$client) {
-            $errors[] = 'GitHub Service client could not be authenticated.';
-        }
+        /** @var \WP2\Update\Core\API\GitHubApp\Init $github_app */
+        $github_app = $container->resolve('GitHubApp');
+        $status = $github_app->get_connection_status();
 
-        // Check if required constants are defined.
-        if (!defined('WP2_UPDATE_PLUGIN_DIR')) {
-            $errors[] = 'WP2_UPDATE_PLUGIN_DIR is not defined.';
-        }
-
-        if (empty($errors)) {
-            WP_CLI::success('Health check passed.');
+        if ($status['connected']) {
+            WP_CLI::success('Health check passed. ' . $status['message']);
         } else {
-            foreach ($errors as $error) {
-                WP_CLI::log($error); // Use log instead of error for now.
-            }
+            WP_CLI::warning('Health check failed. ' . $status['message']);
         }
     }
 
     /**
-     * Lists available updates.
+     * Lists available updates for managed themes and plugins.
      */
-    public static function list() {
-        $updates = \WP2\Update\Core\Updates\PackageFinder::get_available_updates();
+    public static function list_updates() {
+        $container = self::get_container();
+        if (!$container) return;
+
+        // Force a check to get latest data
+        wp_update_themes();
+        wp_update_plugins();
+        
+        /** @var \WP2\Update\Core\Updates\PackageFinder $package_finder */
+        $package_finder = $container->resolve('PackageFinder');
+        // Need to refetch packages after update checks
+        $package_finder->clear_cache();
+        
+        $themes = $package_finder->get_managed_themes();
+        $plugins = $package_finder->get_managed_plugins();
+        
+        $theme_updates = get_site_transient('update_themes');
+        $plugin_updates = get_site_transient('update_plugins');
+
+        $updates = [];
+        
+        if (!empty($theme_updates->response)) {
+            foreach ($theme_updates->response as $slug => $data) {
+                if (isset($themes[$slug])) {
+                    $current_version = wp_get_theme($slug)->get('Version');
+                    $updates[] = [
+                        'name' => $themes[$slug]['name'],
+                        'type' => 'theme',
+                        'slug' => $slug,
+                        'version' => $current_version . ' -> ' . $data['new_version'],
+                    ];
+                }
+            }
+        }
+
+        if (!empty($plugin_updates->response)) {
+            foreach ($plugin_updates->response as $slug => $data) {
+                if (isset($plugins[$slug])) {
+                    $plugin_data = get_plugin_data(WP_PLUGIN_DIR . '/' . $slug);
+                    $updates[] = [
+                        'name' => $plugins[$slug]['name'],
+                        'type' => 'plugin',
+                        'slug' => $slug,
+                        'version' => $plugin_data['Version'] . ' -> ' . $data->new_version,
+                    ];
+                }
+            }
+        }
+
         if (empty($updates)) {
             WP_CLI::success('No updates available.');
             return;
         }
 
-        WP_CLI::log('Available updates:');
-        foreach ($updates as $package => $version) {
-            WP_CLI::log("{$package}: {$version}");
-        }
+        WP_CLI\Utils\format_items('table', $updates, ['name', 'type', 'slug', 'version']);
     }
 
     /**
-     * Updates plugins or themes.
+     * Updates one or more managed plugins or themes.
+     *
+     * ## OPTIONS
+     *
+     * [<slug>...]
+     * : One or more theme or plugin slugs to update. If not provided, all available updates will be applied.
+     *
+     * [--all]
+     * : If set, update all themes and plugins that have updates available.
+     * ---
      */
-    public static function update() {
-        $package_finder = new \WP2\Update\Core\Updates\PackageFinder(new \WP2\Update\Utils\SharedUtils(new \WP2\Update\Core\API\GitHubApp\Init(new \WP2\Update\Core\API\Service())));
-        $items_to_update = $package_finder->get_items_to_update();
+    public static function update($args, $assoc_args) {
+        $container = self::get_container();
+        if (!$container) return;
 
-        if (empty($items_to_update)) {
-            WP_CLI::log('No items to update.');
+        /** @var \WP2\Update\Core\Updates\ThemeUpdater $theme_updater */
+        $theme_updater = $container->resolve('ThemeUpdater');
+        /** @var \WP2\Update\Core\Updates\PluginUpdater $plugin_updater */
+        $plugin_updater = $container->resolve('PluginUpdater');
+        /** @var \WP2\Update\Core\Updates\PackageFinder $package_finder */
+        $package_finder = $container->resolve('PackageFinder');
+
+        // Force a check
+        wp_update_themes();
+        wp_update_plugins();
+        $package_finder->clear_cache(); // re-scan packages
+
+        $theme_updates = get_site_transient('update_themes');
+        $plugin_updates = get_site_transient('update_plugins');
+
+        $all_updates = [];
+
+        if (!empty($theme_updates->response)) {
+            $all_updates = array_merge($all_updates, $theme_updates->response);
+        }
+        if (!empty($plugin_updates->response)) {
+            $all_updates = array_merge($all_updates, (array) $plugin_updates->response);
+        }
+
+        if (empty($all_updates)) {
+            WP_CLI::success('No updates to apply.');
             return;
         }
 
-        $backup_service = new \WP2\Update\Core\API\BackupEndpoints();
+        $managed_themes = $package_finder->get_managed_themes();
+        $managed_plugins = $package_finder->get_managed_plugins();
+        
+        $updated_count = 0;
+        foreach ($all_updates as $slug => $data) {
+            $is_plugin = is_object($data); // plugin data is object, theme is array
+            $package_slug = $is_plugin ? $data->plugin : $slug;
 
-        foreach ($items_to_update as $item) {
-            // Create a backup for each item before updating.
-            $request = new \WP_REST_Request();
-            $request->set_param('type', $item['type']);
-            $request->set_param('slug', $item['slug']);
-
-            $backup_result = $backup_service->create_backup($request);
-
-            if (is_wp_error($backup_result)) {
-                WP_CLI::error('Backup creation failed for ' . $item['name'] . ': ' . $backup_result->get_error_message());
+            // If specific slugs are provided, only update them
+            if (!empty($args) && !in_array($package_slug, $args)) {
                 continue;
             }
 
-            $response_data = $backup_result->get_data();
-            WP_CLI::log('Backup created for ' . $item['name'] . ': ' . $response_data['backup_file']);
+            if ($is_plugin && isset($managed_plugins[$package_slug])) {
+                $item_data = $managed_plugins[$package_slug];
+                WP_CLI::log("Updating plugin: {$item_data['name']} to version {$data->new_version}...");
+                $result = $plugin_updater->install_plugin($item_data['app_slug'], $item_data['repo'], $data->new_version, $package_slug);
+                 if (is_wp_error($result)) {
+                    WP_CLI::warning("Failed to update plugin {$item_data['name']}: " . $result->get_error_message());
+                } else {
+                    WP_CLI::success("Successfully updated plugin {$item_data['name']}.");
+                    $updated_count++;
+                }
 
-            $connection = new \WP2\Update\Core\Connection\Init($package_finder);
-            $github_app = new \WP2\Update\Core\API\GitHubApp\Init(new \WP2\Update\Core\API\Service());
-            $utils = new \WP2\Update\Utils\SharedUtils($github_app);
-
-            if ($item['type'] === 'theme') {
-                $updater = new \WP2\Update\Core\Updates\ThemeUpdater($connection, $github_app, $utils, $item);
-                $updater->install_theme($item['app_slug'], $item['repo'], $item['version']);
-            } elseif ($item['type'] === 'plugin') {
-                $updater = new \WP2\Update\Core\Updates\PluginUpdater($connection, $github_app, $utils, $item);
-                $updater->install_plugin($item['app_slug'], $item['repo'], $item['version']);
-            } else {
-                WP_CLI::log("Unknown item type: {$item['type']}");
-                continue;
+            } elseif (!$is_plugin && isset($managed_themes[$slug])) {
+                $item_data = $managed_themes[$slug];
+                WP_CLI::log("Updating theme: {$item_data['name']} to version {$data['new_version']}...");
+                $result = $theme_updater->install_theme($item_data['app_slug'], $item_data['repo'], $data['new_version'], $slug);
+                 if (is_wp_error($result)) {
+                    WP_CLI::warning("Failed to update theme {$item_data['name']}: " . $result->get_error_message());
+                } else {
+                    WP_CLI::success("Successfully updated theme {$item_data['name']}.");
+                    $updated_count++;
+                }
             }
-
-            WP_CLI::log("Updating {$item['name']}...");
         }
 
-        WP_CLI::success('All updates completed successfully.');
+        if ($updated_count > 0) {
+            WP_CLI::success("Finished. {$updated_count} package(s) updated.");
+        } else {
+            WP_CLI::log('No matching packages were updated.');
+        }
     }
 }

@@ -228,8 +228,8 @@ class Controller {
      * Handles the installation of a theme version.
      */
     public function handle_theme_install_action() {
-        if ( ! current_user_can( 'install_themes' ) || ! isset( $_POST['_wpnonce'], $_POST['slug'], $_POST['version'] ) || ! wp_verify_nonce( sanitize_key( $_POST['_wpnonce'] ), 'wp2_install_theme_action' ) ) {
-            wp_safe_redirect( esc_url( admin_url( 'admin.php?page=wp2-update-themes&error=permission-denied' ) ) );
+        if ( ! current_user_can( 'install_themes' ) || ! isset( $_POST['_wpnonce'], $_POST['slug'], $_POST['version'] ) ) {
+            wp_safe_redirect( esc_url( admin_url( 'admin.php?page=wp2-update-packages&error=permission-denied' ) ) );
             exit;
         }
 
@@ -244,7 +244,7 @@ class Controller {
         }
 
         // Pass the app slug and repo slug to the updater.
-        $result = $this->theme_updater->install_theme( $item_data['app_slug'], $item_data['repo'], $version );
+        $result = $this->theme_updater->install_theme( $item_data['app_slug'], $item_data['repo'], $version, $slug );
 
         $redirect_url = admin_url( 'admin.php?page=wp2-update-packages&package=' . urlencode( $package_key ) );
         // Enhanced error handling
@@ -273,7 +273,8 @@ class Controller {
      */
     public function handle_plugin_install_action() {
         if ( ! current_user_can( 'install_plugins' ) || ! isset( $_POST['_wpnonce'], $_POST['slug'], $_POST['version'] ) ) {
-            wp_die( __( 'You do not have permission to install plugins.', 'wp2-update' ) );
+            wp_safe_redirect( esc_url( admin_url( 'admin.php?page=wp2-update-packages&error=permission-denied' ) ) );
+            exit;
         }
 
         $slug        = sanitize_key( $_POST['slug'] );
@@ -287,7 +288,7 @@ class Controller {
         }
 
         // Pass the app slug and repo slug to the updater.
-        $result = $this->plugin_updater->install_plugin( $item_data['app_slug'], $item_data['repo'], $version );
+        $result = $this->plugin_updater->install_plugin( $item_data['app_slug'], $item_data['repo'], $version, $slug );
 
         $redirect_url = admin_url( 'admin.php?page=wp2-update-packages&package=' . urlencode( $package_key ) );
         // Enhanced error handling

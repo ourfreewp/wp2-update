@@ -90,10 +90,27 @@ class PluginUpdater {
      * @param string $app_slug The app slug to use for authentication.
      * @param string $repo     The repository name ("owner/repo").
      * @param string $version  The tag name to install.
+     * @param string $slug     The plugin slug (e.g., 'my-plugin/my-plugin.php').
      * @return true|WP_Error True on success, WP_Error on failure.
      */
-    public function install_plugin( string $app_slug, string $repo, string $version ) {
-        return $this->install_package( $app_slug, $repo, $version, 'plugin' );
+    public function install_plugin( string $app_slug, string $repo, string $version, string $slug ) {
+        $result = $this->install_package( $app_slug, $repo, $version, 'plugin' );
+
+        if (true === $result) {
+            // Activate plugin after successful installation.
+            // This is safe to call on an already active plugin.
+            $activation_result = activate_plugin($slug);
+            if (is_wp_error($activation_result)) {
+                Logger::log(
+                    'Plugin installed, but failed to activate: ' . $activation_result->get_error_message(),
+                    'warning',
+                    'install'
+                );
+                // Don't return an error for this, as the install itself succeeded.
+            }
+        }
+
+        return $result;
     }
 
     /**

@@ -84,9 +84,12 @@ class ThemeUpdater {
      * @param string $app_slug The app slug to use for authentication.
      * @param string $repo     The repository name ("owner/repo").
      * @param string $version  The tag name to install.
+     * @param string $slug     The theme slug (directory name).
      * @return true|WP_Error True on success, WP_Error on failure.
      */
-    public function install_theme( string $app_slug, string $repo, string $version ) {
+    public function install_theme( string $app_slug, string $repo, string $version, string $slug ) {
+        // The slug isn't used here, as theme activation is a manual user step,
+        // but it's included for method signature consistency.
         return $this->install_package( $app_slug, $repo, $version, 'theme' );
     }
 
