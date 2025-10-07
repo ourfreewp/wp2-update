@@ -43,3 +43,7 @@ function something()
 {
     // ..
 }
+
+// Disable colors during tests to avoid Termwind color issues
+putenv('NO_COLOR=1');
+putenv('TERM=dumb');

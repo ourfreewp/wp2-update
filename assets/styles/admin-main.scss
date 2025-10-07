@@ -578,6 +578,27 @@ $bp-xl: 1200px;
 	}
 }
 
+.wp2-button--destructive {
+	background-color: #ff4d4d;
+	/* Red background for destructive actions */
+	color: #ffffff;
+	/* White text */
+	border: 1px solid #ff0000;
+	/* Red border */
+	@include transition-fast;
+
+	&:hover {
+		background-color: #e60000;
+		/* Darker red on hover */
+		border-color: #cc0000;
+		/* Darker border */
+	}
+
+	&:focus {
+		@include focus-ring-light;
+	}
+}
+
 .wp2-btn--outline-dark {
 	background-color: transparent;
 	border-color: #555555;

@@ -4,6 +4,7 @@ namespace WP2\Update\Admin\Pages;
 use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Utils\SharedUtils;
+use WP2\Update\Utils\Console\Palette;
 
 class SystemHealthPage {
     private $connection;
@@ -16,6 +17,18 @@ class SystemHealthPage {
         $this->utils = $utils;
     }
 
+    private function map_status_to_color(string $status): string {
+        $map = [
+            'status-success' => 'green',
+            'status-danger' => 'red',
+        ];
+
+        $mappedColor = $map[$status] ?? 'gray';
+        error_log("Mapping status '$status' to color '$mappedColor'"); // Log the mapping for debugging
+        file_put_contents(__DIR__ . '/debug.log', "Mapping status '$status' to color '$mappedColor'\n", FILE_APPEND); // Inline logging to debug.log
+        return $mappedColor;
+    }
+
     private function render_health_section($title, $items) {
         ?>
         <h2 class="wp2-health-header"><?php echo esc_html($title); ?></h2>
@@ -24,7 +37,15 @@ class SystemHealthPage {
                 <?php foreach ($items as $item): ?>
                     <tr>
                         <td class="cell-label"><?php echo esc_html($item['label']); ?></td>
-                        <td><?php echo ! empty( $item['allow_html'] ) ? $item['value'] : wp_kses_post( $item['value'] ); ?></td>
+                        <td>
+                            <?php
+                            $sanitizedClass = Palette::sanitize_classes($item['value']);
+                            error_log("Sanitizing class: " . $item['value']); // Log the class being sanitized
+                            // Inline debugging to identify the problematic token
+                            echo "Sanitizing class: " . $item['value'] . "\n";
+                            echo '<span class="' . esc_attr($sanitizedClass) . '">' . esc_html($item['value']) . '</span>';
+                            ?>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>

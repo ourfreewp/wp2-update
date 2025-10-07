@@ -2,33 +2,54 @@
 
 namespace Tests;
 
-use Mockery;
-use Mockery\MockInterface;
 use WP2\Update\Admin\Pages\SystemHealthPage;
 use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
+use WP2\Update\Core\API\Service as GitHubService;
 use WP2\Update\Utils\SharedUtils;
+use WP2\Update\Core\Updates\PackageFinder;
+use Brain\Monkey\Functions;
 
 class SystemHealthPageTest extends TestCase
 {
     public function testGitHubApiStatusIsConnected()
     {
-        /** @var MockInterface|GitHubApp */
-        $githubAppMock = Mockery::mock(GitHubApp::class);
-        $githubAppMock->shouldReceive('get_connection_status')->andReturn([
-            'connected' => true,
-            'message' => 'Connected to GitHub App.',
+        Functions\when('wp_get_themes')->justReturn([
+            'theme-slug' => new class {
+                public function get($key) {
+                    return $key === 'UpdateURI' ? 'https://github.com/owner/repo' : null;
+                }
+            },
         ]);
 
-        /** @var MockInterface|Connection */
-        $connectionMock = Mockery::mock(Connection::class);
-        /** @var MockInterface|SharedUtils */
-        $utilsMock = Mockery::mock(SharedUtils::class);
+        Functions\when('set_transient')->justReturn(true);
+        Functions\when('get_transient')->justReturn(null);
+        Functions\when('defined')->alias(function ($constant) {
+            return $constant === 'HOUR_IN_SECONDS';
+        });
+        Functions\when('constant')->alias(function ($constant) {
+            return $constant === 'HOUR_IN_SECONDS' ? 3600 : null;
+        });
+
+        Functions\when('WP_Query')->alias(function ($args) {
+            return new class {
+                public function have_posts() {
+                    return false;
+                }
+            };
+        });
+
+        $realGitHubService = new GitHubService();
+        $realGitHubApp = new GitHubApp($realGitHubService);
+
+        $realUtils = new SharedUtils($realGitHubApp, $realGitHubService);
+        $realPackageFinder = new PackageFinder($realUtils);
+        $realConnection = new Connection($realPackageFinder);
 
         $systemHealthPage = new SystemHealthPage(
-            $connectionMock,
-            $githubAppMock,
-            $utilsMock
+            $realConnection,
+            $realGitHubApp,
+            $realUtils
         );
 
         $status = $systemHealthPage->get_github_api_status();
@@ -39,24 +60,42 @@ class SystemHealthPageTest extends TestCase
 
     public function testGitHubApiStatusIsNotConnected()
     {
-        /** @var MockInterface|GitHubApp */
-        $githubAppMock = Mockery::mock(GitHubApp::class);
-        $githubAppMock->shouldReceive('get_connection_status')->andReturnUsing(function () {
-            return [
-                'connected' => false,
-                'message' => 'Not connected to GitHub App.',
-            ];
+        Functions\when('wp_get_themes')->justReturn([
+            'theme-slug' => new class {
+                public function get($key) {
+                    return null;
+                }
+            },
+        ]);
+
+        Functions\when('set_transient')->justReturn(true);
+        Functions\when('get_transient')->justReturn(null);
+        Functions\when('defined')->alias(function ($constant) {
+            return $constant === 'HOUR_IN_SECONDS';
+        });
+        Functions\when('constant')->alias(function ($constant) {
+            return $constant === 'HOUR_IN_SECONDS' ? 3600 : null;
         });
 
-        /** @var MockInterface|Connection */
-        $connectionMock = Mockery::mock(Connection::class);
-        /** @var MockInterface|SharedUtils */
-        $utilsMock = Mockery::mock(SharedUtils::class);
+        Functions\when('WP_Query')->alias(function ($args) {
+            return new class {
+                public function have_posts() {
+                    return false;
+                }
+            };
+        });
+
+        $realGitHubService = new GitHubService();
+        $realGitHubApp = new GitHubApp($realGitHubService);
+
+        $realUtils = new SharedUtils($realGitHubApp, $realGitHubService);
+        $realPackageFinder = new PackageFinder($realUtils);
+        $realConnection = new Connection($realPackageFinder);
 
         $systemHealthPage = new SystemHealthPage(
-            $connectionMock,
-            $githubAppMock,
-            $utilsMock
+            $realConnection,
+            $realGitHubApp,
+            $realUtils
         );
 
         $status = $systemHealthPage->get_github_api_status();

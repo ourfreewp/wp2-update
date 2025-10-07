@@ -16,3 +16,6 @@ Thumbs.db
 .vscode/
 .eslintrc.cjs
 vite.config.js
+tests/
+tests/Feature/Mocks/
+tests/Unit/Mocks/

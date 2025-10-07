@@ -5,39 +5,56 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use WP2\Update\Utils\SharedUtils;
-use Tests\Unit\Mocks\StubGitHubAppInit;
+use Brain\Monkey\Expectation\ExpectationFactory;
+use Mockery;
+use Tests\TestCase;
+use WP2\Update\Core\API\GitHubApp\Init as GitHubAppInit;
+use WP2\Update\Core\API\Service as GitHubService;
 
-test('correctly normalizes full GitHub URLs', function () {
-    $mockGitHubApp = new StubGitHubAppInit();
-    $utils = new SharedUtils($mockGitHubApp);
-    $url = 'https://github.com/owner/repo-name/';
-    expect($utils->normalize_repo($url))->toBe('owner/repo-name');
-});
+class SharedUtilsTest extends TestCase
+{
+    private $realGitHubService;
+    private $realGitHubApp;
 
-test('correctly normalizes simple slugs', function () {
-    $mockGitHubApp = new StubGitHubAppInit();
-    $utils = new SharedUtils($mockGitHubApp);
-    $slug = 'owner/repo-name';
-    expect($utils->normalize_repo($slug))->toBe('owner/repo-name');
-});
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->realGitHubService = new GitHubService();
+        $this->realGitHubApp = new GitHubAppInit($this->realGitHubService);
+    }
 
-test('returns null for invalid URIs', function () {
-    $mockGitHubApp = new StubGitHubAppInit();
-    $utils = new SharedUtils($mockGitHubApp);
-    $invalid_uri = 'https://not-github.com/owner/repo';
-    expect($utils->normalize_repo($invalid_uri))->toBeNull();
-});
+    public function testNormalizeRepoUrl()
+    {
+        $utils = new SharedUtils($this->realGitHubApp, $this->realGitHubService);
+        $url = 'https://github.com/owner/repo-name/';
+        $this->assertEquals('owner/repo-name', $utils->normalize_repo($url));
+    }
 
-test('correctly normalizes version strings', function () {
-    $mockGitHubApp = new StubGitHubAppInit();
-    $utils = new SharedUtils($mockGitHubApp);
+    public function testCorrectlyNormalizesSimpleSlugs()
+    {
+        $utils = new SharedUtils($this->realGitHubApp, $this->realGitHubService);
+        $slug = 'owner/repo-name';
+        $this->assertEquals('owner/repo-name', $utils->normalize_repo($slug));
+    }
 
-    $version = 'v1.2.3';
-    expect($utils->normalize_version($version))->toBe('1.2.3');
+    public function testReturnsNullForInvalidUris()
+    {
+        $utils = new SharedUtils($this->realGitHubApp, $this->realGitHubService);
+        $invalid_uri = 'https://not-github.com/owner/repo';
+        $this->assertNull($utils->normalize_repo($invalid_uri));
+    }
 
-    $version = '1.2.3';
-    expect($utils->normalize_version($version))->toBe('1.2.3');
+    public function testCorrectlyNormalizesVersionStrings()
+    {
+        $utils = new SharedUtils($this->realGitHubApp, $this->realGitHubService);
 
-    $version = null;
-    expect($utils->normalize_version($version))->toBe('0.0.0');
-});
+        $version = 'v1.2.3';
+        $this->assertEquals('1.2.3', $utils->normalize_version($version));
+
+        $version = '1.2.3';
+        $this->assertEquals('1.2.3', $utils->normalize_version($version));
+
+        $version = null;
+        $this->assertEquals('0.0.0', $utils->normalize_version($version));
+    }
+}

@@ -225,12 +225,11 @@ class Controller {
     }
 
     /**
-     * Handles the installation of a theme version.
+     * Handles the installation of a theme version via REST API.
      */
     public function handle_theme_install_action() {
         if ( ! current_user_can( 'install_themes' ) || ! isset( $_POST['_wpnonce'], $_POST['slug'], $_POST['version'] ) ) {
-            wp_safe_redirect( esc_url( admin_url( 'admin.php?page=wp2-update-packages&error=permission-denied' ) ) );
-            exit;
+            wp_send_json_error( [ 'message' => __( 'Permission denied.', 'wp2-update' ) ], 403 );
         }
 
         $slug        = sanitize_key( $_POST['slug'] );
@@ -240,41 +239,31 @@ class Controller {
 
         $item_data = $this->connection->get_managed_themes()[ $slug ] ?? null;
         if ( ! $item_data ) {
-            wp_die( __( 'Invalid theme specified.', 'wp2-update' ) );
+            wp_send_json_error( [ 'message' => __( 'Invalid theme specified.', 'wp2-update' ) ], 400 );
         }
 
-        // Pass the app slug and repo slug to the updater.
         $result = $this->theme_updater->install_theme( $item_data['app_slug'], $item_data['repo'], $version, $slug );
 
-        $redirect_url = admin_url( 'admin.php?page=wp2-update-packages&package=' . urlencode( $package_key ) );
-        // Enhanced error handling
         if ( is_wp_error( $result ) ) {
             $error_message = sprintf(
-                /* translators: 1: Theme slug, 2: Version, 3: Error message */
                 __( 'Failed to install theme %1$s (version %2$s): %3$s', 'wp2-update' ),
                 esc_html( $slug ),
                 esc_html( $version ),
                 esc_html( $result->get_error_message() )
             );
             $this->log_error( $error_message, 'theme-install' );
-            set_transient( 'wp2_update_error_notice', $error_message, 60 );
-            $redirect_url .= '&error=install_failed';
-        } else {
-            $redirect_url .= '&installed=' . urlencode( $version );
+            wp_send_json_error( [ 'message' => $error_message ], 500 );
         }
 
-        // Escape query parameters in redirect URL
-        wp_safe_redirect( esc_url( $redirect_url ) );
-        exit;
+        wp_send_json_success( [ 'message' => __( 'Theme installed successfully.', 'wp2-update' ) ] );
     }
 
     /**
-     * Handles the installation of a plugin version.
+     * Handles the installation of a plugin version via REST API.
      */
     public function handle_plugin_install_action() {
         if ( ! current_user_can( 'install_plugins' ) || ! isset( $_POST['_wpnonce'], $_POST['slug'], $_POST['version'] ) ) {
-            wp_safe_redirect( esc_url( admin_url( 'admin.php?page=wp2-update-packages&error=permission-denied' ) ) );
-            exit;
+            wp_send_json_error( [ 'message' => __( 'Permission denied.', 'wp2-update' ) ], 403 );
         }
 
         $slug        = sanitize_key( $_POST['slug'] );
@@ -284,31 +273,22 @@ class Controller {
 
         $item_data = $this->connection->get_managed_plugins()[ $slug ] ?? null;
         if ( ! $item_data ) {
-            wp_die( __( 'Invalid plugin specified.', 'wp2-update' ) );
+            wp_send_json_error( [ 'message' => __( 'Invalid plugin specified.', 'wp2-update' ) ], 400 );
         }
 
-        // Pass the app slug and repo slug to the updater.
         $result = $this->plugin_updater->install_plugin( $item_data['app_slug'], $item_data['repo'], $version, $slug );
 
-        $redirect_url = admin_url( 'admin.php?page=wp2-update-packages&package=' . urlencode( $package_key ) );
-        // Enhanced error handling
         if ( is_wp_error( $result ) ) {
             $error_message = sprintf(
-                /* translators: 1: Plugin slug, 2: Version, 3: Error message */
                 __( 'Failed to install plugin %1$s (version %2$s): %3$s', 'wp2-update' ),
                 esc_html( $slug ),
                 esc_html( $version ),
                 esc_html( $result->get_error_message() )
             );
             $this->log_error( $error_message, 'plugin-install' );
-            set_transient( 'wp2_update_error_notice', $error_message, 60 );
-            $redirect_url .= '&error=install_failed';
-        } else {
-            $redirect_url .= '&installed=' . urlencode( $version );
+            wp_send_json_error( [ 'message' => $error_message ], 500 );
         }
 
-        // Escape query parameters in redirect URL
-        wp_safe_redirect( esc_url( $redirect_url ) );
-        exit;
+        wp_send_json_success( [ 'message' => __( 'Plugin installed successfully.', 'wp2-update' ) ] );
     }
 }
