@@ -5,6 +5,10 @@
 
 const restNonce = window.wpApiSettings?.nonce || '';
 
+if (!restNonce) {
+    console.warn('REST API nonce is missing. Ensure wpApiSettings is properly localized.');
+}
+
 /**
  * A reusable wrapper for the Fetch API to interact with the WordPress REST API.
  * @param {string} endpoint - The API endpoint (e.g., '/wp2-update/v1/status').

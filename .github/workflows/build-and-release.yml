@@ -45,40 +45,41 @@ jobs:
 
       - name: Get Version from Plugin File
         id: version
+        shell: bash
         run: |
-          if [ ! -f "${{ env.MAIN_PLUGIN_FILE }}" ]; then
-            echo "Error: File not found at path ${{ env.MAIN_PLUGIN_FILE }}."
+          set -euo pipefail
+
+          FILE="${{ env.MAIN_PLUGIN_FILE }}"
+
+          if [ ! -f "$FILE" ]; then
+            echo "Error: File not found at path $FILE."
             exit 1
           fi
 
-          # Debug: Print the plugin file content
-          echo "Debug: Printing the content of ${{ env.MAIN_PLUGIN_FILE }}"
-          cat "${{ env.MAIN_PLUGIN_FILE }}"
+          echo "Debug: Printing the content of $FILE"
+          cat "$FILE"
 
           # Normalize line endings to Unix-style
-          sed -i 's/\r$//' "${{ env.MAIN_PLUGIN_FILE }}"
+          sed -i 's/\r$//' "$FILE"
 
-          # Extract version using grep and print raw output
-          RAW_VERSION=$(grep -iE '^\s*Version:\s*' "${{ env.MAIN_PLUGIN_FILE }}")
+          # Extract version from WP plugin header (handles leading "* " in docblock)
+          RAW_VERSION=$(grep -im1 -E '^[[:space:]]*\**[[:space:]]*Version:[[:space:]]*' "$FILE" || true)
           echo "Debug: Raw grep output: '$RAW_VERSION'"
 
-          # Extract version using sed
-          VERSION=$(echo "$RAW_VERSION" | sed -E 's/^\s*Version:\s*//I')
-
-          # Debug: Print the processed version output
+          VERSION=$(echo "$RAW_VERSION" | sed -E 's/^[[:space:]]*\**[[:space:]]*Version:[[:space:]]*//I')
           echo "Debug: Processed version output: '$VERSION'"
 
-          # Remove any trailing or leading whitespace
+          # Trim all whitespace
           VERSION=$(echo "$VERSION" | tr -d '[:space:]')
 
-          if [ -z "$VERSION" ]; then
-            echo "Error: Version could not be determined from ${{ env.MAIN_PLUGIN_FILE }}."
+          if [ -z "${VERSION:-}" ]; then
+            echo "Error: Version could not be determined from $FILE."
             echo "Ensure the file contains a 'Version:' field in the plugin header."
             exit 1
           fi
 
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          
       - name: Prepare Release Variables
         id: prep
         run: |
