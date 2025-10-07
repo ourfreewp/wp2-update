@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme updates.
- * Version:           0.0.2
+ * Version:           0.0.3
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -74,37 +74,3 @@ function wp2_update_activate() {
     }
 }
 register_activation_hook(__FILE__, 'wp2_update_activate');
-
-/**
- * Handle schema changes or data migration on plugin activation.
- */
-function wp2_update_handle_activation() {
-    global $wpdb;
-
-    // Example: Create a custom table for logging purposes.
-    $table_name = $wpdb->prefix . 'wp2_update_logs';
-    $charset_collate = $wpdb->get_charset_collate();
-
-    $sql = "CREATE TABLE $table_name (
-        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        log_message TEXT NOT NULL,
-        log_date DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        PRIMARY KEY (id)
-    ) $charset_collate;";
-
-    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-    dbDelta($sql);
-}
-register_activation_hook(__FILE__, 'wp2_update_handle_activation');
-
-/**
- * Handle cleanup on plugin deactivation.
- */
-function wp2_update_handle_deactivation() {
-    global $wpdb;
-
-    // Example: Optionally drop the custom table.
-    $table_name = $wpdb->prefix . 'wp2_update_logs';
-    $wpdb->query("DROP TABLE IF EXISTS $table_name");
-}
-register_deactivation_hook(__FILE__, 'wp2_update_handle_deactivation');

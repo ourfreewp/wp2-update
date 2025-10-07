@@ -40,27 +40,27 @@ class OverviewPage {
 				<div class="wp2-main-content">
 					<section class="wp2-update-card" aria-labelledby="health-status-heading">
 						<h2 id="health-status-heading" class="wp2-card-title">
-							<?php esc_html_e( 'Application Health At-a-Glance', 'wp2-update' ); ?>
+							<?php echo esc_html__( 'Application Health At-a-Glance', 'wp2-update' ); ?>
 						</h2>
 						<div class="wp2-status-grid">
 							<div class="wp2-status-item">
 								<span class="wp2-status-icon <?php echo $connection_status['connected'] ? 'is-success' : 'is-error'; ?>"></span>
-								<p class="wp2-status-label"><?php esc_html_e( 'GitHub Connection', 'wp2-update' ); ?></p>
-								<p class="wp2-status-value"><?php esc_html_e( $connection_status['message'], 'wp2-update' ); ?></p>
+								<p class="wp2-status-label"><?php echo esc_html__( 'GitHub Connection', 'wp2-update' ); ?></p>
+								<p class="wp2-status-value"><?php echo esc_html( $connection_status['message'] ); ?></p>
 							</div>
 							<div class="wp2-status-item">
 								<span class="wp2-status-icon is-info"></span>
-								<p class="wp2-status-label"><?php esc_html_e( 'Managed Packages', 'wp2-update' ); ?></p>
+								<p class="wp2-status-label"><?php echo esc_html__( 'Managed Packages', 'wp2-update' ); ?></p>
 								<p class="wp2-status-value"><?php echo count( $managed_packages ); ?></p>
 							</div>
 							<div class="wp2-status-item">
 								<span class="wp2-status-icon <?php echo $updates_available > 0 ? 'is-warning' : 'is-success'; ?>"></span>
-								<p class="wp2-status-label"><?php esc_html_e( 'Updates Available', 'wp2-update' ); ?></p>
+								<p class="wp2-status-label"><?php echo esc_html__( 'Updates Available', 'wp2-update' ); ?></p>
 								<p class="wp2-status-value"><?php echo $updates_available; ?></p>
 							</div>
 							<div class="wp2-status-item">
 								<span class="wp2-status-icon is-neutral"></span>
-								<p class="wp2-status-label"><?php esc_html_e( 'Last Checked', 'wp2-update' ); ?></p>
+								<p class="wp2-status-label"><?php echo esc_html__( 'Last Checked', 'wp2-update' ); ?></p>
 								<p class="wp2-status-value"><?php echo esc_html( $last_checked ); ?></p>
 							</div>
 						</div>
@@ -68,19 +68,19 @@ class OverviewPage {
 
 					<section class="wp2-update-card" aria-labelledby="quick-start-heading">
 						<h2 id="quick-start-heading" class="wp2-card-title">
-							<?php esc_html_e( 'Quick Start Guide', 'wp2-update' ); ?>
+							<?php echo esc_html__( 'Quick Start Guide', 'wp2-update' ); ?>
 						</h2>
 						<div class="wp2-quick-start">
 							<div>
-								<h3><?php esc_html_e( '1. Mark Your Packages for Management', 'wp2-update' ); ?></h3>
+								<h3><?php echo esc_html__( '1. Mark Your Packages for Management', 'wp2-update' ); ?></h3>
 								<p><?php printf( esc_html__( 'Add an %s to your theme or plugin header file.', 'wp2-update' ), '<code>Update URI</code>' ); ?></p>
 								<div class="wp2-code-examples">
 									<div>
-										<p><strong><?php esc_html_e( 'Theme Example (`style.css`):', 'wp2-update' ); ?></strong></p>
+										<p><strong><?php echo esc_html__( 'Theme Example (`style.css`):', 'wp2-update' ); ?></strong></p>
 										<pre><code>/*\n Theme Name: ExamplePress\n Version: 1.3.9\n Update URI: example-owner/examplepress-theme\n*/</code></pre>
 									</div>
 									<div>
-										<p><strong><?php esc_html_e( 'Plugin Example (`my-plugin.php`):', 'wp2-update' ); ?></strong></p>
+										<p><strong><?php echo esc_html__( 'Plugin Example (`my-plugin.php`):', 'wp2-update' ); ?></strong></p>
 										<pre><code>/*\n Plugin Name: Example Plugin\n Version: 1.2.0\n Update URI: https://github.com/example-owner/example-plugin\n*/</code></pre>
 									</div>
 								</div>

@@ -8,7 +8,6 @@ use WP2\Update\Admin\Pages\OverviewPage;
 use WP2\Update\Admin\Pages\PackageEventsPage;
 use WP2\Update\Admin\Pages\PackagesPage;
 use WP2\Update\Admin\Pages\SystemHealthPage;
-use WP2\Update\Admin\Pages\BackupManagementPage;
 use WP2\Update\Admin\Pages\PackageHistoryPage;
 use WP2\Update\Admin\Pages\PackageStatusPage;
 
@@ -87,14 +86,6 @@ class Pages {
         echo '<p>This page is under construction.</p>';
     }
     
-    /**
-     * Renders the Backup Management page.
-     */
-    public function render_backup_management_page() {
-        $view = new BackupManagementPage($this->utils);
-        $view->render();
-    }
-
     /**
      * Renders the Package Events page.
      */

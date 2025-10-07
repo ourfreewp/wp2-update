@@ -15,17 +15,17 @@ class WP2UpdateCommand {
     /**
      * Registers all WP-CLI commands.
      */
-    public static function registerCommands() {
-        WP_CLI::add_command('wp2-update sync', [__CLASS__, 'syncRepositories']);
-        WP_CLI::add_command('wp2-update health', [__CLASS__, 'checkHealth']);
-        WP_CLI::add_command('wp2-update list-updates', [__CLASS__, 'listAvailableUpdates']);
-        WP_CLI::add_command('wp2-update update', [__CLASS__, 'updatePackages']);
+    public static function register_commands() {
+        WP_CLI::add_command('wp2-update sync', [__CLASS__, 'sync_repositories']);
+        WP_CLI::add_command('wp2-update health', [__CLASS__, 'check_health']);
+        WP_CLI::add_command('wp2-update list-updates', [__CLASS__, 'list_available_updates']);
+        WP_CLI::add_command('wp2-update update', [__CLASS__, 'update_packages']);
     }
 
     /**
      * Gets the DI container.
      */
-    private static function getContainer() {
+    private static function get_container() {
         $container = apply_filters('wp2_update_di_container', null);
         if (!$container) {
             WP_CLI::error('Could not initialize WP2 Update services.');
@@ -37,8 +37,8 @@ class WP2UpdateCommand {
     /**
      * Syncs repositories from all connected GitHub Apps.
      */
-    public static function syncRepositories() {
-        $container = self::getContainer();
+    public static function sync_repositories() {
+        $container = self::get_container();
         if (!$container) return;
         
         /** @var \WP2\Update\Core\Tasks\Scheduler $scheduler */
@@ -51,8 +51,8 @@ class WP2UpdateCommand {
     /**
      * Checks the health of the plugin's connection to GitHub.
      */
-    public static function checkHealth() {
-        $container = self::getContainer();
+    public static function check_health() {
+        $container = self::get_container();
         if (!$container) return;
 
         /** @var \WP2\Update\Core\API\GitHubApp\Init $github_app */
@@ -69,8 +69,8 @@ class WP2UpdateCommand {
     /**
      * Lists available updates for managed themes and plugins.
      */
-    public static function listAvailableUpdates() {
-        $container = self::getContainer();
+    public static function list_available_updates() {
+        $container = self::get_container();
         if (!$container) return;
 
         // Force a check to get latest data
@@ -138,8 +138,8 @@ class WP2UpdateCommand {
      * : If set, update all themes and plugins that have updates available.
      * ---
      */
-    public static function updatePackages($args, $assoc_args) {
-        $container = self::getContainer();
+    public static function update_packages($args, $assoc_args) {
+        $container = self::get_container();
         if (!$container) return;
 
         /** @var \WP2\Update\Core\Updates\ThemeUpdater $theme_updater */

@@ -502,7 +502,7 @@ final class Init {
 		if (
 			'wp2_github_app' !== $post->post_type
 			|| ! isset( $_POST['wp2_github_app_nonce'] )
-			|| ! wp_verify_nonce( $_POST['wp2_github_app_nonce'], 'wp2_github_app_save_meta' )
+			|| ! wp_verify_nonce( wp_unslash( $_POST['wp2_github_app_nonce'] ), 'wp2_github_app_save_meta' )
 			|| ! current_user_can( 'edit_post', $post_id )
 		) {
 			return;
@@ -514,7 +514,7 @@ final class Init {
 
 		// Validate App ID
         if ( isset( $_POST['_wp2_app_id'] ) ) {
-            $app_id = sanitize_text_field( $_POST['_wp2_app_id'] );
+            $app_id = sanitize_text_field( wp_unslash( $_POST['_wp2_app_id'] ) );
             if ( ! preg_match( '/^\d+$/', $app_id ) ) {
                 Logger::log( 'Invalid App ID provided: ' . $app_id, 'error', 'metadata' );
                 return;
@@ -524,7 +524,7 @@ final class Init {
 
         // Validate Installation ID
         if ( isset( $_POST['_wp2_installation_id'] ) ) {
-            $installation_id = sanitize_text_field( $_POST['_wp2_installation_id'] );
+            $installation_id = sanitize_text_field( wp_unslash( $_POST['_wp2_installation_id'] ) );
             if ( ! preg_match( '/^\d+$/', $installation_id ) ) {
                 Logger::log( 'Invalid Installation ID provided: ' . $installation_id, 'error', 'metadata' );
                 return;
@@ -532,11 +532,11 @@ final class Init {
             update_post_meta( $post_id, '_wp2_installation_id', $installation_id );
         }
 
-		update_post_meta( $post_id, '_wp2_webhook_secret', sanitize_text_field( $_POST['_wp2_webhook_secret'] ?? '' ) );
-		update_post_meta( $post_id, '_wp2_client_id', sanitize_text_field( $_POST['_wp2_client_id'] ?? '' ) );
+		update_post_meta( $post_id, '_wp2_webhook_secret', sanitize_text_field( wp_unslash( $_POST['_wp2_webhook_secret'] ?? '' ) ) );
+		update_post_meta( $post_id, '_wp2_client_id', sanitize_text_field( wp_unslash( $_POST['_wp2_client_id'] ?? '' ) ) );
 
 		if ( isset( $_POST['_wp2_client_secret'] ) && '' !== (string) $_POST['_wp2_client_secret'] ) {
-			update_post_meta( $post_id, '_wp2_client_secret', SharedUtils::encrypt( sanitize_text_field( (string) $_POST['_wp2_client_secret'] ) ) );
+			update_post_meta( $post_id, '_wp2_client_secret', SharedUtils::encrypt( sanitize_text_field( wp_unslash( (string) $_POST['_wp2_client_secret'] ) ) ) );
 		}
 
 		if ( isset( $_POST['clear_wp2_private_key'] ) && '1' === sanitize_text_field( $_POST['clear_wp2_private_key'] ) ) {
