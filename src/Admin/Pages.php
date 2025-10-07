@@ -1,151 +1,273 @@
 <?php
+
 namespace WP2\Update\Admin;
 
-use WP2\Update\Core\Connection\Init as Connection;
 use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
-use WP2\Update\Utils\SharedUtils;
-use WP2\Update\Admin\Pages\OverviewPage;
-use WP2\Update\Admin\Pages\PackageEventsPage;
-use WP2\Update\Admin\Pages\PackagesPage;
-use WP2\Update\Admin\Pages\SystemHealthPage;
-use WP2\Update\Admin\Pages\PackageHistoryPage;
-use WP2\Update\Admin\Pages\PackageStatusPage;
-
+use WP2\Update\Core\API\Service as GitHubService;
+use WP2\Update\Core\Updates\PackageFinder;
 
 /**
- * Renders the admin page framework and delegates tab content rendering.
+ * Renders the multi-stage admin page.
  */
-class Pages {
-    private $connection;
-    private $github_app;
-    private $utils;
-    private $container;
+class Pages
+{
+    private GitHubService $githubService;
+    private PackageFinder $packages;
+    private GitHubApp $githubApp;
 
-    private $packages_page;
-
-    /**
-     * Constructor.
-     */
-    public function __construct( Connection $connection, GitHubApp $github_app, SharedUtils $utils, $container ) {
-        $this->connection = $connection;
-        $this->github_app = $github_app;
-        $this->utils      = $utils;
-        $this->container  = $container;
-
-        $package_finder = $this->container->resolve('PackageFinder');
-        $history_tab = new PackageHistoryPage( $this->connection, $this->utils );
-        $status_tab = new PackageStatusPage( $this->connection, $this->github_app, $this->utils );
-        $log_tab = new PackageEventsPage();
-
-        $this->packages_page = new PackagesPage( 
-            $this->connection, 
-            $this->utils, 
-            $this->github_app, 
-            $package_finder, 
-            $history_tab, 
-            $status_tab, 
-            $log_tab 
-        );
-    }
-
-
-    /**
-     * Renders the dedicated packages page.
-     */
-    public function render_packages_page() {
-        $this->packages_page->render();
+    public function __construct(GitHubService $githubService, PackageFinder $packages, GitHubApp $githubApp)
+    {
+        $this->githubService = $githubService;
+        $this->packages      = $packages;
+        $this->githubApp     = $githubApp;
     }
 
     /**
-     * Renders the dedicated settings page.
+     * Main render function - acts as a router for different UI stages.
      */
-    public function render_settings_page() {
-        echo '<h1>Settings Page</h1>';
-        echo '<p>This page is under construction.</p>';
+    public function render(): void
+    {
+        // This container will be controlled by JavaScript to show the correct stage.
+        ?>
+        <div class="container" id="wp2-update-app">
+            <header style="margin-bottom: calc(var(--spacing-unit) * 6);">
+                <h1>UI Workflow Showcase (v2)</h1>
+                <p style="color: var(--color-text-subtle);">This document demonstrates the enhanced UI, addressing advanced features for a production-ready workflow.</p>
+            </header>
+
+            <?php
+            $this->render_stage_1_pre_connection();
+            $this->render_stage_2_credentials();
+            $this->render_stage_2_5_sync();
+            $this->render_stage_3_management();
+            ?>
+        </div>
+        <?php
     }
 
     /**
-     * Renders the overview page.
+     * Renders the HTML for the initial connection step.
      */
-    public function render_overview_page() {
-        $view = new OverviewPage($this->connection, $this->github_app, $this->utils);
-        $view->render();
+    private function render_stage_1_pre_connection(): void
+    {
+        ?>
+        <section class="workflow-step" id="step-1-pre-connection">
+            <h3>Step 1: Pre-Connection & Configuration</h3>
+            <p>The initial state now includes configuration options and a clear permissions review before initiating the connection with GitHub.</p>
+            <div class="card">
+                <div class="card-header"><h2>Connect to GitHub <span class="app-status app-status--disconnected" style="float: right;">Disconnected</span></h2></div>
+                <div class="card-body">
+                    <p>Select your target environment and review the required permissions before creating the app manifest.</p>
+                     <table class="form-table">
+                        <tbody>
+                            <tr>
+                                <th scope="row"><label>Install Target</label></th>
+                                <td>
+                                    <label><input type="radio" name="install_target" checked> Personal Account</label><br>
+                                    <label><input type="radio" name="install_target"> GitHub Organization</label>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label>App Variant</label></th>
+                                <td>
+                                    <label><input type="radio" name="app_variant" checked> Production</label><br>
+                                    <label><input type="radio" name="app_variant"> Staging</label>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                     <hr style="border: 0; border-top: 1px solid var(--color-border); margin: 16px 0;">
+                     <h4>Required Permissions</h4>
+                     <ul class="permission-list">
+                        <li><span>Repository Permissions: <code>Contents</code></span> <span>(read-only)</span></li>
+                        <li><span>Repository Permissions: <code>Metadata</code></span> <span>(read-only)</span></li>
+                        <li><span>Subscribed Events: <code>Release</code></span> <span>(for webhooks)</span></li>
+                     </ul>
+                </div>
+                <div class="card-footer">
+                    <button class="button">1. Create Manifest & Connect</button>
+                </div>
+            </div>
+             <p><em>UX Note: Clicking "Create Manifest" would redirect the user to GitHub's OAuth flow and return them with a temporary code.</em></p>
+        </section>
+        <?php
     }
 
     /**
-     * Renders the System Health page.
+     * Renders the HTML for the credentials input step.
      */
-    public function render_system_health_page() {
-        $view = new SystemHealthPage($this->connection, $this->github_app, $this->utils);
-        $view->render();
+    private function render_stage_2_credentials(): void
+    {
+        ?>
+        <section class="workflow-step" id="step-2-credentials" hidden>
+            <h3>Step 2: App Registration & Credentials</h3>
+            <p>After returning from GitHub, users provide the final details. Inputs are now editable, and a webhook secret is captured. Secrets are masked.</p>
+            <div class="card">
+                 <div class="card-header"><h2>Enter Credentials</h2></div>
+                 <div class="card-body">
+                    <form>
+                        <table class="form-table">
+                            <tbody>
+                                <tr>
+                                    <th scope="row"><label for="app_id">App ID</label></th>
+                                    <td><input type="text" id="app_id" placeholder="e.g., 123456"></td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><label for="installation_id">Installation ID</label></th>
+                                    <td><input type="text" id="installation_id" placeholder="e.g., 7890123"></td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><label for="private_key">Private Key (.pem)</label></th>
+                                    <td><input type="file" id="private_key">
+                                        <p class="description">Upload the .pem file downloaded from GitHub.</p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><label for="webhook_secret">Webhook Secret</label></th>
+                                    <td><input type="password" id="webhook_secret" placeholder="ghs_...">
+                                        <p class="description">Secrets are encrypted and stored securely.</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </form>
+                </div>
+                <div class="card-footer">
+                    <button class="button-secondary">Cancel</button>
+                    <button class="button">2. Save and Validate</button>
+                </div>
+            </div>
+        </section>
+        <?php
+    }
+
+     /**
+     * Renders the HTML for the validation and sync step.
+     */
+    private function render_stage_2_5_sync(): void
+    {
+        ?>
+        <section class="workflow-step" id="step-2-5-sync" hidden>
+            <h3>Step 2.5: Validation & Initial Sync</h3>
+            <p>After saving, the system performs a series of checks and the initial package sync, providing real-time feedback to the user.</p>
+             <div class="card">
+                <div class="card-header"><h2>Validating Connection...</h2></div>
+                <div class="card-body">
+                   <ul class="validation-checklist">
+                       <li><span class="spinner"></span> <span>Validating private key format...</span></li>
+                       <li><span class="dashicons"></span> <span>Minting JWT...</span></li>
+                       <li><span class="dashicons"></span> <span>Checking App ID...</span></li>
+                       <li><span class="dashicons"></span> <span>Verifying Installation ID...</span></li>
+                       <li><span class="dashicons"></span> <span>Testing webhook delivery...</span></li>
+                   </ul>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header"><h2>Initial Sync</h2></div>
+                <div class="card-body">
+                    <p>Performing first-time inventory of accessible packages.</p>
+                    <progress style="width: 100%;" value="0" max="100"></progress>
+                    <p><em>(Initializing...)</em></p>
+                    <h4>Loading Packages...</h4>
+                    <table class="widefat">
+                        <tbody>
+                            <tr><td><div class="skeleton"></div></td><td><div class="skeleton" style="width: 60%"></div></td></tr>
+                            <tr><td><div class="skeleton"></div></td><td><div class="skeleton" style="width: 70%"></div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        <?php
     }
 
     /**
-     * Renders the Bulk Actions page.
+     * Renders the HTML for the main package management dashboard.
      */
-    public function render_bulk_actions_page() {
-        echo '<h1>Bulk Actions Page</h1>';
-        echo '<p>This page is under construction.</p>';
+    private function render_stage_3_management(): void
+    {
+        ?>
+        <section class="workflow-step" id="step-3-management" hidden>
+            <h3>Step 3: Advanced Package Management</h3>
+            <p>The main dashboard includes connection health, detailed package controls, and an audit trail, addressing all advanced management requirements.</p>
+            <div class="card">
+                 <div class="card-header"><h2>Connection Health <span class="app-status app-status--connected" style="float: right;">Connected</span></h2></div>
+                 <div class="card-body" style="display: flex; justify-content: space-around; text-align: center;">
+                    <div><strong>Last Sync</strong><br><span id="health-last-sync">...</span></div>
+                    <div><strong>API Requests</strong><br><span id="health-api-requests">...</span></div>
+                    <div><strong>Webhook Status</strong><br><span id="health-webhook-status">...</span></div>
+                 </div>
+                 <div class="card-footer">
+                     <button class="button-secondary">Rotate Keys</button>
+                     <button class="button-secondary">Refresh Permissions</button>
+                 </div>
+            </div>
+            <div class="card">
+                <div class="card-header"><h2>Managed Packages</h2></div>
+                <div class="card-body">
+                    <p>Select a version and click Update to change the installed package.</p>
+                     <table class="widefat">
+                        <thead>
+                            <tr>
+                                <th>Name / Channel</th>
+                                <th>Installed</th>
+                                <th>Available Version</th>
+                                <th style="width: 150px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="packages-table">
+                            <!-- JS will populate this -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer">
+                    <button class="button-destructive">Disconnect...</button>
+                    <button class="button">Check for New Releases</button>
+                </div>
+            </div>
+        </section>
+        <?php
     }
-    
-    /**
-     * Renders the Package Events page.
-     */
-    public function render_package_events_page() {
-        $view = new PackageEventsPage();
-        $view->render_as_view();
-    }
 
     /**
-     * Renders the Package History page.
+     * Handles the file upload for the private key.
      */
-    public function render_package_history_page() {
-        $view = new PackageHistoryPage($this->connection, $this->utils);
-        $view->render(null, null);
-    }
+    public function handle_file_upload(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have permission to perform this action.', 'wp2-update'));
+        }
 
-    /**
-     * Renders the Package Status page.
-     */
-    public function render_package_status_page() {
-        $view = new PackageStatusPage($this->connection, $this->github_app, $this->utils);
-        $view->render(null, null);
-    }
+        check_admin_referer('wp2_file_upload');
 
-    /**
-     * Renders the Logs page.
-     */
-    public function render_logs_page() {
-        echo '<div class="wrap">';
-        echo '<h1>' . __('All Logged Events', 'wp2-update') . '</h1>';
-        echo '<p>' . __('A log of all system events, from API calls to update checks.', 'wp2-update') . '</p>';
+        if (!isset($_FILES['private_key']) || $_FILES['private_key']['error'] !== UPLOAD_ERR_OK) {
+            wp_die(__('File upload failed. Please try again.', 'wp2-update'));
+        }
 
-        // Render the logs table dynamically
-        $logs_table = new \WP2\Update\Admin\Tables\LogsTable();
-        $logs_table->prepare_items();
-        $logs_table->display();
+        $file = $_FILES['private_key'];
 
-        echo '</div>';
-    }
+        // Validate file extension
+        $fileExtension = pathinfo($file['name'], PATHINFO_EXTENSION);
+        if (strtolower($fileExtension) !== 'pem') {
+            wp_die(__('Invalid file type. Only .pem files are allowed.', 'wp2-update'));
+        }
 
-    /**
-     * Renders the GitHub App Settings page.
-     */
-    public function render_github_app_settings_page() {
-        echo '<div class="wrap">';
-        echo '<h1>' . esc_html__( 'GitHub App Settings', 'wp2-update' ) . '</h1>';
-        echo '<form method="post" action="options.php">';
+        // Validate file size (e.g., max 1MB)
+        $maxFileSize = 1 * 1024 * 1024; // 1MB
+        if ($file['size'] > $maxFileSize) {
+            wp_die(__('File is too large. Maximum size is 1MB.', 'wp2-update'));
+        }
 
-        // Output security fields for the registered setting
-        settings_fields( 'wp2_update_github_app_settings' );
+        // Process the file (e.g., move to a secure location)
+        $uploadDir = wp_upload_dir();
+        $destination = trailingslashit($uploadDir['basedir']) . basename($file['name']);
 
-        // Output setting sections and their fields
-        do_settings_sections( 'wp2-update-settings' );
+        if (!move_uploaded_file($file['tmp_name'], $destination)) {
+            wp_die(__('Failed to save the uploaded file.', 'wp2-update'));
+        }
 
-        // Submit button
-        submit_button( __( 'Save Settings', 'wp2-update' ) );
-
-        echo '</form>';
-        echo '</div>';
+        // Success message
+        wp_redirect(add_query_arg('wp2_notice', 'file-upload-success', admin_url('admin.php?page=wp2-update')));
+        exit;
     }
 }
