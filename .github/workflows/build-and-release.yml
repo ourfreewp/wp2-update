@@ -51,6 +51,10 @@ jobs:
             exit 1
           fi
 
+          # Debug: Print the plugin file content
+          echo "Debug: Printing the content of ${{ env.MAIN_PLUGIN_FILE }}"
+          cat "${{ env.MAIN_PLUGIN_FILE }}"
+
           # Extract version using a flexible regex
           VERSION=$(grep -iE '^\s*Version:\s*' "${{ env.MAIN_PLUGIN_FILE }}" | sed -E 's/^\s*Version:\s*//I' | tr -d '[:space:]')
 
