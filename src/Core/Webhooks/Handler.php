@@ -191,8 +191,29 @@ class Handler {
 	 * @return bool True if the IP is within the range, false otherwise.
 	 */
 	private function ip_in_cidr(string $ip, string $cidr): bool {
+		if (strpos($cidr, '/') === false) {
+			return $ip === $cidr;
+		}
+
 		list($subnet, $mask) = explode('/', $cidr);
-		$mask = ~((1 << (32 - $mask)) - 1);
-		return (ip2long($ip) & $mask) === (ip2long($subnet) & $mask);
+
+		$ip_packed = @inet_pton($ip);
+		$subnet_packed = @inet_pton($subnet);
+
+		if ($ip_packed === false || $subnet_packed === false) {
+			// Invalid IP format
+			return false;
+		}
+
+		$size = strlen($ip_packed);
+
+		$mask_bytes = str_repeat(chr(255), floor($mask / 8));
+		$remainder = $mask % 8;
+		if ($remainder > 0) {
+			$mask_bytes .= chr((0xFF << (8 - $remainder)) & 0xFF);
+		}
+		$mask_bytes = str_pad($mask_bytes, $size, chr(0), STR_PAD_RIGHT);
+
+		return ($ip_packed & $mask_bytes) === ($subnet_packed & $mask_bytes);
 	}
 }

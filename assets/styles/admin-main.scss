@@ -565,6 +565,17 @@ $bp-xl: 1200px;
 		padding: 10px 20px;
 		font-size: 0.75rem;
 	}
+
+	&--destructive {
+		@include btn-variant(#D63638, #D63638, #FFFFFF);
+
+		&:hover,
+		&:focus-visible {
+			background-color: darken(#D63638, 10%);
+			border-color: darken(#D63638, 10%);
+			box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
+		}
+	}
 }
 
 .wp2-btn--outline-dark {

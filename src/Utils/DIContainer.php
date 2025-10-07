@@ -53,7 +53,10 @@ class DIContainer {
      */
     public function register_services() {
         $this->register('SharedUtils', function($container) {
-            return new SharedUtils($container->resolve('GitHubApp'));
+            return new SharedUtils(
+                $container->resolve('GitHubApp'),
+                $container->resolve('GitHubService')
+            );
         });
 
         $this->register('GitHubApp', function($container) {
