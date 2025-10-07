@@ -56,7 +56,13 @@ jobs:
           cat "${{ env.MAIN_PLUGIN_FILE }}"
 
           # Extract version using a flexible regex
-          VERSION=$(grep -iE '^\s*Version:\s*' "${{ env.MAIN_PLUGIN_FILE }}" | sed -E 's/^\s*Version:\s*//I' | tr -d '[:space:]')
+          VERSION=$(grep -iE '^\s*Version:\s*' "${{ env.MAIN_PLUGIN_FILE }}" | sed -E 's/^\s*Version:\s*//I')
+
+          # Debug: Print the raw version output
+          echo "Debug: Raw version output: '$VERSION'"
+
+          # Remove any trailing or leading whitespace
+          VERSION=$(echo "$VERSION" | tr -d '[:space:]')
 
           if [ -z "$VERSION" ]; then
             echo "Error: Version could not be determined from ${{ env.MAIN_PLUGIN_FILE }}."
