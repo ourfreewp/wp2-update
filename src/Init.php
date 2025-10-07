@@ -29,11 +29,18 @@ use WP2\Update\Utils\Logger;
  */
 final class Init {
     /**
-     * Dependency Injection container instance.
-     *
-     * @var DIContainer|null
+     * Stores the DI container instance in a static property.
      */
-    private static $container = null;
+    private static $container;
+
+    /**
+     * Returns the DI container instance.
+     *
+     * @return DIContainer|null
+     */
+    public static function get_container() {
+        return self::$container;
+    }
 
     /**
      * Kicks off the plugin.
@@ -43,75 +50,66 @@ final class Init {
     public static function initialize() {
         try {
             // Initialize the DI container
-            $container = new DIContainer();
+            self::$container = new DIContainer();
 
             // Register services
-            $container->register('GitHubService', fn() => new GitHubService());
-            $container->register('GitHubApp', fn($c) => new GitHubApp($c->resolve('GitHubService')));
-            $container->register('SharedUtils', fn($c) => new SharedUtils($c->resolve('GitHubApp'), $c->resolve('GitHubService')));
-            $container->register('PackageFinder', fn($c) => new PackageFinder($c->resolve('SharedUtils')));
-            $container->register('Connection', fn($c) => new Connection($c->resolve('PackageFinder')));
-            $container->register('ModelsInit', fn() => new ModelsInit());
-            $container->register('WebhookHandler', fn($c) => new WebhookHandler($c->resolve('GitHubApp'), $c->resolve('PackageFinder')));
-            $container->register('ThemeUpdater', fn($c) => new ThemeUpdater(
+            self::$container->register('GitHubService', fn() => new GitHubService());
+            self::$container->register('GitHubApp', fn($c) => new GitHubApp($c->resolve('GitHubService')));
+            self::$container->register('SharedUtils', fn($c) => new SharedUtils($c->resolve('GitHubApp'), $c->resolve('GitHubService')));
+            self::$container->register('PackageFinder', fn($c) => new PackageFinder($c->resolve('SharedUtils')));
+            self::$container->register('Connection', fn($c) => new Connection($c->resolve('PackageFinder')));
+            self::$container->register('ModelsInit', fn() => new ModelsInit());
+            self::$container->register('WebhookHandler', fn($c) => new WebhookHandler($c->resolve('GitHubApp'), $c->resolve('PackageFinder')));
+            self::$container->register('ThemeUpdater', fn($c) => new ThemeUpdater(
                 $c->resolve('Connection'),
                 $c->resolve('GitHubApp'),
                 $c->resolve('SharedUtils'),
                 $c->resolve('GitHubService')
             ));
-            $container->register('PluginUpdater', fn($c) => new PluginUpdater(
+            self::$container->register('PluginUpdater', fn($c) => new PluginUpdater(
                 $c->resolve('Connection'),
                 $c->resolve('GitHubApp'),
                 $c->resolve('SharedUtils'),
                 $c->resolve('GitHubService')
             ));
-            $container->register('RestRouter', fn($c) => new RestRouter(
+            self::$container->register('RestRouter', fn($c) => new RestRouter(
                 $c->resolve('GitHubApp'),
                 $c->resolve('WebhookHandler'),
                 $c->resolve('TaskScheduler')
             ));
-            $container->register('TaskScheduler', fn($c) => new TaskScheduler($c->resolve('GitHubService')));
-
-            // Pass the container instance via a filter so it can be used elsewhere.
-            add_filter('wp2_update_di_container', fn() => $container);
-
-            // Debugging filter execution order
-            error_log('src/Init.php: Adding wp2_update_di_container filter.');
+            self::$container->register('TaskScheduler', fn($c) => new TaskScheduler($c->resolve('GitHubService')));
 
             // Resolve and initialize services
-            $container->resolve('WebhookHandler');
-            $container->resolve('ThemeUpdater');
-            $container->resolve('PluginUpdater');
-            $container->resolve('RestRouter')->register_routes();
-            $task_scheduler = $container->resolve('TaskScheduler');
+            self::$container->resolve('WebhookHandler');
+            self::$container->resolve('ThemeUpdater');
+            self::$container->resolve('PluginUpdater');
+            self::$container->resolve('RestRouter')->register_routes();
+            $task_scheduler = self::$container->resolve('TaskScheduler');
             $task_scheduler->init_hooks();
             $task_scheduler->schedule_recurring_tasks();
 
             // Pass all dependencies to the Admin orchestrator.
             $admin = new AdminInit(
-                $container->resolve('Connection'),
-                $container->resolve('GitHubApp'),
-                $container->resolve('ThemeUpdater'),
-                $container->resolve('PluginUpdater'),
-                $container->resolve('SharedUtils'),
-                $task_scheduler
+                self::$container->resolve('Connection'),
+                self::$container->resolve('GitHubApp'),
+                self::$container->resolve('ThemeUpdater'),
+                self::$container->resolve('PluginUpdater'),
+                self::$container->resolve('SharedUtils'),
+                $task_scheduler,
+                self::$container
             );
 
             // Register all necessary hooks.
             $admin->register_hooks();
-            $container->resolve('ThemeUpdater')->register_hooks();
-            $container->resolve('PluginUpdater')->register_hooks();
-            $container->resolve('ModelsInit')->register();
+            self::$container->resolve('ThemeUpdater')->register_hooks();
+            self::$container->resolve('PluginUpdater')->register_hooks();
+            self::$container->resolve('ModelsInit')->register();
 
             // Text domain
             add_action('plugins_loaded', [self::class, 'load_textdomain']);
 
-            // Debugging service resolution
-            $container->debug_resolve('WebhookHandler');
-            $container->debug_resolve('ThemeUpdater');
-            $container->debug_resolve('PluginUpdater');
-            $container->debug_resolve('RestRouter');
-            $container->debug_resolve('TaskScheduler');
+            // Instantiate the Vite class to enqueue admin assets
+            new \WP2\Update\Utils\Vite();
         } catch (\Throwable $e) {
             Logger::error('Initialization failed: ' . $e->getMessage(), 'init');
         }
@@ -122,14 +120,5 @@ final class Init {
      */
     public static function load_textdomain() {
         load_plugin_textdomain( 'wp2-update', false, dirname( WP2_UPDATE_PLUGIN_FILE ) . '/languages' );
-    }
-
-    /**
-     * Returns the DI container instance.
-     *
-     * @return DIContainer|null
-     */
-    public static function get_container() {
-        return self::$container;
     }
 }

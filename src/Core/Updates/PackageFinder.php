@@ -34,6 +34,21 @@ class PackageFinder {
 
         // Clear the transient cache when an app is saved or updated.
         add_action( 'save_post_wp2_github_app', [ $this, 'clear_repo_to_app_map_cache' ] );
+
+        // Add these action hooks
+        add_action('upgrader_process_complete', [$this, 'clear_cache_on_install'], 10, 2);
+        add_action('activated_plugin', [$this, 'clear_cache']);
+        add_action('deactivated_plugin', [$this, 'clear_cache']);
+        add_action('switch_theme', [$this, 'clear_cache']);
+    }
+
+    /**
+     * Clears package cache after a theme or plugin installation/update.
+     */
+    public function clear_cache_on_install($upgrader, $options) {
+        if (isset($options['type']) && in_array($options['type'], ['theme', 'plugin'])) {
+            $this->clear_cache();
+        }
     }
 
     /**

@@ -437,6 +437,7 @@ class Service {
 
 	/**
 	 * Test-only method to expose private `create_app_jwt` for testing.
+	 * @internal
 	 */
 	public function test_create_app_jwt(string $app_slug): ?string {
 		return $this->create_app_jwt($app_slug);

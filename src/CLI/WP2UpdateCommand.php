@@ -27,7 +27,7 @@ class WP2UpdateCommand {
      * Gets the DI container.
      */
     private static function get_container() {
-        $container = apply_filters('wp2_update_di_container', null);
+        $container = \WP2\Update\Init::get_container();
         if (!$container) {
             WP_CLI::error('Could not initialize WP2 Update services.');
             return null;
@@ -177,36 +177,44 @@ class WP2UpdateCommand {
         
         $updated_count = 0;
         foreach ($all_updates as $slug => $data) {
-            $is_plugin = is_object($data); // plugin data is object, theme is array
-            $package_slug = $is_plugin ? $data->plugin : $slug;
-
-            // If specific slugs are provided, only update them
-            if (!empty($args) && !in_array($package_slug, $args)) {
+            if (!is_object($data)) {
+                WP_CLI::warning('Invalid data format encountered. Skipping update.');
                 continue;
             }
 
+            $is_plugin = is_object($data); // plugin data is object, theme is array
+            $package_slug = $is_plugin ? $data->plugin : $slug;
+
             if ($is_plugin && isset($managed_plugins[$package_slug])) {
                 $item_data = $managed_plugins[$package_slug];
-                WP_CLI::log("Updating plugin: {$item_data['name']} to version {$data->new_version}...");
-                $result = $plugin_updater->install_plugin($item_data['app_slug'], $item_data['repo'], $data->new_version, $package_slug);
-                 if (is_wp_error($result)) {
-                    WP_CLI::warning("Failed to update plugin {$item_data['name']}: " . $result->get_error_message());
+                if (isset($data->new_version)) {
+                    WP_CLI::log("Updating plugin: {$item_data['name']} to version {$data->new_version}...");
+                    $result = $plugin_updater->install_plugin($item_data['app_slug'], $item_data['repo'], $data->new_version, $package_slug);
                 } else {
-                    WP_CLI::success("Successfully updated plugin {$item_data['name']}.");
-                    $updated_count++;
+                    WP_CLI::warning('Missing version information for plugin. Skipping update.');
+                    continue;
                 }
-
             } elseif (!$is_plugin && isset($managed_themes[$slug])) {
                 $item_data = $managed_themes[$slug];
-                WP_CLI::log("Updating theme: {$item_data['name']} to version {$data['new_version']}...");
-                $result = $theme_updater->install_theme($item_data['app_slug'], $item_data['repo'], $data['new_version'], $slug);
-                 if (is_wp_error($result)) {
-                    WP_CLI::warning("Failed to update theme {$item_data['name']}: " . $result->get_error_message());
+                if (isset($data['new_version'])) {
+                    WP_CLI::log("Updating theme: {$item_data['name']} to version {$data['new_version']}...");
+                    $result = $theme_updater->install_theme($item_data['app_slug'], $item_data['repo'], $data['new_version'], $slug);
                 } else {
-                    WP_CLI::success("Successfully updated theme {$item_data['name']}.");
-                    $updated_count++;
+                    WP_CLI::warning('Missing version information for theme. Skipping update.');
+                    continue;
                 }
+            } else {
+                WP_CLI::warning('Unrecognized package slug. Skipping update.');
+                continue;
             }
+
+             if (is_wp_error($result)) {
+                WP_CLI::warning("Failed to update plugin {$item_data['name']}: " . $result->get_error_message());
+            } else {
+                WP_CLI::success("Successfully updated plugin {$item_data['name']}.");
+                $updated_count++;
+            }
+
         }
 
         if ($updated_count > 0) {

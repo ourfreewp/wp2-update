@@ -24,7 +24,8 @@ class PackagesListTable extends AbstractListTable {
             'name'     => __('Package Name', 'wp2-update'),
             'version'  => __('Version', 'wp2-update'),
             'status'   => __('Status', 'wp2-update'),
-            'repo'     => __('Repository', 'wp2-update'), // Added column for GitHub repo links
+            'repo'     => __('Repository', 'wp2-update'),
+            'update'   => __('Update', 'wp2-update'), // Added column for update actions
         ];
     }
 
@@ -92,6 +93,15 @@ class PackagesListTable extends AbstractListTable {
                     return sprintf('<a href="%s" target="_blank">%s</a>', esc_url($item['repo']), esc_html__('View Repository', 'wp2-update'));
                 }
                 return esc_html__('N/A', 'wp2-update');
+            case 'update':
+                if (!empty($item['update_available'])) {
+                    return sprintf(
+                        '<button class="button button-primary" onclick="updatePackage(\'%s\')">%s</button>',
+                        esc_attr($item['key']),
+                        esc_html__('Update Now', 'wp2-update')
+                    );
+                }
+                return esc_html__('Up-to-date', 'wp2-update');
             default:
                 return isset($item[$column_name]) ? esc_html($item[$column_name]) : '';
         }

@@ -24,12 +24,17 @@ class Init {
     /** @var Models The models handler. */
     private Models $models;
 
+    /** @var mixed The DI container instance. */
+    private $container;
+
     /**
      * Constructor.
      */
-    public function __construct( Connection $connection, GitHubApp $github_app, ThemeUpdater $theme_updater, PluginUpdater $plugin_updater, SharedUtils $utils, TaskScheduler $task_scheduler ) {
+    public function __construct( Connection $connection, GitHubApp $github_app, ThemeUpdater $theme_updater, PluginUpdater $plugin_updater, SharedUtils $utils, TaskScheduler $task_scheduler, $container ) {
+        $this->container = $container;
+
         // Instantiate page renderers
-        $this->pages_handler = new Pages( $connection, $github_app, $utils );
+        $this->pages_handler = new Pages( $connection, $github_app, $utils, $this->container );
 
         // Instantiate action handler
         $this->actions = new Actions( $connection, $github_app, $theme_updater, $plugin_updater, $utils, $task_scheduler );

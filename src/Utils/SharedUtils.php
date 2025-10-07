@@ -57,6 +57,7 @@ final class SharedUtils {
 
 		if ( empty( $res['ok'] ) ) {
 			Logger::log( 'Error fetching releases for repository: ' . $repo, 'error', 'github' );
+			Logger::log( 'Additional debug info: Check API rate limits and authentication.', 'debug', 'github' );
 			return [];
 		}
 
@@ -154,10 +155,10 @@ final class SharedUtils {
 		$last_checked  = ( is_object( $update_themes ) && isset( $update_themes->last_checked ) ) ? (int) $update_themes->last_checked : 0;
 
 		if ( empty( $last_checked ) ) {
-			return __( 'Never', 'wp2-update' );
+			return esc_html__( 'Never', 'wp2-update' );
 		}
 
-		return sprintf( __( '%s ago', 'wp2-update' ), human_time_diff( $last_checked ) );
+		return sprintf( esc_html__( '%s ago', 'wp2-update' ), human_time_diff( $last_checked ) );
 	}
 
 	/**
@@ -171,7 +172,7 @@ final class SharedUtils {
 					echo '<div class="notice notice-error"><p>' . esc_html__( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) . '</p></div>';
 				});
 			}
-			throw new \RuntimeException( __( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) );
+			throw new \RuntimeException( esc_html__( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) );
 		}
 
 		$key = AUTH_KEY;
@@ -195,7 +196,7 @@ final class SharedUtils {
 					echo '<div class="notice notice-error"><p>' . esc_html__( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) . '</p></div>';
 				});
 			}
-			throw new \RuntimeException( __( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) );
+			throw new \RuntimeException( esc_html__( 'Encryption key is not defined. Please set AUTH_KEY in your wp-config.php.', 'wp2-update' ) );
 		}
 
 		$key     = AUTH_KEY;
@@ -295,6 +296,7 @@ final class SharedUtils {
         // Use authenticated client to download the file.
         $temp_zip_file = $this->github_service->download_to_temp_file( $app_slug, $zip_url );
         if ( is_wp_error( $temp_zip_file ) ) {
+            ErrorHandler::handle_error($temp_zip_file);
             return $temp_zip_file;
         }
 
@@ -308,6 +310,7 @@ final class SharedUtils {
 
         // Wrap RuntimeException messages with i18n support.
         if ( is_wp_error( $result ) ) {
+            ErrorHandler::handle_error($result);
             Logger::log( sprintf( __( 'Install failed: %s', 'wp2-update' ), $result->get_error_message() ), 'error', 'install' );
             return $result;
         }

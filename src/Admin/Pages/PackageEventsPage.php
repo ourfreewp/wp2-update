@@ -71,10 +71,29 @@ class PackageEventsPage {
         $message_content = $log['message'] ?? '';
         $decoded_message = json_decode($message_content, true);
 
-        if ( is_array($decoded_message) ) {
-            echo '<pre>' . esc_html(print_r($decoded_message, true)) . '</pre>';
+        if (is_array($decoded_message)) {
+            echo '<div class="wp2-log-message-formatted">';
+            $this->print_array_recursively($decoded_message);
+            echo '</div>';
         } else {
             echo esc_html($message_content);
         }
+    }
+
+    /**
+     * Recursively prints an array as a nested HTML list.
+     */
+    private function print_array_recursively(array $data) {
+        echo '<ul>';
+        foreach ($data as $key => $value) {
+            echo '<li><strong>' . esc_html($key) . ':</strong> ';
+            if (is_array($value)) {
+                $this->print_array_recursively($value);
+            } else {
+                echo esc_html($value);
+            }
+            echo '</li>';
+        }
+        echo '</ul>';
     }
 }

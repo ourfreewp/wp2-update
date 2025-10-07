@@ -151,7 +151,7 @@ final class Scheduler {
         if (isset($args['app_post_id'])) {
             if (!$github_service) {
                 // Use the DI container to fetch the GitHubService instance.
-                $container = apply_filters('wp2_update_di_container', null);
+                $container = \WP2\Update\Init::get_container();
                 if ($container) {
                     $github_service = $container->resolve(GitHubService::class);
                 } else {
@@ -186,5 +186,17 @@ final class Scheduler {
             <p><?php esc_html_e( 'WP2 Update requires the Action Scheduler library to function, but it was not found. Please ensure it is installed and activated.', 'wp2-update' ); ?></p>
         </div>
         <?php
+    }
+
+    public static function getInstance(): Scheduler {
+        static $instance = null;
+        if ($instance === null) {
+            $container = apply_filters('wp2_update_di_container', null);
+            if ($container === null) {
+                throw new \RuntimeException('DI Container is not initialized.');
+            }
+            $instance = new self($container->resolve('GitHubService'));
+        }
+        return $instance;
     }
 }

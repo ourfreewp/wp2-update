@@ -543,6 +543,8 @@ final class Init {
             $uploaded_file = $_FILES['_wp2_private_key_file'];
             if ( 'pem' === strtolower( (string) pathinfo( $uploaded_file['name'], PATHINFO_EXTENSION ) ) ) {
                 $key_content = file_get_contents( $uploaded_file['tmp_name'] );
+                // Ensure the file content is sanitized
+                $key_content = sanitize_textarea_field( $key_content );
                 if ( false !== $key_content && '' !== $key_content ) {
                     update_post_meta( $post_id, '_wp2_private_key_content', SharedUtils::encrypt( $key_content ) );
                 }

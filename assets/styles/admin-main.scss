@@ -889,3 +889,23 @@ input[type="password"]:disabled {
 	animation: spin 0.6s linear infinite;
 	margin-left: 8px;
 }
+
+.wp2-log-message-formatted {
+	font-family: 'Courier New', Courier, monospace;
+	font-size: 0.9rem;
+	background-color: #f9f9f9;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	padding: 10px;
+	margin: 10px 0;
+	overflow-x: auto;
+}
+
+.wp2-log-message-formatted ul {
+	list-style-type: none;
+	padding-left: 1.5rem;
+}
+
+.wp2-log-message-formatted li {
+	margin-bottom: 5px;
+}

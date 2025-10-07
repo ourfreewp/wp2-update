@@ -156,7 +156,7 @@ class SystemHealthPage {
         ];
 
         $rows[] = [
-            'label' => __( 'Manual Scheduler', 'wp2-update' ),
+            'label' => esc_html__( 'Manual Scheduler', 'wp2-update' ),
             'value' => $this->get_manual_scheduler_form(),
             'allow_html' => true,
         ];
@@ -196,15 +196,8 @@ class SystemHealthPage {
 
     public function handle_update_check() {
         if ( isset( $_GET['update-check'] ) && '1' === $_GET['update-check'] ) {
-            // Verify nonce to ensure the request is valid.
-            $nonce = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
-            if ( ! wp_verify_nonce( $nonce, 'wp2-force-check' ) ) {
-                error_log( 'SystemHealthPage: Invalid nonce for update-check.' );
-                wp_die( 
-                    __( 'Invalid request. Nonce verification failed.', 'wp2-update' ), 
-                    __( 'Forbidden', 'wp2-update' ), 
-                    [ 'response' => 403 ] 
-                );
+            if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( $_GET['_wpnonce'] ), 'wp2-force-check' ) ) {
+                wp_die( 'Invalid nonce' );
             }
 
             // Log the redirection for debugging
