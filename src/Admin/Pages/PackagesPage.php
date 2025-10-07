@@ -78,6 +78,7 @@ class PackagesPage {
         ?>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <input type="hidden" name="action" value="wp2_bulk_action">
+            <input type="hidden" name="packages[]" value=""> <!-- Ensure empty value is submitted if no packages are selected -->
             <?php wp_nonce_field( 'wp2_bulk_action_packages', 'wp2_bulk_action_nonce' ); ?>
             <?php $list_table->display(); ?>
         </form>

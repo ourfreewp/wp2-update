@@ -192,8 +192,8 @@ class Controller {
         }
         check_admin_referer( 'wp2_bulk_action', 'wp2_bulk_action_nonce' );
 
-        $action = sanitize_key( $_POST['bulk-action'] ?? '' );
-        $packages = isset($_POST['packages']) ? array_map('sanitize_text_field', (array) $_POST['packages']) : [];
+        $action = sanitize_key( $_POST['action'] ?? '' );
+        $packages = isset($_POST['packages']) ? array_map('sanitize_text_field', (array) wp_unslash( $_POST['packages'] ) ) : [];
 
         if ( empty($action) || empty($packages) ) {
             wp_safe_redirect( admin_url( 'admin.php?page=wp2-update-bulk-actions&error=no_action_or_packages' ) );

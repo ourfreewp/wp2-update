@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Mocks;
 
-// Mock class for testing purposes
+use Brain\Monkey;
+
 class MockWPTheme {
-    public function get($header) {
-        if ($header === 'Update URI') return 'owner/my-theme';
-        if ($header === 'Name') return 'My Awesome Theme';
-        return '';
+    public static function mock() {
+        Monkey\Functions\when('get')->alias([
+            'Update URI' => 'owner/my-theme',
+            'Name' => 'My Awesome Theme',
+        ]);
     }
 }

@@ -2,11 +2,13 @@
 
 namespace Tests\Unit\Mocks;
 
-use WP2\Update\Core\API\Service;
+use Brain\Monkey;
 
-class StubGitHubService extends Service {
-    public function call(string $app_slug, string $method, string $path, array $params = []): array {
-        // Provide a default implementation for testing
-        return ['status' => 'success', 'data' => []];
+class StubGitHubService {
+    public static function mock() {
+        Monkey\Functions\when('WP2\\Update\\Core\\API\\Service::call')->justReturn([
+            'status' => 'success',
+            'data' => []
+        ]);
     }
 }

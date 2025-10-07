@@ -2,12 +2,11 @@
 
 namespace Tests\Unit\Mocks;
 
-use WP2\Update\Core\API\GitHubApp\Init;
-use WP2\Update\Core\API\Service as GitHubService;
+use Brain\Monkey;
 
-class StubGitHubAppInit extends Init {
-    public function __construct() {
-        $stubGitHubService = new StubGitHubService();
-        parent::__construct($stubGitHubService);
+class StubGitHubAppInit {
+    public static function mock() {
+        StubGitHubService::mock();
+        Monkey\Functions\when('WP2\\Update\\Core\\API\\GitHubApp\\Init::__construct')->justReturn(null);
     }
 }

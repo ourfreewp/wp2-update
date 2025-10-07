@@ -160,32 +160,8 @@ const initSystemHealthPage = () => {
             manualSyncButton.disabled = true;
             manualSyncButton.textContent = runningLabel;
 
-            const endpoint = '/wp2-update/v1/manual-sync';
-            fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-WP-Nonce': wpApiSettings.nonce,
-                },
-            })
-                .then((response) => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
-                })
-                .then((data) => {
-                    console.log('Manual sync completed successfully:', data);
-                    showToast(data.message || 'Manual sync completed successfully.', 'success');
-                })
-                .catch((error) => {
-                    console.error('Manual sync failed:', error);
-                    showToast('Manual sync failed. Please check the logs for details.', 'error');
-                })
-                .finally(() => {
-                    manualSyncButton.textContent = 'Run Sync & Health Checks Now';
-                    manualSyncButton.disabled = false;
-                });
+            // Redirect to the admin-post.php endpoint for synchronous processing
+            window.location.href = targetUrl;
         });
     }
 };

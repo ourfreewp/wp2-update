@@ -96,4 +96,11 @@ class PackagesListTable extends AbstractListTable {
                 return isset($item[$column_name]) ? esc_html($item[$column_name]) : '';
         }
     }
+
+    protected function column_cb($item) {
+        return sprintf(
+            '<input type="checkbox" name="packages[]" value="%s" />',
+            esc_attr($item['key'])
+        );
+    }
 }

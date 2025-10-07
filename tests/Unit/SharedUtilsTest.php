@@ -6,7 +6,6 @@ namespace Tests\Unit;
 
 use WP2\Update\Utils\SharedUtils;
 use Brain\Monkey\Expectation\ExpectationFactory;
-use Mockery;
 use Tests\TestCase;
 use WP2\Update\Core\API\GitHubApp\Init as GitHubAppInit;
 use WP2\Update\Core\API\Service as GitHubService;
