@@ -41,51 +41,29 @@ class Init {
 
         // Instantiate models handler
         $this->models = new Models();
+
+        // Register the admin menu pages
+        add_action( 'admin_menu', [ $this, 'register_admin_pages' ] );
     }
 
     /**
      * Registers all necessary WordPress admin hooks.
      */
     public function register_hooks() {
-        add_action( 'admin_menu', [ $this, 'register_admin_pages' ] );
+        // Register standard actions.
         add_action( 'admin_init', [ $this->actions, 'handle_admin_actions' ] );
-        
         add_action( 'admin_post_wp2_theme_install', [ $this->actions, 'handle_theme_install_action' ] );
         add_action( 'admin_post_wp2_plugin_install', [ $this->actions, 'handle_plugin_install_action' ] );
         add_action( 'admin_post_wp2_test_connection', [ $this->actions, 'handle_test_connection_action' ] );
         add_action( 'admin_post_wp2_bulk_action', [ $this->actions, 'handle_bulk_actions' ] );
         add_action( 'admin_post_wp2_run_scheduler', [ $this->actions, 'handle_run_scheduler_action' ] );
 
-        // Register model hooks
+        // Register model hooks.
         $this->models->register();
 
-        // Ensure the menu item and submenu stay open for custom post types
-        add_action( 'admin_menu', function() {
-            add_filter( 'parent_file', function( $parent_file ) {
-                global $pagenow;
-                $post_types = [ 'wp2_repository', 'wp2_github_app' ];
-
-                if ( $pagenow === 'edit.php' && isset( $_GET['post_type'] ) && in_array( $_GET['post_type'], $post_types, true ) ) {
-                    $parent_file = 'wp2-update-overview';
-                }
-
-                return $parent_file;
-            });
-
-            add_filter( 'submenu_file', function( $submenu_file ) {
-                global $pagenow;
-                $post_types = [
-                    'wp2_repository' => 'edit.php?post_type=wp2_repository',
-                    'wp2_github_app' => 'edit.php?post_type=wp2_github_app'
-                ];
-
-                if ( $pagenow === 'edit.php' && isset( $_GET['post_type'] ) && isset( $post_types[ $_GET['post_type'] ] ) ) {
-                    $submenu_file = $post_types[ $_GET['post_type'] ];
-                }
-
-                return $submenu_file;
-            });
-        });
+        // Register filters for submenu persistence (NOT inside an admin_menu action).
+        add_filter( 'parent_file', [ $this, 'filter_parent_file' ] );
+        add_filter( 'submenu_file', [ $this, 'filter_submenu_file' ] );
     }
 
     /**
@@ -93,7 +71,7 @@ class Init {
      */
     public function register_admin_pages() {
         add_menu_page(
-            __( 'WP2 Updates', 'wp2-update' ),
+            'WP2 Updates',
             'WP2 Updates',
             'manage_options',
             'wp2-update-overview',
@@ -120,39 +98,51 @@ class Init {
             [ $this->pages_handler, 'render_system_health_page' ]
         );
 
-        add_submenu_page(
-            'wp2-update-overview',
-            __( 'Settings', 'wp2-update' ),
-            __( 'Settings', 'wp2-update' ),
-            'manage_options',
-            'wp2-update-settings',
-            [ $this->pages_handler, 'render_github_app_settings_page' ]
-        );
-
+        // Add dynamic post type submenu pages
         $post_types = [
-            'wp2_repository' => __( 'Repos', 'wp2-update' ),
-            'wp2_github_app' => __( 'Apps', 'wp2-update' )
+            'wp2_repository' => __( 'Repositories', 'wp2-update' ),
+            'wp2_github_app' => __( 'GitHub Apps', 'wp2-update' ),
         ];
 
-        // Debugging menu registration
-        error_log('Registering admin menu: WP2 Updates');
-        error_log('Registering submenu: Packages');
-        error_log('Registering submenu: System Health');
-        error_log('Registering submenu: Settings');
-        foreach ( $post_types as $post_type => $label ) {
-            error_log('Registering submenu for post type: ' . $post_type);
-        }
-
-        // Ensure dynamic post type submenu pages are correctly mapped
         foreach ( $post_types as $post_type => $label ) {
             add_submenu_page(
                 'wp2-update-overview',
                 $label,
                 $label,
                 'manage_options',
-                'edit.php?post_type=' . $post_type,
-                '' // No callback needed for post type links
+                "edit.php?post_type={$post_type}"
             );
         }
+    }
+
+    /**
+     * Filter for parent file to ensure submenu persistence.
+     */
+    public function filter_parent_file( $parent_file ) {
+        global $pagenow;
+        $post_types = [ 'wp2_repository', 'wp2_github_app' ];
+
+        if ( $pagenow === 'edit.php' && isset( $_GET['post_type'] ) && in_array( $_GET['post_type'], $post_types, true ) ) {
+            return 'wp2-update-overview';
+        }
+
+        return $parent_file;
+    }
+
+    /**
+     * Filter for submenu file to ensure submenu persistence.
+     */
+    public function filter_submenu_file( $submenu_file ) {
+        global $pagenow;
+        $post_types = [
+            'wp2_repository' => 'edit.php?post_type=wp2_repository',
+            'wp2_github_app' => 'edit.php?post_type=wp2_github_app',
+        ];
+
+        if ( $pagenow === 'edit.php' && isset( $_GET['post_type'] ) && isset( $post_types[ $_GET['post_type'] ] ) ) {
+            return $post_types[ $_GET['post_type'] ];
+        }
+
+        return $submenu_file;
     }
 }

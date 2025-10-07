@@ -35,20 +35,6 @@ class DIContainer {
     }
 
     /**
-     * Logs the service resolution process for debugging.
-     *
-     * @param string $key The service key.
-     */
-    public function debug_resolve(string $key) {
-        try {
-            $service = $this->resolve($key);
-            error_log("Service '{$key}' resolved successfully.");
-        } catch (ServiceNotFoundException $e) {
-            error_log("Service '{$key}' could not be resolved: " . $e->getMessage());
-        }
-    }
-
-    /**
      * Registers the default services for the application.
      */
     public function register_services() {

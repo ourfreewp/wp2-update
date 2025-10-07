@@ -65,7 +65,7 @@ class Pages {
     }
 
     /**
-     * * Renders the overview page.
+     * Renders the overview page.
      */
     public function render_overview_page() {
         $view = new OverviewPage($this->connection, $this->github_app, $this->utils);
