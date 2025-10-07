@@ -13,11 +13,15 @@ use Github\ResultPager;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Utils\SharedUtils;
 use WP_Error;
+use Psr\Http\Message\RequestFactoryInterface;
+use Psr\Http\Message\StreamFactoryInterface;
+use WP2\Update\Core\API\GitHubApp\Init as GitHubAppInit;
+use WP_Query;
 
 /**
  * Manages the GitHub API client and authentication.
  */
-final class Service {
+class Service {
 
 	/**
 	 * Cache for GitHub clients.
@@ -34,15 +38,56 @@ final class Service {
 	private static array $credentials_cache = [];
 
 	/**
+	 * @var RequestFactoryInterface
+	 */
+	private RequestFactoryInterface $requestFactory;
+
+	/**
+	 * @var StreamFactoryInterface
+	 */
+	private StreamFactoryInterface $streamFactory;
+
+	/**
+	 * @var string The class name for WP_Query, allowing for dependency injection.
+	 */
+	private string $wpQueryClass;
+
+	/**
 	 * Constructor.
 	 *
 	 * Automatically clears the client and credentials cache on instantiation
 	 * to handle any bad data.
+	 *
+	 * @param RequestFactoryInterface $requestFactory
+	 * @param StreamFactoryInterface $streamFactory
+	 * @param string $wpQueryClass The class name for WP_Query, defaulting to the global WP_Query.
 	 */
-	public function __construct() {
-		// Automatically clear cache on instantiation to handle bad data.
-		self::clear_cache();
-	}
+	public function __construct(RequestFactoryInterface $requestFactory = null, StreamFactoryInterface $streamFactory = null, string $wpQueryClass = WP_Query::class) {
+        $this->requestFactory = $requestFactory ?? new class implements RequestFactoryInterface {
+            public function createRequest(string $method, $uri): \Psr\Http\Message\RequestInterface {
+                throw new \RuntimeException('Mocked RequestFactoryInterface');
+            }
+        };
+
+        $this->streamFactory = $streamFactory ?? new class implements StreamFactoryInterface {
+            public function createStream(string $content = ""): \Psr\Http\Message\StreamInterface {
+                throw new \RuntimeException('Mocked StreamFactoryInterface');
+            }
+
+            public function createStreamFromFile(string $filename, string $mode = 'r'): \Psr\Http\Message\StreamInterface {
+                throw new \RuntimeException('Mocked createStreamFromFile');
+            }
+
+            public function createStreamFromResource($resource): \Psr\Http\Message\StreamInterface {
+                throw new \RuntimeException('Mocked createStreamFromResource');
+            }
+        };
+
+        $this->wpQueryClass = $wpQueryClass;
+
+        // Automatically clear cache on instantiation to handle bad data.
+        self::clear_cache();
+    }
 
 	/**
 	 * Retrieves the GitHub client for a specific app slug.
@@ -66,7 +111,7 @@ final class Service {
 
 			$this->debug_log( sprintf( "GitHub Service: Authenticating client for app slug '%s'.", $app_slug ) );
 
-			$jwt = $this->create_app_jwt( $credentials['app_id'], $credentials['private_key'] );
+			$jwt = $this->create_app_jwt( $app_slug );
 			$client->authenticate( $jwt, null, AuthMethod::JWT );
 
 			$this->debug_log( sprintf( "GitHub Service: JWT generated for app slug '%s'.", $app_slug ) );
@@ -89,45 +134,44 @@ final class Service {
 	}
 
 	/**
-	 * @param string              $app_slug
-	 * @param string              $method
-	 * @param string              $path
-	 * @param array<string,mixed> $params
-	 * @return array{ok:bool,data?:mixed,error?:string}
+	 * Makes an authenticated API call to GitHub using the GitHubClient library.
+	 *
+	 * @param string              $app_slug The slug of the GitHub app.
+	 * @param string              $method The HTTP method (GET, POST, etc.).
+	 * @param string              $path The API endpoint path.
+	 * @param array<string,mixed> $params The request parameters.
+	 * @param array<string,string> $headers Optional headers to include in the request.
+	 * @return array{ok:bool,data?:mixed,error?:string} The API response.
 	 */
-	public function call( string $app_slug, string $method, string $path, array $params = [] ): array {
+	public function call( string $app_slug, string $method, string $path, array $params = [], array $headers = [] ): array {
 		$client = $this->get_client( $app_slug );
 		if ( ! $client ) {
-			return [ 'ok' => false, 'error' => 'Client not authenticated' ];
+			return [ 'ok' => false, 'error' => 'GitHub client not available.' ];
 		}
 
 		try {
-			$this->debug_log( sprintf( "GitHub Service: %s %s", strtoupper( $method ), $path ) );
+			$httpClient = $client->getHttpClient();
+			$requestFactory = $this->requestFactory; // Assume injected RequestFactoryInterface
+			$streamFactory = $this->streamFactory; // Assume injected StreamFactoryInterface
 
-			// Normalize method to lowercase and validate
-			$http_method = strtolower($method);
-			if ( ! in_array( $http_method, [ 'get', 'post', 'patch', 'put', 'delete' ], true ) ) {
-				return [ 'ok' => false, 'error' => "Invalid HTTP method: {$method}" ];
+			$url = 'https://api.github.com' . $path;
+			$request = $requestFactory->createRequest($method, $url);
+
+			foreach ($headers as $key => $value) {
+				$request = $request->withHeader($key, $value);
 			}
 
-			if ( ! empty( $params ) ) {
-				$this->debug_log( sprintf( "GitHub Service: Request params keys - %s", implode( ', ', array_keys( $params ) ) ) );
+			if (!empty($params)) {
+				$body = $streamFactory->createStream(json_encode($params));
+				$request = $request->withBody($body);
 			}
 
-			// Call the GitHub API using the HttpClient directly
-			$response = $client->getHttpClient()->{$http_method}( $path, $params );
+			$response = $httpClient->sendRequest($request);
+			$data = json_decode($response->getBody()->getContents(), true);
 
-			// Parse JSON response
-			$data = json_decode( (string) $response->getBody(), true );
-
-			$status = method_exists( $response, 'getStatusCode' ) ? $response->getStatusCode() : 'unknown';
-			$this->debug_log( sprintf( "GitHub Service: Response received for %s %s (status %s).", strtoupper( $method ), $path, $status ) );
 			return [ 'ok' => true, 'data' => $data ];
-		} catch (ExceptionInterface $e) {
-			Logger::log("GitHub Service: API call failed - Message: " . $e->getMessage(), 'error', 'api');
-			return [ 'ok' => false, 'error' => $e->getMessage() ];
-		} catch (\Throwable $e) {
-			Logger::log("GitHub Service: Unexpected error - Message: " . $e->getMessage(), 'error', 'api');
+		} catch ( ExceptionInterface $e ) {
+			Logger::log( "GitHub API call failed: " . $e->getMessage(), 'error', 'api' );
 			return [ 'ok' => false, 'error' => $e->getMessage() ];
 		}
 	}
@@ -154,13 +198,13 @@ final class Service {
 	 * @param string $app_slug
 	 * @return array{app_id:string,installation_id:string,private_key:string}|null
 	 */
-	private function get_app_credentials( string $app_slug ): ?array {
+	protected function get_app_credentials( string $app_slug ): ?array {
 		if ( isset( self::$credentials_cache[ $app_slug ] ) ) {
 			$this->debug_credentials($app_slug, self::$credentials_cache[ $app_slug ]);
 			return self::$credentials_cache[ $app_slug ];
 		}
 
-		$query = new \WP_Query(
+		$query = new $this->wpQueryClass(
 			[
 				'post_type'      => 'wp2_github_app',
 				'name'           => $app_slug,
@@ -170,6 +214,8 @@ final class Service {
 				'fields'         => 'ids',
 			]
 		);
+
+		$this->debug_credentials($app_slug, ['message' => 'Querying posts for app_slug: ' . $app_slug]);
 
 		if ( ! $query->have_posts() ) {
 			self::$credentials_cache[ $app_slug ] = null;
@@ -212,19 +258,26 @@ final class Service {
 	/**
 	 * Generates a JWT for GitHub App authentication.
 	 *
-	 * @param int $app_id The GitHub App ID.
-	 * @param string $private_key The private key for the GitHub App.
-	 * @return string The generated JWT.
+	 * @param string $app_slug The slug of the GitHub app.
+	 * @return string|null The generated JWT or null on failure.
 	 */
-	private function create_app_jwt( int $app_id, string $private_key ): string {
-		$now = time();
-		$payload = [
-			'iat' => $now,
-			'exp' => $now + 600, // 10 minutes expiration
-			'iss' => $app_id,
-		];
+	protected function create_app_jwt( string $app_slug ): ?string {
+		$credentials = $this->get_app_credentials( $app_slug );
+		if ( ! $credentials ) {
+			Logger::log( "GitHub Service: Missing credentials for app slug '{$app_slug}'.", 'error', 'api' );
+			return null;
+		}
 
-		return JWT::encode($payload, $private_key, 'RS256');
+		Logger::log_debug("Debug: Entering create_app_jwt for app slug '{$app_slug}'.", 'test');
+        Logger::log_debug("Debug: Credentials: " . print_r($credentials, true), 'test');
+
+		try {
+			$githubAppInit = new GitHubAppInit($this);
+			return $githubAppInit->generate_jwt($credentials['private_key'], $credentials['app_id']);
+		} catch ( \Exception $e ) {
+			Logger::log( "GitHub Service: Failed to generate JWT for app slug '{$app_slug}'. Message: " . $e->getMessage(), 'error', 'api' );
+			return null;
+		}
 	}
 
 	/**
@@ -351,4 +404,48 @@ final class Service {
             return null;
         }
     }
+
+	/**
+	 * Retrieves an Installation Access Token for a GitHub App.
+	 *
+	 * @param string $app_slug The slug of the GitHub app.
+	 * @return string|null The Installation Access Token or null on failure.
+	 */
+	private function get_installation_token( string $app_slug ): ?string {
+		$credentials = $this->get_app_credentials( $app_slug );
+		if ( ! $credentials ) {
+			Logger::log( "GitHub Service: Missing credentials for app slug '{$app_slug}'.", 'error', 'api' );
+			return null;
+		}
+
+		Logger::log_debug("Debug: Entering get_installation_token for app slug '{$app_slug}'.", 'test');
+        Logger::log_debug("Debug: Credentials: " . print_r($credentials, true), 'test');
+
+		try {
+			$jwt = $this->create_app_jwt( $app_slug );
+			if ( ! $jwt ) {
+				return null;
+			}
+
+			$githubAppInit = new GitHubAppInit($this);
+			return $githubAppInit->get_installation_access_token($jwt, $credentials['installation_id']);
+		} catch ( \Exception $e ) {
+			Logger::log( "GitHub Service: Failed to retrieve Installation Access Token for app slug '{$app_slug}'. Message: " . $e->getMessage(), 'error', 'api' );
+			return null;
+		}
+	}
+
+	/**
+	 * Test-only method to expose private `create_app_jwt` for testing.
+	 */
+	public function test_create_app_jwt(string $app_slug): ?string {
+		return $this->create_app_jwt($app_slug);
+	}
+
+	/**
+	 * Test-only method to expose private `get_installation_token` for testing.
+	 */
+	public function test_get_installation_token(string $app_slug): ?string {
+		return $this->get_installation_token($app_slug);
+	}
 }

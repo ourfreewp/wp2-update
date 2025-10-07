@@ -127,4 +127,25 @@ class Pages {
 
         echo '</div>';
     }
+
+    /**
+     * Renders the GitHub App Settings page.
+     */
+    public function render_github_app_settings_page() {
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__( 'GitHub App Settings', 'wp2-update' ) . '</h1>';
+        echo '<form method="post" action="options.php">';
+
+        // Output security fields for the registered setting
+        settings_fields( 'wp2_update_github_app_settings' );
+
+        // Output setting sections and their fields
+        do_settings_sections( 'wp2-update-settings' );
+
+        // Submit button
+        submit_button( __( 'Save Settings', 'wp2-update' ) );
+
+        echo '</form>';
+        echo '</div>';
+    }
 }

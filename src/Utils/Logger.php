@@ -10,6 +10,36 @@ class Logger {
 	const LOG_OPTION_KEY  = 'wp2_update_log';
 	const MAX_LOG_ENTRIES = 100;
 
+	private static $getSiteOption;
+    private static $updateSiteOption;
+    private static $currentTime;
+
+    public static function setOptionHandlers(callable $getSiteOption, callable $updateSiteOption, callable $currentTime = null): void {
+        self::$getSiteOption = $getSiteOption;
+        self::$updateSiteOption = $updateSiteOption;
+        self::$currentTime = $currentTime ?? fn($type) => time();
+
+        error_log('Setting current_time handler: ' . (self::$currentTime ? 'set' : 'not set'));
+        error_log('Debug: Using current_time handler: ' . (self::$currentTime ? 'set' : 'not set'));
+        error_log('Debug: Setting current_time handler in setOptionHandlers');
+        error_log('Debug: currentTime handler set: ' . (is_callable($currentTime) ? 'callable' : 'not callable'));
+        error_log('Debug: currentTime handler state: ' . var_export(self::$currentTime, true));
+    }
+
+    private static function getSiteOption(string $key, $default) {
+        return is_callable(self::$getSiteOption) ? call_user_func(self::$getSiteOption, $key, $default) : $default;
+    }
+
+    private static function updateSiteOption(string $key, $value): void {
+        if (is_callable(self::$updateSiteOption)) {
+            call_user_func(self::$updateSiteOption, $key, $value);
+        }
+    }
+
+    private static function getCurrentTime(string $type) {
+        return call_user_func(self::$currentTime, $type);
+    }
+
 	/**
 	 * Logs a message with improved handling for arrays and objects.
 	 *
@@ -20,7 +50,7 @@ class Logger {
 	 * @throws JsonException If the message cannot be JSON-encoded.
 	 */
 	public static function log( $message, $type = 'info', $context = 'general' ) {
-		$logs = get_site_option( self::LOG_OPTION_KEY, [] );
+		$logs = self::getSiteOption( self::LOG_OPTION_KEY, [] );
 
 		// Standardize the message format. If it's already structured, use it. Otherwise, wrap it.
         $log_message = is_array($message) || is_object($message) ? $message : ['message' => $message];
@@ -38,10 +68,10 @@ class Logger {
 			'message'   => $redacted,
 			'type'      => $type,
 			'context'   => $context,
-			'timestamp' => current_time( 'timestamp' ),
+			'timestamp' => self::getCurrentTime( 'timestamp' ),
 		] );
 
-		update_site_option( self::LOG_OPTION_KEY, array_slice( $logs, 0, self::MAX_LOG_ENTRIES ) );
+		self::updateSiteOption( self::LOG_OPTION_KEY, array_slice( $logs, 0, self::MAX_LOG_ENTRIES ) );
 	}
 
 	/**
@@ -50,7 +80,7 @@ class Logger {
 	 * @return array The list of log entries. Returns an empty array if no logs are found.
 	 */
 	public static function get_logs(): array {
-		return get_site_option( self::LOG_OPTION_KEY, [] );
+		return self::getSiteOption( self::LOG_OPTION_KEY, [] );
 	}
 
     /**
@@ -102,7 +132,7 @@ class Logger {
      * @throws JsonException If the message cannot be JSON-encoded.
      */
     public static function log_with_package($message, $type = 'info', $context = 'general', $package_slug = null) {
-        $logs = get_site_option(self::LOG_OPTION_KEY, []);
+        $logs = self::getSiteOption(self::LOG_OPTION_KEY, []);
 
         $log_message = is_array($message) || is_object($message) ? $message : ['message' => $message];
         $message_string = json_encode($log_message, JSON_PRETTY_PRINT);
@@ -117,7 +147,7 @@ class Logger {
             'message'   => $redacted,
             'type'      => $type,
             'context'   => $context,
-            'timestamp' => current_time('timestamp'),
+            'timestamp' => self::getCurrentTime('timestamp'),
         ];
 
         if ($package_slug) {
@@ -125,7 +155,7 @@ class Logger {
         }
 
         array_unshift($logs, $log_entry);
-        update_site_option(self::LOG_OPTION_KEY, array_slice($logs, 0, self::MAX_LOG_ENTRIES));
+        self::updateSiteOption(self::LOG_OPTION_KEY, array_slice($logs, 0, self::MAX_LOG_ENTRIES));
     }
 
     /**

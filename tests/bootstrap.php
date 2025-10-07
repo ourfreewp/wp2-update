@@ -13,6 +13,9 @@ if ( ! defined( 'ABSPATH' ) ) {
     }
 }
 
+// Enable debug logging for tests.
+define('WP2_UPDATE_DEBUG', true);
+
 // Include Pest's testing functions.
 require_once __DIR__ . '/Pest.php';
 

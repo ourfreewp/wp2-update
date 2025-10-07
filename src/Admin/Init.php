@@ -115,6 +115,15 @@ class Init {
             [ $this->pages_handler, 'render_system_health_page' ]
         );
 
+        add_submenu_page(
+            'wp2-update-overview',
+            __( 'Settings', 'wp2-update' ),
+            __( 'Settings', 'wp2-update' ),
+            'manage_options',
+            'wp2-update-settings',
+            [ $this->pages_handler, 'render_github_app_settings_page' ]
+        );
+
         $post_types = [
             'wp2_repository' => __( 'Repos', 'wp2-update' ),
             'wp2_github_app' => __( 'Apps', 'wp2-update' )
@@ -124,6 +133,7 @@ class Init {
         error_log('Registering admin menu: WP2 Updates');
         error_log('Registering submenu: Packages');
         error_log('Registering submenu: System Health');
+        error_log('Registering submenu: Settings');
         foreach ( $post_types as $post_type => $label ) {
             error_log('Registering submenu for post type: ' . $post_type);
         }

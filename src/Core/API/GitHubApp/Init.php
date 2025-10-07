@@ -192,5 +192,53 @@ final class Init {
 
         return $app_id ? "https://github.com/settings/apps/{$app_id}" : __( 'Not configured', 'wp2-update' );
     }
+
+    /**
+     * Generates a JSON Web Token (JWT) for GitHub App authentication.
+     *
+     * @param string $privateKey The PEM-encoded private key.
+     * @param string $appId The GitHub App ID.
+     * @return string The generated JWT.
+     * @throws \Exception If the JWT cannot be generated.
+     */
+    public function generate_jwt(string $privateKey, string $appId): string {
+        $issuedAt = time();
+        $expiration = $issuedAt + 600; // 10 minutes
+
+        $payload = [
+            'iat' => $issuedAt,
+            'exp' => $expiration,
+            'iss' => $appId,
+        ];
+
+        return \Firebase\JWT\JWT::encode($payload, $privateKey, 'RS256');
+    }
+
+    /**
+     * Exchanges a JWT for an Installation Access Token.
+     *
+     * @param string $jwt The JSON Web Token.
+     * @param int $installationId The GitHub App installation ID.
+     * @return string The Installation Access Token.
+     * @throws \Exception If the token cannot be retrieved.
+     */
+    public function get_installation_access_token(string $jwt, int $installationId): string {
+        $response = $this->service->call(
+            '',
+            'POST',
+            "/app/installations/{$installationId}/access_tokens",
+            [],
+            [
+                'Authorization' => "Bearer {$jwt}",
+                'Accept' => 'application/vnd.github+json',
+            ]
+        );
+
+        if (!isset($response['token'])) {
+            throw new \Exception('Failed to retrieve Installation Access Token: ' . ($response['message'] ?? 'Unknown error'));
+        }
+
+        return $response['token'];
+    }
 }
 
