@@ -58,11 +58,15 @@ jobs:
           # Normalize line endings to Unix-style
           sed -i 's/\r$//' "${{ env.MAIN_PLUGIN_FILE }}"
 
-          # Extract version using a flexible regex
-          VERSION=$(grep -iE '^\s*Version:\s*' "${{ env.MAIN_PLUGIN_FILE }}" | sed -E 's/^\s*Version:\s*//I')
+          # Extract version using grep and print raw output
+          RAW_VERSION=$(grep -iE '^\s*Version:\s*' "${{ env.MAIN_PLUGIN_FILE }}")
+          echo "Debug: Raw grep output: '$RAW_VERSION'"
 
-          # Debug: Print the raw version output
-          echo "Debug: Raw version output: '$VERSION'"
+          # Extract version using sed
+          VERSION=$(echo "$RAW_VERSION" | sed -E 's/^\s*Version:\s*//I')
+
+          # Debug: Print the processed version output
+          echo "Debug: Processed version output: '$VERSION'"
 
           # Remove any trailing or leading whitespace
           VERSION=$(echo "$VERSION" | tr -d '[:space:]')
