@@ -69,9 +69,9 @@ class PackageHistoryPage {
         <table class="wp2-data-table" aria-label="Version History Table">
             <thead>
                 <tr>
-                    <th scope="col">Version</th>
-                    <th scope="col">Release Date</th>
-                    <th scope="col">Action</th>
+                    <th scope="col"><label for="version-column">Version</label></th>
+                    <th scope="col"><label for="release-date-column">Release Date</label></th>
+                    <th scope="col"><label for="action-column">Action</label></th>
                 </tr>
             </thead>
             <tbody>

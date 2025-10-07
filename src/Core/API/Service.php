@@ -19,10 +19,18 @@ use WP_Error;
  */
 final class Service {
 
-	/** @var array<string,GitHubClient> */
+	/**
+	 * Cache for GitHub clients.
+	 *
+	 * @var array<string,GitHubClient> $client_cache
+	 */
 	private static array $client_cache = [];
 
-	/** @var array<string,array|null> */
+	/**
+	 * Cache for GitHub app credentials.
+	 *
+	 * @var array<string,array|null> $credentials_cache
+	 */
 	private static array $credentials_cache = [];
 
 	/**
@@ -37,8 +45,10 @@ final class Service {
 	}
 
 	/**
-	 * @param string $app_slug
-	 * @return GitHubClient|null
+	 * Retrieves the GitHub client for a specific app slug.
+	 *
+	 * @param string $app_slug The slug of the GitHub app.
+	 * @return GitHubClient|null The GitHub client instance or null if credentials are invalid.
 	 */
 	public function get_client( string $app_slug ): ?GitHubClient {
 		if ( isset( self::$client_cache[ $app_slug ] ) ) {

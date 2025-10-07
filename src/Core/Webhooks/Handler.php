@@ -154,12 +154,25 @@ class Handler {
 	 * @return bool True if the IP is trusted, false otherwise.
 	 */
 	private function is_github_ip(string $ip): bool {
-		$github_ips = [
-			'192.30.252.0/22', // GitHub IP ranges
-			'185.199.108.0/22',
-			'140.82.112.0/20',
-			'143.55.64.0/20',
-		];
+		$cache_key = 'github_ip_ranges';
+		$github_ips = get_transient($cache_key);
+
+		if ($github_ips === false) {
+			$response = wp_remote_get('https://api.github.com/meta');
+
+			if (is_wp_error($response)) {
+				return false;
+			}
+
+			$data = json_decode(wp_remote_retrieve_body($response), true);
+
+			if (!isset($data['hooks'])) {
+				return false;
+			}
+
+			$github_ips = $data['hooks'];
+			set_transient($cache_key, $github_ips, DAY_IN_SECONDS);
+		}
 
 		foreach ($github_ips as $cidr) {
 			if ($this->ip_in_cidr($ip, $cidr)) {

@@ -77,7 +77,7 @@ final class REST {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ $this->webhook_handler, 'handle_webhook' ],
-				'permission_callback' => $permission_callback,
+				'permission_callback' => '__return_true', // Security is handled within the callback using HMAC signature validation.
 			]
 		);
 

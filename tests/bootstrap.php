@@ -2,24 +2,16 @@
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-// Load WordPress core files to make classes like WP_Query available.
+// Dynamically load WordPress core files using @wordpress/env.
 if ( ! defined( 'ABSPATH' ) ) {
-    require_once '/path/to/wordpress/wp-load.php'; // Update this path to your WordPress installation.
+    $wp_env_path = getenv('WP_ENV_PATH') ?: '/tmp/wordpress'; // Default to /tmp/wordpress if WP_ENV_PATH is not set.
+    require_once $wp_env_path . '/wp-load.php';
 }
 
-// Ensure Brain Monkey is loaded globally for all tests
-use Brain\Monkey;
+// Include Pest's testing functions.
+require_once __DIR__ . '/Pest.php';
 
-// Setup Brain Monkey before each test
-beforeEach(function () {
-    Monkey\setUp();
-});
-
-// Tear down Brain Monkey after each test
-afterEach(function () {
-    Monkey\tearDown();
-});
-
+// Mock WordPress functions for unit tests.
 function get_transient($key) {
     return null;
 }
@@ -46,22 +38,15 @@ function wp_update_themes() {
     // Simulate theme update.
 }
 
-function wp_update_plugins() {
-    // Simulate plugin update.
-}
+// Setup and teardown for Brain Monkey.
+class BrainMonkeyTestCase extends \PHPUnit\Framework\TestCase {
+    protected function setUp(): void {
+        parent::setUp();
+        \Brain\Monkey\setUp();
+    }
 
-function current_time($type) {
-    return time();
-}
-
-function wp_die($message) {
-    throw new Exception($message);
-}
-
-function add_filter($hook, $callback) {
-    // Simulate adding a filter.
-}
-
-function add_action($hook, $callback) {
-    // Simulate adding an action.
+    protected function tearDown(): void {
+        \Brain\Monkey\tearDown();
+        parent::tearDown();
+    }
 }

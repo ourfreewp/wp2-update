@@ -4,6 +4,12 @@
     <!-- Define the coding standard to use -->
     <rule ref="PSR12" />
 
+    <!-- Add WordPress Coding Standards -->
+    <rule ref="WordPress" />
+    <rule ref="WordPress-Extra" />
+    <rule ref="WordPress-Docs" />
+    <rule ref="WordPress-Core" />
+
     <!-- Exclude vendor directory -->
     <exclude-pattern>vendor/*</exclude-pattern>
 

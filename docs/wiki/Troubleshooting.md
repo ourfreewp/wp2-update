@@ -31,6 +31,13 @@ If you encounter issues while using WP2 Update, this guide will help you diagnos
   2. Ensure the webhook secret matches the one configured in the plugin.
   3. Check the plugin logs for webhook-related errors.
 
+### 4. **GitHub IP Validation Fails**
+- **Symptoms:**
+  - Webhook requests are rejected due to untrusted IP addresses.
+- **Solutions:**
+  1. Ensure your server can fetch the latest GitHub IP ranges from the `/meta` API.
+  2. Check the plugin logs for errors related to IP validation.
+
 ## Debugging Tools
 
 ### 1. **View Logs**
@@ -50,4 +57,4 @@ If you're unable to resolve the issue, please open a support ticket or create a 
 - WordPress version
 - PHP version
 - Steps to reproduce the issue
-- Relevant logs or error messages
+- Relevant log entries

@@ -76,12 +76,35 @@ function wp2_update_activate() {
 register_activation_hook(__FILE__, 'wp2_update_activate');
 
 /**
- * Remove the manage_options capability from the administrator role on deactivation.
+ * Handle schema changes or data migration on plugin activation.
  */
-function wp2_update_deactivate() {
-    $admin_role = get_role('administrator');
-    if ($admin_role) {
-        $admin_role->remove_cap('manage_options');
-    }
+function wp2_update_handle_activation() {
+    global $wpdb;
+
+    // Example: Create a custom table for logging purposes.
+    $table_name = $wpdb->prefix . 'wp2_update_logs';
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE $table_name (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        log_message TEXT NOT NULL,
+        log_date DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        PRIMARY KEY (id)
+    ) $charset_collate;";
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    dbDelta($sql);
 }
-register_deactivation_hook(__FILE__, 'wp2_update_deactivate');
+register_activation_hook(__FILE__, 'wp2_update_handle_activation');
+
+/**
+ * Handle cleanup on plugin deactivation.
+ */
+function wp2_update_handle_deactivation() {
+    global $wpdb;
+
+    // Example: Optionally drop the custom table.
+    $table_name = $wpdb->prefix . 'wp2_update_logs';
+    $wpdb->query("DROP TABLE IF EXISTS $table_name");
+}
+register_deactivation_hook(__FILE__, 'wp2_update_handle_deactivation');

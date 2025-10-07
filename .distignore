@@ -1,26 +1,18 @@
-# Git and GitHub files
 .git/
 .github/
 .gitignore
 .distignore
-
-# Node/Build files
-node_modules/
+node_modules
 package.json
 package-lock.json
 Gruntfile.js
 webpack.config.js
-
-# Composer files
 composer.json
 composer.lock
 vendor/bin/
-
-# Local development
 .DS_Store
 Thumbs.db
 .editorconfig
 .vscode/
-
 .eslintrc.cjs
 vite.config.js

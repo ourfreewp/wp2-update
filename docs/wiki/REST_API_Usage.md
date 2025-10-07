@@ -51,27 +51,7 @@ All endpoints are prefixed with:
 ```json
 {
   "success": true,
-  "message": "Cache cleared and checks forced."
-}
-```
-
-### 4. **GitHub Webhooks**
-- **Endpoint:** `/github/webhooks`
-- **Method:** `POST`
-- **Description:** Handles incoming GitHub webhook events.
-- **Permission:** Publicly accessible.
-- **Request Example:**
-```json
-{
-  "event": "push",
-  "repository": "example-repo"
-}
-```
-- **Response Example:**
-```json
-{
-  "success": true,
-  "message": "Webhook processed successfully."
+  "message": "Cache cleared and update check triggered."
 }
 ```
 

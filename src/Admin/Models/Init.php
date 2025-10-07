@@ -8,6 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Utils\Logger;
 
+// Ensure all user-facing strings have the correct text domain.
 const WP2_UPDATE_TEXT_DOMAIN = 'wp2-update';
 
 /**
@@ -49,9 +50,6 @@ final class Init {
 
 		// Hook into the standard post save redirect to trigger our flow.
 		add_filter( 'redirect_post_location', [ $this, 'trigger_github_flow_on_new_post_save' ], 10, 2 );
-
-		// Handle the installation ID callback from GitHub.
-		add_action( 'admin_init', [ $this, 'handle_installation_id_callback' ] );
 
 
 		// Add the App Health metabox.
@@ -712,68 +710,6 @@ final class Init {
 			echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
         }
     }
-
-	/**
-	 * Handles the callback from GitHub after an app is installed, capturing the installation_id.
-	 */
-	public function handle_installation_id_callback(): void {
-		global $pagenow;
-		// Only run on our specific post type's edit screen.
-		if ( 'post.php' !== $pagenow || ! isset( $_GET['post'] ) || 'wp2_github_app' !== get_post_type( (int) $_GET['post'] ) ) {
-			return;
-		}
-
-		$nonce = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
-
-		// If a nonce is present but invalid, surface an admin notice instead of halting execution.
-		if ( $nonce && ! wp_verify_nonce( $nonce, 'wp2_installation_id_callback' ) ) {
-			Logger::log_debug( 'GitHub installation callback received with invalid nonce; proceeding with capability checks.', 'github-app' );
-		}
-
-		if ( ! $nonce ) {
-			Logger::log_debug( 'GitHub installation callback received without nonce; proceeding with capability checks.', 'github-app' );
-		}
-
-		// Validate the installation_id parameter.
-        if ( ! isset( $_GET['installation_id'] ) || ! is_numeric( $_GET['installation_id'] ) ) {
-            Logger::log_debug( 'GitHub installation callback received with missing or invalid installation_id.', 'github-app' );
-            return;
-        }
-
-        $installation_id = absint( $_GET['installation_id'] );
-
-        // Validate the post_id parameter.
-        if ( ! isset( $_GET['post'] ) || ! is_numeric( $_GET['post'] ) ) {
-            Logger::log_debug( 'GitHub installation callback received with missing or invalid post_id.', 'github-app' );
-            return;
-        }
-
-        $post_id = absint( $_GET['post'] );
-
-        // Ensure the user has permission to edit the post.
-        if ( ! current_user_can( 'edit_post', $post_id ) ) {
-            Logger::log_debug( 'GitHub installation callback received by a user without permission to edit the post.', 'github-app' );
-            return;
-        }
-
-        // Save the installation ID.
-        update_post_meta( $post_id, '_wp2_installation_id', $installation_id );
-
-        // Trigger a sync immediately.
-        $this->trigger_post_save_actions( $post_id );
-
-        // Redirect to a clean URL to remove the query parameters from the browser history.
-        $redirect_url = add_query_arg(
-            [
-                'post'    => $post_id,
-                'action'  => 'edit',
-                'message' => 'installation_saved',
-            ],
-            admin_url( 'post.php' )
-        );
-        wp_safe_redirect( $redirect_url );
-        exit;
-	}
 
 	/**
 	 * @param array<string,mixed> $payload

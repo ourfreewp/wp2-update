@@ -46,7 +46,7 @@ class SystemHealthPage {
 
     private function get_server_environment() {
         return [
-            ['label' => 'Server Info', 'value' => $_SERVER['SERVER_SOFTWARE'] ?? 'N/A'],
+            ['label' => 'Server Info', 'value' => esc_html( $_SERVER['SERVER_SOFTWARE'] ?? 'N/A' )],
             ['label' => 'PHP Version', 'value' => phpversion()],
             ['label' => 'PHP Memory Limit', 'value' => ini_get('memory_limit')],
             ['label' => 'cURL Version', 'value' => function_exists('curl_version') ? curl_version()['version'] : 'N/A'],
@@ -165,12 +165,16 @@ class SystemHealthPage {
             // Verify nonce to ensure the request is valid.
             $nonce = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
             if ( ! wp_verify_nonce( $nonce, 'wp2-force-check' ) ) {
-                error_log('SystemHealthPage: Invalid nonce for update-check.');
-                wp_die( __( 'Invalid request.', 'wp2-update' ) );
+                error_log( 'SystemHealthPage: Invalid nonce for update-check.' );
+                wp_die( 
+                    __( 'Invalid request. Nonce verification failed.', 'wp2-update' ), 
+                    __( 'Forbidden', 'wp2-update' ), 
+                    [ 'response' => 403 ] 
+                );
             }
 
             // Log the redirection for debugging
-            error_log('SystemHealthPage: Handling update-check redirection.');
+            error_log( 'SystemHealthPage: Handling update-check redirection.' );
 
             // Clear the parameter to prevent redirection loops
             $redirect_url = remove_query_arg( 'update-check' );
@@ -178,7 +182,7 @@ class SystemHealthPage {
                 wp_safe_redirect( $redirect_url );
                 exit;
             } else {
-                error_log('SystemHealthPage: Redirection failed to remove update-check parameter.');
+                error_log( 'SystemHealthPage: Redirection failed to remove update-check parameter.' );
             }
         }
     }
