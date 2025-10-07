@@ -78,6 +78,7 @@ final class Init {
                 $c->resolve('TaskScheduler')
             ));
             self::$container->register('TaskScheduler', fn($c) => new TaskScheduler($c->resolve('GitHubService')));
+            self::$container->register('Vite', fn() => new \WP2\Update\Utils\Vite());
 
             // Resolve and initialize services
             self::$container->resolve('WebhookHandler');
@@ -87,6 +88,8 @@ final class Init {
             $task_scheduler = self::$container->resolve('TaskScheduler');
             $task_scheduler->init_hooks();
             $task_scheduler->schedule_recurring_tasks();
+            $vite = self::$container->resolve('Vite');
+            $vite->enqueue_admin_assets();
 
             // Pass all dependencies to the Admin orchestrator.
             $admin = new AdminInit(
@@ -107,9 +110,6 @@ final class Init {
 
             // Text domain
             add_action('plugins_loaded', [self::class, 'load_textdomain']);
-
-            // Instantiate the Vite class to enqueue admin assets
-            new \WP2\Update\Utils\Vite();
         } catch (\Throwable $e) {
             Logger::error('Initialization failed: ' . $e->getMessage(), 'init');
         }

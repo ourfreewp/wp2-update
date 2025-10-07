@@ -40,7 +40,7 @@ final class Repos {
      * Fetches and processes all accessible repositories for a single GitHub App.
      */
     public function sync_repositories_for_app(int $app_post_id): void {
-        $app_slug = get_post_field('post_name', $app_post_id);
+        $app_slug = get_post_meta($app_post_id, '_full_slug', true); // Retrieve full slug from meta
         if (!$app_slug) {
             Logger::log('Skipping sync: Could not find app slug for post ID ' . $app_post_id, 'error', 'sync');
             return;
@@ -107,7 +107,7 @@ final class Repos {
         $post_args = [
             'post_type'    => 'wp2_repository',
             'post_title'   => $repo_full_name,
-            'post_name'    => $repo_full_name,
+            'post_name'    => sanitize_title($repo_full_name), // Use sanitized version for post_name
             'post_content' => $repo_data['description'] ?? '',
             'post_status'  => 'publish',
         ];
@@ -122,6 +122,7 @@ final class Repos {
         }
 
         if ($repo_post_id && !is_wp_error($repo_post_id)) {
+            update_post_meta($repo_post_id, '_full_slug', $repo_full_name); // Store full slug in meta
             update_post_meta($repo_post_id, '_managing_app_post_id', $app_post_id);
             update_post_meta($repo_post_id, '_github_id', $repo_data['id']);
             update_post_meta($repo_post_id, '_is_private', $repo_data['private']);
@@ -136,7 +137,7 @@ final class Repos {
      * Synchronizes a single repository by its post ID.
      */
     public function sync_single_repo(int $repo_post_id): void {
-        $repo_slug = get_post_field('post_name', $repo_post_id);
+        $repo_slug = get_post_meta($repo_post_id, '_full_slug', true); // Retrieve full slug from meta
         if (!$repo_slug) {
             Logger::log('Failed to sync: Repository slug not found for post ID ' . $repo_post_id, 'error', 'sync');
             return;
@@ -148,7 +149,7 @@ final class Repos {
             return;
         }
 
-        $app_slug = get_post_field('post_name', $app_post_id);
+        $app_slug = get_post_meta($app_post_id, '_full_slug', true); // Retrieve app slug from meta
         if (!$app_slug) {
             Logger::log('Failed to sync: App slug not found for managing app ID ' . $app_post_id, 'error', 'sync');
             return;

@@ -17,27 +17,31 @@ class Logger {
     public static function setOptionHandlers(callable $getSiteOption, callable $updateSiteOption, callable $currentTime = null): void {
         self::$getSiteOption = $getSiteOption;
         self::$updateSiteOption = $updateSiteOption;
-        self::$currentTime = $currentTime ?? fn($type) => time();
-
-        error_log('Setting current_time handler: ' . (self::$currentTime ? 'set' : 'not set'));
-        error_log('Debug: Using current_time handler: ' . (self::$currentTime ? 'set' : 'not set'));
-        error_log('Debug: Setting current_time handler in setOptionHandlers');
-        error_log('Debug: currentTime handler set: ' . (is_callable($currentTime) ? 'callable' : 'not callable'));
-        error_log('Debug: currentTime handler state: ' . var_export(self::$currentTime, true));
+        self::$currentTime = $currentTime ?? fn() => time();
     }
 
     private static function getSiteOption(string $key, $default) {
-        return is_callable(self::$getSiteOption) ? call_user_func(self::$getSiteOption, $key, $default) : $default;
+        if (!is_callable(self::$getSiteOption)) {
+            if (function_exists('get_site_option')) {
+                return get_site_option($key, $default);
+            }
+            return $default;
+        }
+        return call_user_func(self::$getSiteOption, $key, $default);
     }
 
     private static function updateSiteOption(string $key, $value): void {
-        if (is_callable(self::$updateSiteOption)) {
-            call_user_func(self::$updateSiteOption, $key, $value);
+        if (!is_callable(self::$updateSiteOption)) {
+            if (function_exists('update_site_option')) {
+                update_site_option($key, $value);
+            }
+            return;
         }
+        call_user_func(self::$updateSiteOption, $key, $value);
     }
 
-    private static function getCurrentTime(string $type) {
-        return call_user_func(self::$currentTime, $type);
+    private static function getCurrentTime() {
+        return is_callable(self::$currentTime) ? call_user_func(self::$currentTime) : time();
     }
 
 	/**

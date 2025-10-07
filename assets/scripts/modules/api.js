@@ -29,7 +29,7 @@ export const apiRequest = async (endpoint, options = {}) => {
         mergedOptions.body = JSON.stringify(mergedOptions.body);
     }
 
-    const response = await fetch(`/wp-json${endpoint}`, mergedOptions);
+    const response = await fetch(`${window.wpApiSettings.root}${endpoint}`, mergedOptions);
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({

@@ -32,6 +32,6 @@ class LogsTable extends WP_List_Table {
     }
 
     public function column_default($item, $column_name) {
-        return $item[$column_name] ?? '';
+        return isset($item[$column_name]) ? esc_html($item[$column_name]) : '';
     }
 }

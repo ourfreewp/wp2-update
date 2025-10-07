@@ -77,6 +77,7 @@ class PackageFinder {
                         'repo'     => $repo,
                         'name'     => $theme->get( 'Name' ),
                         'app_slug' => $app_slug,
+                        'version'  => $theme->get( 'Version' ), // Include version
                     ];
                 }
             }
@@ -116,6 +117,7 @@ class PackageFinder {
                         'repo'     => $repo,
                         'name'     => $plugin['Name'],
                         'app_slug' => $app_slug,
+                        'version'  => $plugin['Version'] ?? '0.0.0', // Include version
                     ];
                 }
             }

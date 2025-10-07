@@ -64,26 +64,65 @@ class PackagesListTable extends AbstractListTable {
     }
 
     private function fetch_packages() {
-        // Fetch packages logic here
-        return $this->connection->get_managed_packages();
+        $cache_key = 'wp2_merged_packages_data';
+        $cached_data = get_transient($cache_key);
+        if (is_array($cached_data)) {
+            return $cached_data;
+        }
+
+        $themes = $this->connection->get_managed_themes();
+        $plugins = $this->connection->get_managed_plugins();
+
+        $theme_updates = get_site_transient('update_themes');
+        $plugin_updates = get_site_transient('update_plugins');
+
+        if (!function_exists('get_plugin_data')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        $all_packages = [];
+
+        foreach ($themes as $slug => $data) {
+            $current_theme = wp_get_theme($slug);
+            $installed_version = $current_theme->get('Version') ?: '0.0.0'; // Fallback to default version
+            $latest_version = $theme_updates->response[$slug]['new_version'] ?? null;
+
+            $all_packages[] = [
+                'key' => 'theme:' . $slug,
+                'slug' => $slug,
+                'repo' => $data['repo'],
+                'name' => $data['name'],
+                'type' => 'theme',
+                'installed_version' => $installed_version,
+                'latest_version' => $latest_version,
+                'update_available' => !empty($latest_version) && version_compare($latest_version, $installed_version, '>'),
+            ];
+        }
+
+        foreach ($plugins as $slug => $data) {
+            $plugin_data = get_plugin_data(WP_PLUGIN_DIR . '/' . $slug);
+            $installed_version = $plugin_data['Version'] ?? '0.0.0'; // Fallback to default version
+            $latest_version = $plugin_updates->response[$slug]->new_version ?? null;
+
+            $all_packages[] = [
+                'key' => 'plugin:' . $slug,
+                'slug' => $slug,
+                'repo' => $data['repo'],
+                'name' => $data['name'],
+                'type' => 'plugin',
+                'installed_version' => $installed_version,
+                'latest_version' => $latest_version,
+                'update_available' => !empty($latest_version) && version_compare($latest_version, $installed_version, '>'),
+            ];
+        }
+
+        set_transient($cache_key, $all_packages, HOUR_IN_SECONDS);
+        return $all_packages;
     }
 
     public function process_bulk_action() {
-        if ( 'force-check' === $this->current_action() ) {
-            // Logic for forcing update checks
-            $packages = isset($_POST['package']) ? array_map('sanitize_text_field', (array) $_POST['package']) : [];
-            foreach ($packages as $package_id) {
-                $this->utils->force_update_check($package_id);
-            }
-            echo '<div class="notice notice-success"><p>Update checks forced for selected packages.</p></div>';
-        } elseif ( 'clear-cache' === $this->current_action() ) {
-            // Logic for clearing package cache
-            $packages = isset($_POST['package']) ? array_map('sanitize_text_field', (array) $_POST['package']) : [];
-            foreach ($packages as $package_id) {
-                $this->utils->clear_package_cache($package_id);
-            }
-            echo '<div class="notice notice-success"><p>Cache cleared for selected packages.</p></div>';
-        }
+        // Delegate bulk action handling to the Controller
+        do_action('wp2_handle_bulk_action', $this->current_action(), $_POST['packages'] ?? []);
     }
 
     protected function column_default($item, $column_name) {

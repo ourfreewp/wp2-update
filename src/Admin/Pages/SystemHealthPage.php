@@ -38,9 +38,7 @@ class SystemHealthPage {
                         <td>
                             <?php
                             $sanitizedClass = Palette::sanitize_classes($item['value']);
-                            error_log("Sanitizing class: " . $item['value']); // Log the class being sanitized
-                            // Inline debugging to identify the problematic token
-                            echo "Sanitizing class: " . $item['value'] . "\n";
+                            // Removed debug logs and inline debugging
                             echo '<span class="' . esc_attr($sanitizedClass) . '">' . esc_html($item['value']) . '</span>';
                             ?>
                         </td>
@@ -50,7 +48,7 @@ class SystemHealthPage {
         </table>
         <?php
     }
-    
+
     private function get_wp_environment() {
         global $wp_version;
         return [

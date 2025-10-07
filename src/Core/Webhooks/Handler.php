@@ -142,7 +142,8 @@ class Handler {
                     // Ensure the payload contains the necessary data before proceeding
                     if (isset($data['installation']['id'], $data['installation']['app_id'])) {
                         Logger::log('New installation created. Saving the Installation ID.', 'info', 'webhook');
-                        $models_init = new \WP2\Update\Admin\Models\Init();
+                        // Refactor to use DI container for ModelsInit
+                        $models_init = \WP2\Update\Init::get_container()->resolve('ModelsInit');
                         $models_init->handle_github_installation_event($data);
                     } else {
                         Logger::log('Installation event payload is missing required fields.', 'error', 'webhook');

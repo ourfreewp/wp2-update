@@ -67,7 +67,6 @@ class EventsListTable extends AbstractListTable {
     }
 
     public function column_default($item, $column_name) {
-        // Replace debugging with actual data rendering
-        return $item[$column_name] ?? 'N/A';
+        return isset($item[$column_name]) ? esc_html($item[$column_name]) : 'N/A';
     }
 }

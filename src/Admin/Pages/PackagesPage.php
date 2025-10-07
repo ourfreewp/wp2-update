@@ -76,27 +76,12 @@ class PackagesPage {
         $list_table = new \WP2\Update\Admin\Tables\PackagesListTable($this->connection, $this->utils);
         $list_table->prepare_items();
         ?>
-        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-            <input type="hidden" name="action" value="wp2_bulk_action_packages">
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <input type="hidden" name="action" value="wp2_bulk_action">
             <input type="hidden" name="packages[]" value=""> <!-- Ensure empty value is submitted if no packages are selected -->
-            <?php wp_nonce_field( 'wp2_bulk_action_packages', 'wp2_bulk_action_nonce' ); ?>
+            <?php wp_nonce_field('wp2_bulk_action_packages', 'wp2_bulk_action_nonce'); ?>
             <?php $list_table->display(); ?>
         </form>
-
-        <script>
-            document.addEventListener('DOMContentLoaded', function () {
-                const installButtons = document.querySelectorAll('.install-button');
-
-                installButtons.forEach(button => {
-                    button.addEventListener('click', function () {
-                        button.disabled = true;
-                        const spinner = document.createElement('span');
-                        spinner.className = 'spinner is-active';
-                        button.appendChild(spinner);
-                    });
-                });
-            });
-        </script>
         <?php
     }
 
@@ -151,7 +136,7 @@ class PackagesPage {
         $all_packages = [];
 
         foreach ( $themes as $slug => $data ) {
-            $installed_version = $data['version'];
+            $installed_version = $data['version'] ?? '0.0.0'; // Fallback to default version
             $latest_version    = $theme_updates->response[ $slug ]['new_version'] ?? null;
             $all_packages[]    = [
                 'key'               => 'theme:' . $slug,
@@ -166,7 +151,7 @@ class PackagesPage {
         }
 
         foreach ( $plugins as $slug => $data ) {
-            $installed_version = $data['version'];
+            $installed_version = $data['version'] ?? '0.0.0'; // Fallback to default version
             $latest_version    = $plugin_updates->response[ $slug ]->new_version ?? null;
             $all_packages[]    = [
                 'key'               => 'plugin:' . $slug,

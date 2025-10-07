@@ -17,6 +17,7 @@ use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use WP2\Update\Core\API\GitHubApp\Init as GitHubAppInit;
 use WP_Query;
+use Nyholm\Psr7\Factory as Psr17Factory;
 
 /**
  * Manages the GitHub API client and authentication.
@@ -63,25 +64,8 @@ class Service {
 	 * @param string $wpQueryClass The class name for WP_Query, defaulting to the global WP_Query.
 	 */
 	public function __construct(RequestFactoryInterface $requestFactory = null, StreamFactoryInterface $streamFactory = null, string $wpQueryClass = WP_Query::class) {
-        $this->requestFactory = $requestFactory ?? new class implements RequestFactoryInterface {
-            public function createRequest(string $method, $uri): \Psr\Http\Message\RequestInterface {
-                throw new \RuntimeException('Mocked RequestFactoryInterface');
-            }
-        };
-
-        $this->streamFactory = $streamFactory ?? new class implements StreamFactoryInterface {
-            public function createStream(string $content = ""): \Psr\Http\Message\StreamInterface {
-                throw new \RuntimeException('Mocked StreamFactoryInterface');
-            }
-
-            public function createStreamFromFile(string $filename, string $mode = 'r'): \Psr\Http\Message\StreamInterface {
-                throw new \RuntimeException('Mocked createStreamFromFile');
-            }
-
-            public function createStreamFromResource($resource): \Psr\Http\Message\StreamInterface {
-                throw new \RuntimeException('Mocked createStreamFromResource');
-            }
-        };
+        $this->requestFactory = $requestFactory ?? new Psr17Factory();
+        $this->streamFactory = $streamFactory ?? new Psr17Factory();
 
         $this->wpQueryClass = $wpQueryClass;
 

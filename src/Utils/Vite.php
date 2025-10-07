@@ -13,6 +13,7 @@ class Vite
             // Only enqueue assets on WP2 Update admin pages
             if ($this->isWp2UpdateAdminPage()) {
                 $this->enqueueProdAssets('assets/scripts/admin-main.js');
+                $this->enqueueAdditionalStyles();
 
                 // Localize the REST API nonce for frontend scripts
                 wp_localize_script(
@@ -28,13 +29,24 @@ class Vite
     }
 
     /**
-     * Checks if the current admin page belongs to WP2 Update plugin.
+     * Checks if the current admin page belongs to WP2 Update plugin or CPT edit screens.
      *
-     * @return bool True if the current page is a WP2 Update admin page, false otherwise.
+     * @return bool True if the current page is relevant, false otherwise.
      */
     private function isWp2UpdateAdminPage(): bool
     {
-        return isset($_GET['page']) && strpos($_GET['page'], 'wp2-update') === 0;
+        // Check for WP2 Update plugin pages
+        if (isset($_GET['page']) && strpos($_GET['page'], 'wp2-update') === 0) {
+            return true;
+        }
+
+        // Check for CPT edit screens
+        $current_screen = get_current_screen();
+        if ($current_screen && in_array($current_screen->post_type, ['custom_post_type_1', 'custom_post_type_2'], true)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -82,5 +94,27 @@ class Vite
         } else {
             error_log('Vite: Entry not found in manifest: ' . $entry);
         }
+    }
+
+    /**
+     * Enqueues additional SCSS bundles and styles.
+     */
+    private function enqueueAdditionalStyles()
+    {
+        // Enqueue SCSS bundle
+        wp_enqueue_style(
+            'vite-admin-main-style',
+            WP2_UPDATE_PLUGIN_URL . 'assets/styles/admin-main.css',
+            [],
+            null
+        );
+
+        // Enqueue Toastify CSS
+        wp_enqueue_style(
+            'vite-toastify-style',
+            WP2_UPDATE_PLUGIN_URL . 'assets/styles/toastify.css',
+            [],
+            null
+        );
     }
 }

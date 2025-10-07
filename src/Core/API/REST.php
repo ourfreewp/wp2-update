@@ -280,7 +280,7 @@ final class REST {
 	 * Handles the creation of a new GitHub App.
 	 */
 	public function create_github_app( WP_REST_Request $request ) {
-		$nonce = $request->get_param('_wpnonce');
+		$nonce = $request->get_param('_wpnonce') ?? $request->get_header('X-WP-Nonce');
 		if ( ! wp_verify_nonce( $nonce, 'wp2_create_github_app' ) ) {
 			return new \WP_Error( 'rest_forbidden', __( 'Invalid nonce.', 'wp2-update' ), [ 'status' => 403 ] );
 		}

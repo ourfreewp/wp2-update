@@ -318,4 +318,35 @@ final class SharedUtils {
         Logger::log( sprintf( __( '%s %s version %s installed successfully.', 'wp2-update' ), ucfirst($type), $repo, $version ), 'success', 'install');
         return true;
     }
+
+    /**
+     * Forces an update check for a specific package.
+     *
+     * @param string $package_id The package identifier (e.g., "plugin:slug" or "theme:slug").
+     */
+    public function force_update_check( string $package_id ): void {
+        list( $type, $slug ) = explode( ':', $package_id, 2 );
+
+        if ( 'plugin' === $type ) {
+            wp_update_plugins();
+        } elseif ( 'theme' === $type ) {
+            wp_update_themes();
+        }
+
+        Logger::log( "Forced update check for package: {$package_id}", 'info', 'bulk-action' );
+    }
+
+    /**
+     * Clears the cache for a specific package.
+     *
+     * @param string $package_id The package identifier (e.g., "plugin:slug" or "theme:slug").
+     */
+    public function clear_package_cache( string $package_id ): void {
+        list( $type, $slug ) = explode( ':', $package_id, 2 );
+
+        $cache_key = 'wp2_releases_' . md5( $slug );
+        delete_transient( $cache_key );
+
+        Logger::log( "Cleared cache for package: {$package_id}", 'info', 'bulk-action' );
+    }
 }

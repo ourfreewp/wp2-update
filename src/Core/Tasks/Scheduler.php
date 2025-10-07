@@ -153,7 +153,7 @@ final class Scheduler {
                 // Use the DI container to fetch the GitHubService instance.
                 $container = \WP2\Update\Init::get_container();
                 if ($container) {
-                    $github_service = $container->resolve(GitHubService::class);
+                    $github_service = $container->resolve('GitHubService');
                 } else {
                     Logger::log('DI container is not available.', 'error', 'tasks');
                     return;

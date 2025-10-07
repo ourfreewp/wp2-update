@@ -458,8 +458,7 @@ final class Init {
 		$github_service = new \WP2\Update\Core\API\Service();
 		$app_health     = new \WP2\Update\Core\Health\AppHealth( $app_post_id, $github_service );
 
-		// Run health checks and fetch the status.
-		$app_health->run_checks();
+		// Fetch the cached health status and message.
 		$health_status  = get_post_meta( $app_post_id, '_health_status', true );
 		$health_message = get_post_meta( $app_post_id, '_health_message', true );
 
