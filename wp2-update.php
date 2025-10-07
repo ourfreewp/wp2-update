@@ -2,15 +2,15 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme updates.
- * Version:           0.0.3
+ * Version:           0.0.4
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
  * Requires at least: 6.0
- * Requires PHP:      7.4
+ * Requires PHP:      8.3
  * License:           GPLv2 or later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
- * Update URI:        webmultipliers/wp2-themes
+ * Update URI:        ourfreewp/wp2-update
  */
 
 // Ensure the file is not accessed directly.

@@ -3,7 +3,8 @@ namespace WP2\Update\CLI;
 
 use WP_CLI;
 
-if ( ! class_exists( 'WP_CLI' ) ) {
+if ( ! class_exists( '\WP_CLI' ) ) {
+    error_log('WP_CLI is not available. Skipping WP2UpdateCommand registration.');
     return;
 }
 
@@ -45,7 +46,7 @@ class WP2UpdateCommand {
         $scheduler = $container->resolve('TaskScheduler');
         $scheduler->run_sync_all_repos();
         
-        WP_CLI::success('Repositories synced successfully.');
+        WP_CLI::success(__('Repositories synced successfully.', 'wp2-update'));
     }
 
     /**
@@ -60,9 +61,9 @@ class WP2UpdateCommand {
         $status = $github_app->get_connection_status();
 
         if ($status['connected']) {
-            WP_CLI::success('Health check passed. ' . $status['message']);
+            WP_CLI::success(__('Health check passed. ' . $status['message'], 'wp2-update'));
         } else {
-            WP_CLI::warning('Health check failed. ' . $status['message']);
+            WP_CLI::warning(__('Health check failed. ' . $status['message'], 'wp2-update'));
         }
     }
 

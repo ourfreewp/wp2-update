@@ -507,49 +507,47 @@ final class Init {
 		) {
 			return;
 		}
-		// Save the organization field, only present on the initial save.
-		if ( isset( $_POST['_wp2_github_organization'] ) ) {
-			update_post_meta( $post_id, '_wp2_github_organization', sanitize_text_field( wp_unslash( $_POST['_wp2_github_organization'] ) ) );
-		}
+		// Securely handle POST data by wrapping raw $_POST array values with wp_unslash() before calling sanitize_text_field
+        if ( isset( $_POST['_wp2_github_organization'] ) ) {
+            update_post_meta( $post_id, '_wp2_github_organization', sanitize_text_field( wp_unslash( $_POST['_wp2_github_organization'] ) ) );
+        }
 
-		// Validate App ID
         if ( isset( $_POST['_wp2_app_id'] ) ) {
             $app_id = sanitize_text_field( wp_unslash( $_POST['_wp2_app_id'] ) );
-            if ( ! preg_match( '/^\d+$/', $app_id ) ) {
+            if ( ! preg_match( '/^\\d+$/', $app_id ) ) {
                 Logger::log( 'Invalid App ID provided: ' . $app_id, 'error', 'metadata' );
                 return;
             }
             update_post_meta( $post_id, '_wp2_app_id', $app_id );
         }
 
-        // Validate Installation ID
         if ( isset( $_POST['_wp2_installation_id'] ) ) {
             $installation_id = sanitize_text_field( wp_unslash( $_POST['_wp2_installation_id'] ) );
-            if ( ! preg_match( '/^\d+$/', $installation_id ) ) {
+            if ( ! preg_match( '/^\\d+$/', $installation_id ) ) {
                 Logger::log( 'Invalid Installation ID provided: ' . $installation_id, 'error', 'metadata' );
                 return;
             }
             update_post_meta( $post_id, '_wp2_installation_id', $installation_id );
         }
 
-		update_post_meta( $post_id, '_wp2_webhook_secret', sanitize_text_field( wp_unslash( $_POST['_wp2_webhook_secret'] ?? '' ) ) );
-		update_post_meta( $post_id, '_wp2_client_id', sanitize_text_field( wp_unslash( $_POST['_wp2_client_id'] ?? '' ) ) );
+        update_post_meta( $post_id, '_wp2_webhook_secret', sanitize_text_field( wp_unslash( $_POST['_wp2_webhook_secret'] ?? '' ) ) );
+        update_post_meta( $post_id, '_wp2_client_id', sanitize_text_field( wp_unslash( $_POST['_wp2_client_id'] ?? '' ) ) );
 
-		if ( isset( $_POST['_wp2_client_secret'] ) && '' !== (string) $_POST['_wp2_client_secret'] ) {
-			update_post_meta( $post_id, '_wp2_client_secret', SharedUtils::encrypt( sanitize_text_field( wp_unslash( (string) $_POST['_wp2_client_secret'] ) ) ) );
-		}
+        if ( isset( $_POST['_wp2_client_secret'] ) && '' !== (string) $_POST['_wp2_client_secret'] ) {
+            update_post_meta( $post_id, '_wp2_client_secret', SharedUtils::encrypt( sanitize_text_field( wp_unslash( (string) $_POST['_wp2_client_secret'] ) ) ) );
+        }
 
-		if ( isset( $_POST['clear_wp2_private_key'] ) && '1' === sanitize_text_field( $_POST['clear_wp2_private_key'] ) ) {
-			delete_post_meta( $post_id, '_wp2_private_key_content' );
-		} elseif ( isset( $_FILES['_wp2_private_key_file'] ) && UPLOAD_ERR_OK === (int) $_FILES['_wp2_private_key_file']['error'] ) {
-			$uploaded_file = $_FILES['_wp2_private_key_file'];
-			if ( 'pem' === strtolower( (string) pathinfo( $uploaded_file['name'], PATHINFO_EXTENSION ) ) ) {
-				$key_content = file_get_contents( $uploaded_file['tmp_name'] );
-				if ( false !== $key_content && '' !== $key_content ) {
-					update_post_meta( $post_id, '_wp2_private_key_content', SharedUtils::encrypt( $key_content ) );
-				}
-			}
-		}
+        if ( isset( $_POST['clear_wp2_private_key'] ) && '1' === sanitize_text_field( wp_unslash( $_POST['clear_wp2_private_key'] ) ) ) {
+            delete_post_meta( $post_id, '_wp2_private_key_content' );
+        } elseif ( isset( $_FILES['_wp2_private_key_file'] ) && UPLOAD_ERR_OK === (int) $_FILES['_wp2_private_key_file']['error'] ) {
+            $uploaded_file = $_FILES['_wp2_private_key_file'];
+            if ( 'pem' === strtolower( (string) pathinfo( $uploaded_file['name'], PATHINFO_EXTENSION ) ) ) {
+                $key_content = file_get_contents( $uploaded_file['tmp_name'] );
+                if ( false !== $key_content && '' !== $key_content ) {
+                    update_post_meta( $post_id, '_wp2_private_key_content', SharedUtils::encrypt( $key_content ) );
+                }
+            }
+        }
 
 		$this->trigger_post_save_actions( $post_id );
 	}

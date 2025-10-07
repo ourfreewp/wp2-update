@@ -96,16 +96,11 @@ class PluginUpdater {
     public function install_plugin( string $app_slug, string $repo, string $version, string $slug ) {
         $result = $this->utils->install_package( $app_slug, $repo, $version, 'plugin' );
 
-        if (true === $result) {
+        if ( true === $result ) {
             // Activate plugin after successful installation.
-            // This is safe to call on an already active plugin.
-            $activation_result = activate_plugin($slug);
-            if (is_wp_error($activation_result)) {
-                Logger::log(
-                    'Plugin installed, but failed to activate: ' . $activation_result->get_error_message(),
-                    'warning',
-                    'install'
-                );
+            $activation_result = activate_plugin( $slug );
+            if ( is_wp_error( $activation_result ) ) {
+                Logger::log( sprintf( __( 'Plugin installed, but failed to activate: %s', 'wp2-update' ), $activation_result->get_error_message() ), 'warning', 'install' );
             }
         }
 

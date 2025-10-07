@@ -54,55 +54,69 @@ class SystemHealthPage {
     }
 
     public function get_github_api_status() {
-        $items = [];
-        $apps_query = new \WP_Query([
-            'post_type'      => 'wp2_github_app',
-            'posts_per_page' => -1,
-            'fields'         => 'ids',
-            'no_found_rows'  => true, // Optimization: Disable pagination overhead
-        ]);
-        if (!$apps_query->have_posts()) {
-            $items[] = ['label' => 'Status', 'value' => 'No GitHub Apps configured.'];
-        } else {
-            foreach ($apps_query->posts as $post) {
-                if (!is_object($post)) {
-                    continue; // Skip invalid posts
+        $cache_key = 'wp2_github_api_status';
+        $items = get_transient($cache_key);
+
+        if ($items === false) {
+            $items = [];
+            $apps_query = new \WP_Query([
+                'post_type'      => 'wp2_github_app',
+                'posts_per_page' => -1,
+                'fields'         => 'ids',
+                'no_found_rows'  => true, // Optimization: Disable pagination overhead
+            ]);
+            if (!$apps_query->have_posts()) {
+                $items[] = ['label' => 'Status', 'value' => 'No GitHub Apps configured.'];
+            } else {
+                foreach ($apps_query->posts as $post) {
+                    if (!is_object($post)) {
+                        continue; // Skip invalid posts
+                    }
+
+                    $status = get_post_meta($post->ID, '_health_status', true);
+                    $message = get_post_meta($post->ID, '_health_message', true);
+                    $last_checked = get_post_meta($post->ID, '_last_checked_timestamp', true);
+                    $status_text = $status === 'ok' ? '<span class="status-success">Connected</span>' : '<span class="status-danger">Error</span>';
+
+                    $items[] = ['label' => 'App: ' . esc_html($post->post_title), 'value' => $status_text];
+                    $items[] = ['label' => 'Message', 'value' => esc_html($message)];
+                    $items[] = ['label' => 'Last Checked', 'value' => $last_checked ? human_time_diff($last_checked) . ' ago' : 'Never'];
                 }
-
-                $status = get_post_meta($post->ID, '_health_status', true);
-                $message = get_post_meta($post->ID, '_health_message', true);
-                $last_checked = get_post_meta($post->ID, '_last_checked_timestamp', true);
-                $status_text = $status === 'ok' ? '<span class="status-success">Connected</span>' : '<span class="status-danger">Error</span>';
-
-                $items[] = ['label' => 'App: ' . esc_html($post->post_title), 'value' => $status_text];
-                $items[] = ['label' => 'Message', 'value' => esc_html($message)];
-                $items[] = ['label' => 'Last Checked', 'value' => $last_checked ? human_time_diff($last_checked) . ' ago' : 'Never'];
             }
+            set_transient($cache_key, $items, 5 * MINUTE_IN_SECONDS);
         }
+
         return $items;
     }
     
     public function get_repo_health() {
-        $items = [];
-        $repos_query = new \WP_Query([
-            'post_type'      => 'wp2_repository',
-            'posts_per_page' => -1,
-            'fields'         => 'ids',
-            'no_found_rows'  => true, // Optimization: Disable pagination overhead
-        ]);
-        if (!$repos_query->have_posts()) {
-            $items[] = ['label' => 'Status', 'value' => 'No managed repositories found.'];
-        } else {
-            foreach ($repos_query->posts as $post) {
-                $status = get_post_meta($post->ID, '_health_status', true);
-                $message = get_post_meta($post->ID, '_health_message', true);
-                $last_checked = get_post_meta($post->ID, '_last_checked_timestamp', true);
-                $status_text = $status === 'ok' ? '<span class="status-success">Healthy</span>' : '<span class="status-danger">Error</span>';
-                $items[] = ['label' => 'Repo: ' . esc_html($post->post_title), 'value' => $status_text];
-                $items[] = ['label' => 'Message', 'value' => esc_html($message)];
-                $items[] = ['label' => 'Last Checked', 'value' => $last_checked ? human_time_diff($last_checked) . ' ago' : 'Never'];
+        $cache_key = 'wp2_repo_health';
+        $items = get_transient($cache_key);
+
+        if ($items === false) {
+            $items = [];
+            $repos_query = new \WP_Query([
+                'post_type'      => 'wp2_repository',
+                'posts_per_page' => -1,
+                'fields'         => 'ids',
+                'no_found_rows'  => true, // Optimization: Disable pagination overhead
+            ]);
+            if (!$repos_query->have_posts()) {
+                $items[] = ['label' => 'Status', 'value' => 'No managed repositories found.'];
+            } else {
+                foreach ($repos_query->posts as $post) {
+                    $status = get_post_meta($post->ID, '_health_status', true);
+                    $message = get_post_meta($post->ID, '_health_message', true);
+                    $last_checked = get_post_meta($post->ID, '_last_checked_timestamp', true);
+                    $status_text = $status === 'ok' ? '<span class="status-success">Healthy</span>' : '<span class="status-danger">Error</span>';
+                    $items[] = ['label' => 'Repo: ' . esc_html($post->post_title), 'value' => $status_text];
+                    $items[] = ['label' => 'Message', 'value' => esc_html($message)];
+                    $items[] = ['label' => 'Last Checked', 'value' => $last_checked ? human_time_diff($last_checked) . ' ago' : 'Never'];
+                }
             }
+            set_transient($cache_key, $items, 5 * MINUTE_IN_SECONDS);
         }
+
         return $items;
     }
 

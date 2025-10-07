@@ -306,12 +306,13 @@ final class SharedUtils {
             @unlink( $temp_zip_file );
         }
 
+        // Wrap RuntimeException messages with i18n support.
         if ( is_wp_error( $result ) ) {
-            Logger::log( "Install failed: " . $result->get_error_message(), 'error', 'install' );
+            Logger::log( sprintf( __( 'Install failed: %s', 'wp2-update' ), $result->get_error_message() ), 'error', 'install' );
             return $result;
         }
 
-        Logger::log( ucfirst($type) . " {$repo} version {$version} installed successfully.", 'success', 'install');
+        Logger::log( sprintf( __( '%s %s version %s installed successfully.', 'wp2-update' ), ucfirst($type), $repo, $version ), 'success', 'install');
         return true;
     }
 }
