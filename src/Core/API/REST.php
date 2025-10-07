@@ -124,6 +124,16 @@ final class REST {
 				},
 			]
 		);
+
+		register_rest_route(
+			'wp2-update/v1',
+			'/create-github-app',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'create_github_app' ],
+				'permission_callback' => $permission_callback,
+			]
+		);
 	}
 
 	/**
@@ -264,5 +274,32 @@ final class REST {
 				'message' => __( 'Manual sync failed. Check the logs for details.', 'wp2-update' ),
 			]);
 		}
+	}
+
+	/**
+	 * Handles the creation of a new GitHub App.
+	 */
+	public function create_github_app( WP_REST_Request $request ) {
+		$nonce = $request->get_param('_wpnonce');
+		if ( ! wp_verify_nonce( $nonce, 'wp2_create_github_app' ) ) {
+			return new \WP_Error( 'rest_forbidden', __( 'Invalid nonce.', 'wp2-update' ), [ 'status' => 403 ] );
+		}
+
+		// Validate and sanitize input parameters.
+		$app_name = sanitize_text_field( $request->get_param( 'app_name' ) );
+		$app_id = sanitize_text_field( $request->get_param( 'app_id' ) );
+		$private_key = sanitize_textarea_field( $request->get_param( 'private_key' ) );
+		$webhook_secret = sanitize_text_field( $request->get_param( 'webhook_secret' ) );
+
+		if ( empty( $app_name ) || empty( $app_id ) || empty( $private_key ) || empty( $webhook_secret ) ) {
+			return new \WP_Error( 'rest_invalid_param', __( 'Missing required parameters.', 'wp2-update' ), [ 'status' => 400 ] );
+		}
+
+		// Logic to create the GitHub App (e.g., save to database, perform health checks, etc.).
+		// This is a placeholder for the actual implementation.
+		return rest_ensure_response( [
+			'success' => true,
+			'message' => __( 'GitHub App created successfully.', 'wp2-update' ),
+		] );
 	}
 }

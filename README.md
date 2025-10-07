@@ -77,7 +77,7 @@ This is the most critical step. You need to create a dedicated GitHub App to han
 
 ### Step 4: Mark Your Packages
 
-For the plugin to recognize your themes and plugins, you must add an `Update URI` header to their main file. The value should be the repository slug (`owner/repo-name`).
+For the plugin to recognize your themes and plugins, you must add an `Update URI` header to their main file. The value should always be the repository slug (`owner/repo-name`).
 
 **Theme Example (`style.css`):**
 ```css

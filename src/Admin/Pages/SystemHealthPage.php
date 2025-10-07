@@ -24,8 +24,6 @@ class SystemHealthPage {
         ];
 
         $mappedColor = $map[$status] ?? 'gray';
-        error_log("Mapping status '$status' to color '$mappedColor'"); // Log the mapping for debugging
-        file_put_contents(__DIR__ . '/debug.log', "Mapping status '$status' to color '$mappedColor'\n", FILE_APPEND); // Inline logging to debug.log
         return $mappedColor;
     }
 
@@ -129,6 +127,7 @@ class SystemHealthPage {
                     $status = get_post_meta($post->ID, '_health_status', true);
                     $message = get_post_meta($post->ID, '_health_message', true);
                     $last_checked = get_post_meta($post->ID, '_last_checked_timestamp', true);
+                    // Standardizing health status indicators
                     $status_text = $status === 'ok' ? '<span class="status-success">Healthy</span>' : '<span class="status-danger">Error</span>';
                     $items[] = ['label' => 'Repo: ' . esc_html($post->post_title), 'value' => $status_text];
                     $items[] = ['label' => 'Message', 'value' => esc_html($message)];

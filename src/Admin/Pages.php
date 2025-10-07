@@ -19,18 +19,20 @@ class Pages {
     private $connection;
     private $github_app;
     private $utils;
+    private $container;
 
     private $packages_page;
 
     /**
      * Constructor.
      */
-    public function __construct( Connection $connection, GitHubApp $github_app, SharedUtils $utils ) {
+    public function __construct( Connection $connection, GitHubApp $github_app, SharedUtils $utils, $container ) {
         $this->connection = $connection;
         $this->github_app = $github_app;
         $this->utils      = $utils;
+        $this->container  = $container;
 
-        $package_finder = new \WP2\Update\Core\Updates\PackageFinder( $this->utils );
+        $package_finder = $this->container->resolve('PackageFinder');
         $history_tab = new PackageHistoryPage( $this->connection, $this->utils );
         $status_tab = new PackageStatusPage( $this->connection, $this->github_app, $this->utils );
         $log_tab = new PackageEventsPage();

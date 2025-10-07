@@ -42,7 +42,15 @@ class Handler {
 
         // Validate the IP address of the incoming request.
 		$remote_ip = $_SERVER['REMOTE_ADDR'] ?? '';
-		if ( ! $this->is_github_ip($remote_ip) ) {
+		// Check for proxy headers before falling back to REMOTE_ADDR
+		if ( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
+			$forwarded_ips = explode( ',', $_SERVER['HTTP_X_FORWARDED_FOR'] );
+			$remote_ip = trim( end( $forwarded_ips ) );
+		} elseif ( isset( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) {
+			$remote_ip = $_SERVER['HTTP_CF_CONNECTING_IP'];
+		}
+
+		if ( ! $this->is_github_ip( $remote_ip ) ) {
 			Logger::log("Webhook request from unauthorized IP: {$remote_ip}", 'error', 'webhook');
 			return ['status' => 'error', 'message' => 'Unauthorized IP address'];
 		}

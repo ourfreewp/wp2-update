@@ -44,7 +44,7 @@ class Vite
      */
     public function enqueueProdAssets(string $entry)
     {
-        $manifest_path = plugin_dir_path(__FILE__) . '../../dist/.vite/manifest.json';
+        $manifest_path = WP2_UPDATE_PLUGIN_DIR . '/dist/.vite/manifest.json';
 
         if (!file_exists($manifest_path)) {
             error_log('Vite manifest not found at: ' . $manifest_path);
@@ -60,7 +60,7 @@ class Vite
             if (isset($entry_manifest['file'])) {
                 wp_enqueue_script(
                     'vite-main-script',
-                    plugin_dir_url(__FILE__) . '../../dist/' . $entry_manifest['file'],
+                    WP2_UPDATE_PLUGIN_URL . 'dist/' . $entry_manifest['file'],
                     ['wp-api'],
                     null,
                     true
@@ -70,7 +70,7 @@ class Vite
             // Enqueue associated CSS files
             if (isset($entry_manifest['css'])) {
                 foreach ($entry_manifest['css'] as $css_file) {
-                    $css_url = plugin_dir_url(__FILE__) . '../../dist/' . $css_file;
+                    $css_url = WP2_UPDATE_PLUGIN_URL . 'dist/' . $css_file;
                     wp_enqueue_style(
                         'vite-style-' . basename($css_file),
                         $css_url,

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme updates.
- * Version:           0.0.7
+ * Version:           0.0.8
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -26,14 +26,8 @@ if ( ! file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
 require_once __DIR__ . '/vendor/autoload.php';
 
 
-
-// Include the Vite class file
-require_once __DIR__ . '/vite.php';
-
-
-
-// Don't forget to instantiate the class!
-new Vite();
+// Correcting the require_once path to point to the actual location of the Vite class
+require_once __DIR__ . '/src/Utils/Vite.php';
 
 
 // Check if Action Scheduler is already loaded.

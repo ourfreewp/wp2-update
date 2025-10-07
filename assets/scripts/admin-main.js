@@ -206,7 +206,7 @@ const initGithubAppButton = () => {
                                     Open GitHub App Configuration: ${data.github_url}`;
                             }
                         } else {
-                            alert(data.message || "Failed to create GitHub App.");
+                            showToast(data.message || "Failed to create GitHub App.", 'error');
                         }
                     });
                 });
@@ -266,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const installationId = postData.meta?._wp2_installation_id;
 
             if (!appId || !installationId) {
-                alert('App ID or Installation ID is missing in the post meta.');
+                showToast('App ID or Installation ID is missing in the post meta.', 'warning');
                 return;
             }
 
@@ -288,13 +288,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const debugResult = await debugResponse.json();
 
             if (debugResult.success) {
-                alert('Debug action completed successfully. Check the admin notice for details.');
+                showToast('Debug action completed successfully. Check the admin notice for details.', 'success');
             } else {
-                alert(`Debug action failed: ${debugResult.data}`);
+                showToast(`Debug action failed: ${debugResult.data}`, 'error');
             }
         } catch (error) {
             console.error('Error during debug action:', error);
-            alert('An error occurred while running the debug action. Check the console for details.');
+            showToast('An error occurred while running the debug action. Check the console for details.', 'error');
         }
     });
 
