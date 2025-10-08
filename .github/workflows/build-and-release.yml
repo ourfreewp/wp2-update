@@ -125,6 +125,11 @@ jobs:
             echo "composer.json not found, skipping dependency installation."
           fi
 
+      - name: Install Node.js Dependencies
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          npm install
+
       - name: Build Assets
         if: steps.check_release.outputs.exists == 'false'
         run: |
