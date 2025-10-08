@@ -1,144 +1,214 @@
+/**
+ * @file src-js/admin-main.js
+ * @description Main script for the WP2 Update admin UI. (v3 - Complete Implementation)
+ */
+
 import { apiRequest } from './modules/api.js';
-import { appState, connectionState } from './modules/state.js';
-import { showToast, initTooltips, initTabs } from './modules/ui.js';
+import { appState } from './modules/state.js';
+import { showToast, initUI, showConfirmationModal } from './modules/ui.js';
+import { renderAppView, renderPackageTable } from './modules/components.js';
+import debounce from 'lodash/debounce';
 
 /**
- * WP2 Update Plugin: Admin UI Main Script
- *
- * This script manages the entire admin UI workflow, including state changes,
- * API requests, and dynamic DOM rendering. It's designed to be robust,
- * fixing previous initialization and API errors.
+ * Maps `data-action` attributes to API calls and state changes. This is the
+ * command center for all user interactions.
+ * @type {Object.<string, (button?: HTMLElement) => Promise<void>>}
  */
+const actions = {
+	/**
+	 * ACTION: Begins the connection process.
+	 * Fetches the secure GitHub App creation URL from our backend and redirects the user.
+	 */
+	'start-connection': async () => {
+		const { url } = await apiRequest('wp2-update/v1/github/connect-url', { method: 'GET' });
+		if (url) {
+			window.location.href = url; // User is sent to GitHub
+		}
+	},
 
-// Debug log to confirm script execution
-console.log('[DEBUG] admin-main.js script loaded and executed.');
+	/**
+	 * ACTION: Disconnects the app.
+	 * Tells the backend to delete the stored credentials and resets the UI.
+	 */
+	disconnect: async () => {
+		showConfirmationModal(
+			'Are you sure you want to disconnect? This will remove your credentials.',
+			async () => {
+				await apiRequest('wp2-update/v1/github/disconnect');
+				appState.set({ ...appState.get(), currentStage: 'pre-connection', packages: [] });
+				showToast('Disconnected successfully.');
+			},
+			() => {
+				showToast('Disconnect action canceled.', 'error');
+			}
+		);
+	},
 
+	/**
+	 * ACTION: Fetches all repositories and their releases.
+	 * This is a "sync" operation that populates the main management table.
+	 */
+	'sync-packages': debounce(async () => {
+		showLoadingSpinner();
+		appState.setKey('isLoading', true);
+		try {
+			// This single endpoint is assumed to fetch repos and their latest releases.
+			const result = await apiRequest('wp2-update/v1/sync-packages', { method: 'GET' });
+			appState.set({
+				...appState.get(),
+				packages: result.repositories || [],
+				isLoading: false,
+			});
+			showToast('Successfully synced with GitHub.');
+		} finally {
+			hideLoadingSpinner();
+		}
+	}, 300), // Debounce with a 300ms delay
+
+	/**
+	 * ACTION: Installs or updates a specific package.
+	 * Optimistically updates the UI to show the 'updating' state before the API call completes.
+	 * Reverts the state and shows an error if the API call fails.
+	 * @param {HTMLElement} button - The button that was clicked.
+	 */
+	'update-package': async (button) => {
+		const repo = button.dataset.packageRepo;
+		const select = document.querySelector(`.release-dropdown[data-package-repo="${repo}"]`);
+		if (!select) throw new Error('Could not find the release dropdown for this package.');
+
+		const version = select.value;
+		const originalPackages = appState.get().packages;
+
+		// Optimistically set the package's status to 'updating'
+		const updatedPackages = originalPackages.map(p =>
+			p.repo === repo ? { ...p, status: 'updating' } : p
+		);
+		appState.setKey('packages', updatedPackages);
+
+		try {
+			await apiRequest('wp2-update/v1/manage-packages', {
+				body: { action: 'update', repo_slug: repo, version },
+			});
+
+			showToast(`${repo} update to ${version} initiated.`);
+
+			// Update only the relevant package instead of refreshing all data
+			const refreshedPackage = await apiRequest(`wp2-update/v1/package/${repo}`, { method: 'GET' });
+			const newPackages = appState.get().packages.map(p =>
+				p.repo === repo ? { ...p, ...refreshedPackage } : p
+			);
+			appState.setKey('packages', newPackages);
+		} catch (error) {
+			console.error(`[Update Failed: ${repo}]`, error);
+			showToast(`Failed to update ${repo}: ${error.message}`, 'error');
+
+			// Revert the package's status to its original state
+			appState.setKey('packages', originalPackages);
+		}
+	},
+};
+
+/**
+ * Handles all delegated click events on elements with a `data-action`.
+ * @param {Event} event
+ */
+const handleAction = async (event) => {
+	const button = event.target.closest('button[data-action]');
+	if (!button) return;
+
+	const action = button.dataset.action;
+	if (actions[action]) {
+		const originalHtml = button.innerHTML;
+		button.innerHTML = '<span class="spinner is-active"></span>';
+		button.disabled = true;
+
+		try {
+			await actions[action](button);
+		} catch (error) {
+			console.error(`[Action Failed: ${action}]`, error);
+			showToast(error.message, 'error');
+		} finally {
+			// Restore button only if it hasn't been re-rendered
+			const currentButton = document.querySelector(`[data-action="${action}"]`);
+			if (currentButton) {
+				currentButton.innerHTML = originalHtml;
+				currentButton.disabled = false;
+			}
+		}
+	}
+};
+
+/**
+ * Initializes the application on page load.
+ * It determines if the site is connected and sets the correct initial state.
+ */
+const initializeApp = async () => {
+	const appContainer = document.getElementById('wp2-update_app');
+	if (!appContainer) return;
+
+	appState.setKey('isLoading', true);
+
+	try {
+		const status = await apiRequest('wp2-update/v1/github/connection-status', { method: 'GET' });
+		if (status.connected) {
+			appState.setKey('currentStage', 'managing');
+			await actions['sync-packages'](); // Sync packages automatically if connected
+		} else {
+			appState.setKey('currentStage', 'pre-connection');
+		}
+	} catch (error) {
+		appState.setKey('currentStage', 'pre-connection');
+		showToast(error.message, 'error');
+	} finally {
+		appState.setKey('isLoading', false);
+	}
+};
+
+/**
+ * Add a global loading spinner to provide better user feedback during loading states
+ */
+const showLoadingSpinner = () => {
+	const spinner = document.createElement('div');
+	spinner.id = 'global-loading-spinner';
+	spinner.style.position = 'fixed';
+	spinner.style.top = '50%';
+	spinner.style.left = '50%';
+	spinner.style.transform = 'translate(-50%, -50%)';
+	spinner.style.zIndex = '9999';
+	spinner.style.width = '50px';
+	spinner.style.height = '50px';
+	spinner.style.border = '5px solid rgba(0, 0, 0, 0.1)';
+	spinner.style.borderTop = '5px solid #3498db';
+	spinner.style.borderRadius = '50%';
+	spinner.style.animation = 'spin 1s linear infinite';
+	document.body.appendChild(spinner);
+};
+
+const hideLoadingSpinner = () => {
+	const spinner = document.getElementById('global-loading-spinner');
+	if (spinner) {
+		spinner.remove();
+	}
+};
+
+/**
+ * Main function to set up the application.
+ */
 document.addEventListener('DOMContentLoaded', () => {
-    // Main application container
-    const appContainer = document.getElementById('wp2-update-app');
+	const appContainer = document.getElementById('wp2-update_app');
+	if (!appContainer) {
+		console.error('[WP2 Update] Main application container #wp2-update-app not found.');
+		return;
+	}
 
-    // Exit if the main container is not found on the page
-    if (!appContainer) {
-        console.error('[WP2 Update] Main application container #wp2-update-app not found. Script will not run.');
-        return;
-    }
+	initUI(); // Initialize tooltips, tabs, etc.
+	appContainer.addEventListener('click', handleAction);
 
-    // --- State Management ---
-    appState.listen((newState, oldState) => {
-        console.log('[DEBUG] State updated:', oldState, '->', newState);
-        renderApp(newState);
-    });
+	// Subscribe to state changes to automatically re-render the UI
+	appState.listen((state) => {
+		renderAppView(state.currentStage);
+		renderPackageTable(state.packages, state.isLoading);
+	});
 
-    // --- Event Handling ---
-    appContainer.addEventListener('click', async (event) => {
-        const button = event.target.closest('button[data-action]');
-        if (button) {
-            const action = button.dataset.action;
-            console.log('[DEBUG] Button clicked:', action);
-            await handleAction(action, button);
-        }
-    });
-
-    // --- Initialization ---
-    initTooltips();
-    initTabs();
-    renderApp(appState.get());
+	initializeApp();
 });
-
-/**
- * Main render function. Shows the current workflow step and hides others.
- * This is called automatically whenever the state changes.
- */
-const renderApp = (state) => {
-    console.log('[DEBUG] Rendering application state:', state);
-
-    // Only re-render the main view if the stage has changed
-    if (state.currentStage === appState.get()?.currentStage) return;
-
-    const currentStepEl = document.getElementById(state.currentStage);
-    if (!currentStepEl) {
-        console.error('[WP2 Update] No element found for current stage:', state.currentStage);
-        return;
-    }
-
-    document.querySelectorAll('.workflow-step').forEach(el => {
-        el.hidden = el.id !== state.currentStage;
-    });
-};
-
-/**
- * Handles all user actions dispatched from buttons with a `data-action` attribute.
- * @param {string} action - The action to perform (e.g., 'connect', 'disconnect').
- * @param {HTMLElement} element - The button element that was clicked.
- */
-const handleAction = async (action, button) => {
-    const originalText = button.innerHTML;
-    button.innerHTML = '<span class="spinner is-active" style="margin:0 auto;"></span>';
-    button.disabled = true;
-
-    try {
-        switch (action) {
-            case 'connect':
-                appState.set({ currentStage: 'step-2-credentials' });
-                break;
-
-            case 'cancel':
-                 appState.set({ currentStage: 'step-1-pre-connection' });
-                break;
-            
-            case 'save-validate':
-                // In a real app, you'd gather form data here.
-                // For this demo, we'll just proceed.
-                appState.set({ currentStage: 'step-2-5-sync' });
-                // Simulate validation and sync
-                await new Promise(res => setTimeout(res, 2000));
-                appState.set({ currentStage: 'step-3-management' });
-                break;
-
-            case 'check-releases':
-                appState.set({ isLoading: true });
-                const syncResult = await apiRequest('wp2-update/v1/sync-packages');
-                appState.set({ packages: syncResult.repositories, isLoading: false });
-                break;
-
-            case 'disconnect':
-                if (confirm('Are you sure you want to disconnect?')) {
-                    await apiRequest('wp2-update/v1/disconnect');
-                    appState.set({ currentStage: 'step-1-pre-connection' });
-                }
-                break;
-            
-            case 'update-package':
-                const slug = button.dataset.packageSlug;
-                const select = appContainer.querySelector(`.release-dropdown[data-package-slug="${slug}"]`);
-                const version = select.value;
-                await apiRequest('wp2-update/v1/manage-packages', { 
-                    body: { action: 'update', repo_slug: slug, version } 
-                });
-                // Refresh data after update
-                handleAction('check-releases', button);
-
-                console.warn('[WP2 Update] Update logic is not defined. Skipping update logic.');
-                break;
-
-            case 'validate-connection':
-                const result = await apiRequest('wp2-update/v1/validate-connection');
-                connectionState.set({
-                    connected: result.success,
-                    message: result.message,
-                    isLoading: false,
-                });
-                showToast(result.message, result.success ? 'success' : 'error');
-                break;
-
-            default:
-                console.warn('[WP2 Update] Unknown action:', action);
-        }
-    } catch (error) {
-        console.error('[WP2 Update] Action failed:', error);
-        showToast(error.message, 'error');
-    } finally {
-        button.innerHTML = originalText;
-        button.disabled = false;
-    }
-};

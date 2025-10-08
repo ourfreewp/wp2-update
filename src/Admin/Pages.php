@@ -27,19 +27,8 @@ class Pages
      */
     public function render(): void
     {
-        $credentials = $this->githubService->get_stored_credentials();
-        $initial_stage = !empty($credentials) ? 'step-3-management' : 'step-1-pre-connection';
-        ?>
-        <div class="container" id="wp2-update-app" data-initial-stage="<?php echo esc_attr($initial_stage); ?>">
-
-            <?php
-            $this->render_stage_1_pre_connection($initial_stage);
-            $this->render_stage_2_credentials($initial_stage);
-            $this->render_stage_2_5_sync($initial_stage);
-            $this->render_stage_3_management($initial_stage);
-            ?>
-        </div>
-        <?php
+        // This is the only HTML needed. Your JS app will handle the rest.
+        echo '<div id="wp2-update-app" class="wrap"></div>';
     }
 
     /**
@@ -198,5 +187,23 @@ class Pages
             </div>
         </section>
         <?php
+    }
+
+    /**
+     * Renders the HTML for the GitHub callback handling.
+     */
+    public function render_callback(): void
+    {
+        // Enqueue the GitHub callback script
+        wp_enqueue_script(
+            'wp2-update-github-callback',
+            WP2_UPDATE_PLUGIN_URL . 'assets/scripts/github-callback.js',
+            [],
+            '1.0.0',
+            true
+        );
+
+        // Output a minimal HTML structure
+        echo '<div id="wp2-update-github-callback"></div>';
     }
 }

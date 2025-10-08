@@ -46,6 +46,9 @@ class Init
         add_action('admin_menu', [$this, 'register_menu']);
         add_action('admin_post_wp2_save_github_app', [$this, 'handle_save_credentials']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
+        add_action('rest_api_init', [$this, 'register_rest_routes']);
+        $this->register_debug_hooks(); // Register debug hooks
+        $this->register_github_callback_page(); // Register GitHub callback page
     }
 
     /**
@@ -117,6 +120,8 @@ class Init
      */
     public function register_rest_routes(): void
     {
+        error_log('[DEBUG] register_rest_routes executed.');
+
         register_rest_route('wp2-update/v1', '/connection-status', [
             'methods'             => 'GET',
             'callback'            => [$this, 'get_connection_status'],
@@ -170,6 +175,23 @@ class Init
 
         // Debug log for route registration
         error_log('[WP2 Update] REST API endpoint /disconnect registered successfully.');
+
+        register_rest_route('wp2-update/v1', '/github/connect-url', [
+            'methods'             => 'GET',
+            'callback'            => [$this, 'rest_get_connect_url'],
+            'permission_callback' => [$this, 'check_permissions'],
+        ]);
+
+        register_rest_route('wp2-update/v1', '/github/exchange-code', [
+            'methods'             => 'POST',
+            'callback'            => [$this, 'rest_exchange_code'],
+            'permission_callback' => [$this, 'check_permissions'],
+        ]);
+
+        global $wp_rest_server;
+        if (isset($wp_rest_server)) {
+            do_action('qm/debug', '[DEBUG] Registered REST Routes: ' . print_r($wp_rest_server->get_routes(), true));
+        }
     }
 
     /**
@@ -237,15 +259,6 @@ class Init
      */
     public function validate_connection(WP_REST_Request $request): WP_REST_Response
     {
-        $connection = $this->githubService->getStoredAppConnection();
-
-        if (!$connection) {
-            return new WP_REST_Response([
-                'success' => false,
-                'message' => 'No GitHub App connection found.',
-            ], 404);
-        }
-
         $jwtResult = $this->githubService->mintJWT();
         $apiResult = $this->githubService->testAPIConnection();
 
@@ -258,62 +271,86 @@ class Init
     }
 
     /**
-     * REST API callback for synchronizing packages.
+     * Fetches all repositories and their latest releases.
      */
     public function sync_packages(WP_REST_Request $request): WP_REST_Response
     {
         try {
-            $repositories = $this->githubService->fetchRepositories();
+            // Fetch managed plugins and themes
+            $managedPlugins = $this->packages->get_managed_plugins();
+            $managedThemes = $this->packages->get_managed_themes();
 
-            if (empty($repositories)) {
-                return new WP_REST_Response([
-                    'status' => 'error',
-                    'message' => __('No repositories found.', 'wp2-update'),
-                ], 404);
+            // Create a lookup map for installed versions
+            $installedPackages = array_merge($managedPlugins, $managedThemes);
+            $installedMap = [];
+            foreach ($installedPackages as $package) {
+                $installedMap[$package['repo']] = $package['version'];
             }
 
-            return new WP_REST_Response([
-                'status' => 'success',
-                'repositories' => $repositories,
-            ], 200);
+            // Fetch repositories from GitHub
+            $githubRepos = $this->githubService->get_repositories();
+
+            // Merge GitHub data with installed packages
+            $mergedData = [];
+            foreach ($githubRepos as $repo) {
+                $repoSlug = $repo['full_name'];
+                $mergedData[] = [
+                    'repo' => $repoSlug,
+                    'latest_version' => $repo['tag_name'] ?? null,
+                    'installed_version' => $installedMap[$repoSlug] ?? null,
+                ];
+            }
+
+            return new WP_REST_Response($mergedData, 200);
         } catch (Exception $e) {
-            error_log('Error in sync_packages: ' . $e->getMessage());
-            return new WP_REST_Response([
-                'status' => 'error',
-                'message' => __('An unexpected error occurred while synchronizing packages.', 'wp2-update'),
-            ], 500);
+            return new WP_REST_Response(['error' => $e->getMessage()], 500);
         }
     }
 
     /**
-     * Manages package versions (e.g., update, rollback).
+     * Triggers the update for a specific package.
      */
     public function manage_packages(WP_REST_Request $request): WP_REST_Response
     {
         try {
-            $action = $request->get_param('action');
-            $repoSlug = $request->get_param('repo_slug'); // Updated to use repo_slug
+            $repoSlug = $request->get_param('repo_slug');
             $version = $request->get_param('version');
 
-            $result = $this->githubService->manage_package($action, $repoSlug, $version);
-
-            if ($result['success']) {
-                return new WP_REST_Response([
-                    'status' => 'success',
-                    'message' => $result['message'],
-                ], 200);
+            if (!$repoSlug || !$version) {
+                return new WP_REST_Response(['error' => 'Missing required parameters.'], 400);
             }
 
-            return new WP_REST_Response([
-                'status' => 'error',
-                'message' => $result['message'],
-            ], 400);
+            // Fetch the release for the requested version
+            $release = $this->githubService->get_release_by_version($repoSlug, $version);
+            if (!$release) {
+                return new WP_REST_Response(['error' => 'Release not found.'], 404);
+            }
+
+            // Get the download URL for the release asset
+            $downloadUrl = $this->utils->get_zip_url_from_release($release);
+            if (!$downloadUrl) {
+                return new WP_REST_Response(['error' => 'Download URL not found.'], 404);
+            }
+
+            // Download the release asset to a temporary file
+            $tempFile = $this->githubService->download_to_temp_file($downloadUrl);
+            if (!$tempFile) {
+                return new WP_REST_Response(['error' => 'Failed to download the release asset.'], 500);
+            }
+
+            // Ensure the correct upgrader is used based on the package type
+            $upgrader = strpos($repoSlug, '/themes/') !== false ? new \Theme_Upgrader() : new \Plugin_Upgrader();
+
+            // Install the update
+            $result = $upgrader->install($tempFile);
+
+            if (is_wp_error($result)) {
+                return new WP_REST_Response(['error' => $result->get_error_message()], 500);
+            }
+
+            return new WP_REST_Response(['success' => true, 'message' => 'Package updated successfully.'], 200);
         } catch (Exception $e) {
-            error_log('Error in manage_packages: ' . $e->getMessage());
-            return new WP_REST_Response([
-                'status' => 'error',
-                'message' => __('An unexpected error occurred while managing packages.', 'wp2-update'),
-            ], 500);
+            return new WP_REST_Response(['error' => $e->getMessage()], 500);
         }
     }
 
@@ -589,15 +626,154 @@ class Init
      */
     public function rest_disconnect(WP_REST_Request $request): WP_REST_Response
     {
-       // clear stored credentials
-        $this->githubService->clear_stored_credentials();
+        error_log('[DEBUG] Executing rest_disconnect method.');
 
+        try {
+            // Clear stored credentials
+            $this->githubService->clear_stored_credentials();
 
+            // Log success
+            error_log('[DEBUG] Successfully cleared stored credentials.');
 
-        // Return a success response
-        return new WP_REST_Response([
-            'success' => true,
-            'message' => 'Disconnected successfully.',
-        ], 200);
+            // Return a success response
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Disconnected successfully.',
+            ], 200);
+        } catch (Exception $e) {
+            // Log the error
+            error_log('[ERROR] rest_disconnect failed: ' . $e->getMessage());
+
+            // Return an error response
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'An error occurred while disconnecting.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Display a debug panel in the admin area.
+     *
+     * This method hooks into `admin_notices` to display debugging information.
+     */
+    public function display_debug_panel(): void
+    {
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+        $debug_data = [
+            'wp2UpdateData' => isset($GLOBALS['wp2UpdateData']) ? $GLOBALS['wp2UpdateData'] : 'Not defined',
+            'Current User' => wp_get_current_user(),
+            'Admin URL' => admin_url(),
+            'AJAX URL' => admin_url('admin-ajax.php'),
+        ];
+
+        echo '<div class="notice notice-info is-dismissible">';
+        echo '<h2>WP2 Update Debug Panel</h2>';
+        echo '<pre>' . esc_html(print_r($debug_data, true)) . '</pre>';
+        echo '</div>';
+    }
+
+    /**
+     * Register hooks for the debug panel.
+     */
+    public function register_debug_hooks(): void
+    {
+        add_action('admin_notices', [$this, 'display_debug_panel']);
+    }
+
+    /**
+     * Generates the GitHub App manifest and redirect URL.
+     */
+    public function rest_get_connect_url(WP_REST_Request $request): WP_REST_Response
+    {
+        $orgName = $request->get_param('organization');
+
+        $manifest = [
+            'name' => $request->get_param('name') ?: get_bloginfo('name') . ' Updater',
+            'url' => home_url(),
+            'redirect_url' => admin_url('tools.php?page=wp2-update-callback'), // A dedicated callback page
+            'callback_urls' => [ home_url() ],
+            'public' => false,
+            'default_permissions' => [
+                'contents' => 'read',
+                'metadata' => 'read',
+            ],
+            'default_events' => ['release'],
+        ];
+
+        $url = 'https://github.com/settings/apps/new?manifest=' . rawurlencode(json_encode($manifest));
+        if ($orgName) {
+            $url .= '&organization_name=' . rawurlencode($orgName);
+        }
+
+        return new WP_REST_Response(['url' => $url]);
+    }
+
+    /**
+     * Exchanges the temporary code from GitHub for permanent credentials.
+     */
+    public function rest_exchange_code(WP_REST_Request $request): WP_REST_Response
+    {
+        $code = $request->get_param('code');
+        if (!$code) {
+            return new WP_REST_Response(['message' => 'Authorization code is missing.'], 400);
+        }
+
+        // This is the official GitHub endpoint for the manifest flow
+        $response = wp_remote_post("https://api.github.com/app-manifests/{$code}/conversions");
+
+        if (is_wp_error($response)) {
+            return new WP_REST_Response(['message' => $response->get_error_message()], 500);
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $credentials = json_decode($body, true);
+
+        // Use your existing secure storage method
+        $this->githubService->store_app_credentials($credentials);
+
+        return new WP_REST_Response(['success' => true]);
+    }
+
+    /**
+     * Register a hidden admin page for the GitHub callback.
+     *
+     * This method adds a submenu page under the tools menu for handling GitHub
+     * callback requests. The page is hidden from the admin menu.
+     */
+    public function register_github_callback_page(): void
+    {
+        add_submenu_page(
+            null, // Hidden page, no parent slug
+            'GitHub Callback', // Page title
+            'GitHub Callback', // Menu title
+            'manage_options', // Capability
+            'wp2-update-github-callback', // Menu slug
+            [$this, 'render_github_callback_page'] // Callback function
+        );
+    }
+
+    /**
+     * Renders the GitHub callback page.
+     *
+     * This method is called when the hidden submenu page is accessed. It
+     * simply returns a 200 OK response with a message.
+     */
+    public function render_github_callback_page(): void
+    {
+        // Enqueue the GitHub callback script
+        wp_enqueue_script(
+            'wp2-update-github-callback',
+            WP2_UPDATE_PLUGIN_URL . 'assets/scripts/github-callback.js',
+            [],
+            '1.0.0',
+            true
+        );
+
+        // Output a minimal HTML structure
+        echo '<div id="wp2-update-github-callback"></div>';
     }
 }

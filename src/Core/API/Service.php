@@ -306,7 +306,7 @@ class Service
      *
      * @param bool $forceRefresh When true, always re-authenticate.
      */
-    private function getInstallationClient(bool $forceRefresh = false): ?GitHubClient
+    public function getInstallationClient(bool $forceRefresh = false): ?GitHubClient
     {
         if (!$forceRefresh && $this->installationClient && $this->installationClientExpires && $this->installationClientExpires > (time() + 60)) {
             return $this->installationClient;
@@ -318,15 +318,14 @@ class Service
         }
 
         $token = $this->createInstallationToken($credentials);
+
         if (!$token) {
             return null;
         }
 
-        $client = new GitHubClient();
-        $client->authenticate($token['token'], AuthMethod::ACCESS_TOKEN);
-
-        $this->installationClient        = $client;
-        $this->installationClientExpires = $token['expires'];
+        $this->installationClient = new GitHubClient();
+        $this->installationClient->authenticate($token, AuthMethod::ACCESS_TOKEN);
+        $this->installationClientExpires = time() + 3600; // Tokens are valid for 1 hour
 
         return $this->installationClient;
     }
@@ -466,5 +465,52 @@ class Service
     {
         $timestamp = date('Y-m-d H:i:s');
         error_log("[WP2 Update] [{$timestamp}] {$message}");
+    }
+
+    /**
+     * Fetch a specific release by version from GitHub.
+     */
+    public function get_release_by_version(string $repoSlug, string $version): ?array
+    {
+        try {
+            $client = $this->getInstallationClient();
+            if (!$client) {
+                throw new \Exception('GitHub client not initialized.');
+            }
+
+            [$owner, $repo] = explode('/', $repoSlug);
+            $releases = $client->api('repo')->releases()->all($owner, $repo);
+
+            foreach ($releases as $release) {
+                if ($release['tag_name'] === $version) {
+                    return $release;
+                }
+            }
+
+            return null; // Release not found
+        } catch (\Exception $e) {
+            $this->log_error('Error fetching release: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Fetches the repositories for the authenticated installation.
+     */
+    public function get_repositories(): array
+    {
+        try {
+            $client = $this->getInstallationClient();
+            if (!$client) {
+                throw new \Exception('GitHub client not initialized.');
+            }
+
+            // Use the search API as a fallback to fetch repositories
+            $repositories = $client->api('search')->repositories('user:your-github-username');
+            return $repositories['items'] ?? [];
+        } catch (\Exception $e) {
+            $this->log_error('Error fetching repositories: ' . $e->getMessage());
+            return [];
+        }
     }
 }
