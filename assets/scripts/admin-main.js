@@ -65,8 +65,17 @@ const actions = {
 						lastSync: new Date().toISOString(),
 					},
 				},
+				error: null, // Clear any previous error
 			});
 			showToast('Successfully synced with GitHub.');
+		} catch (error) {
+			console.error('[Sync Failed]', error);
+			appState.set({
+				...appState.get(),
+				isLoading: false,
+				error: error.message, // Set the error state
+			});
+			showToast('Failed to sync packages. Please try again.', 'error');
 		} finally {
 			hideLoadingSpinner();
 		}

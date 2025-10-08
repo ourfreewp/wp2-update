@@ -747,6 +747,15 @@ class Init
             true
         );
 
+        // Localize script data for GitHub callback page
+        wp_localize_script(
+            'wp2-update-github-callback',
+            'wp2UpdateData',
+            [
+                'nonce' => wp_create_nonce('wp2_update_nonce')
+            ]
+        );
+
         // Output a minimal HTML structure
         echo '<div id="wp2-update-github-callback"></div>';
     }
