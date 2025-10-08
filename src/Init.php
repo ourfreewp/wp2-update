@@ -8,7 +8,6 @@ if (class_exists(__NAMESPACE__ . '\\Init', false)) {
 }
 
 use WP2\Update\Admin\Init as AdminInit;
-use WP2\Update\Admin\Models\Init as ModelsInit;
 use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\API\Service;
 use WP2\Update\Core\Updates\PackageFinder;
@@ -28,7 +27,6 @@ final class Init
     private PluginUpdater $pluginUpdater;
     private ThemeUpdater $themeUpdater;
     private AdminInit $admin;
-    private ModelsInit $models;
 
     /**
      * Entry point called from the plugin loader.
@@ -49,7 +47,6 @@ final class Init
         $this->pluginUpdater = new PluginUpdater($this->packageFinder, $this->githubService, $this->utils);
         $this->themeUpdater  = new ThemeUpdater($this->packageFinder, $this->githubService, $this->utils);
         $this->admin         = new AdminInit($this->githubService, $this->packageFinder, $this->utils, $this->githubApp);
-        $this->models        = new ModelsInit();
     }
 
     /**
@@ -57,7 +54,6 @@ final class Init
      */
     private function register(): void
     {
-        $this->models->register();
         $this->admin->register_hooks();
         $this->pluginUpdater->register_hooks();
         $this->themeUpdater->register_hooks();

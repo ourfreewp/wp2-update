@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme and plugin updates.
- * Version:           0.0.13
+ * Version:           0.0.15
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -46,4 +46,17 @@ function wp2_update_run() {
     \WP2\Update\Init::boot();
 }
 // Hook the single entry point to 'plugins_loaded'.
-add_action( 'plugins_loaded', wp2_update_run(...));
+add_action( 'plugins_loaded', 'wp2_update_run');
+
+// Ensure proper MIME types for CSS and JS files
+add_filter('wp_headers', function ($headers) {
+    if (isset($_SERVER['REQUEST_URI'])) {
+        $path = $_SERVER['REQUEST_URI'];
+        if (strpos($path, '.css') !== false) {
+            $headers['Content-Type'] = 'text/css; charset=UTF-8';
+        } elseif (strpos($path, '.js') !== false) {
+            $headers['Content-Type'] = 'application/javascript; charset=UTF-8';
+        }
+    }
+    return $headers;
+});

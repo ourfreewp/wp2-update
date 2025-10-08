@@ -4,9 +4,21 @@
 // ========================================================================
 
 const restNonce = window.wpApiSettings?.nonce || '';
+const wp2UpdateNonce = window.wp2UpdateData?.nonce || '';
 
 if (!restNonce) {
     console.warn('REST API nonce is missing. Ensure wpApiSettings is properly localized.');
+}
+
+if (!wp2UpdateNonce) {
+    console.warn('WP2 Update nonce is missing. Ensure wp2UpdateData is properly localized.');
+}
+
+// Normalize the API root URL to avoid double slashes
+const apiRoot = (window.wpApiSettings?.root.replace(/\/+$/, '') || '') + '/';
+
+if (!apiRoot) {
+    console.warn('REST API root URL is missing. Ensure wpApiSettings is properly localized.');
 }
 
 /**
@@ -16,11 +28,15 @@ if (!restNonce) {
  * @returns {Promise<any>} - The JSON response from the API.
  */
 export const apiRequest = async (endpoint, options = {}) => {
+    console.log('[DEBUG] API Request - restNonce:', restNonce);
+    console.log('[DEBUG] API Request - apiRoot:', apiRoot);
+
     const defaultOptions = {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-WP-Nonce': restNonce,
+            'X-WP2-Update-Nonce': wp2UpdateNonce, // Include the wp2_update_nonce
         },
     };
     const mergedOptions = { ...defaultOptions, ...options };
@@ -29,7 +45,7 @@ export const apiRequest = async (endpoint, options = {}) => {
         mergedOptions.body = JSON.stringify(mergedOptions.body);
     }
 
-    const response = await fetch(`${window.wpApiSettings.root}${endpoint}`, mergedOptions);
+    const response = await fetch(`${apiRoot}${endpoint.replace(/^\/+/, '')}`, mergedOptions);
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({

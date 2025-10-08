@@ -19,8 +19,10 @@ export default defineConfig(({ command }) => ({
     outDir: 'dist',
     emptyOutDir: true,
 
-    // Generate a manifest file to help PHP locate the assets
-    manifest: true,
+    // Ensure the manifest file is generated directly in the dist directory
+    manifest: {
+        fileName: 'manifest.json',
+    },
 
     // Define your entry points
     rollupOptions: {

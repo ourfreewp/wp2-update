@@ -33,6 +33,17 @@ The WP2 Update Plugin is a WordPress plugin designed to streamline the managemen
 - **Manage Updates**: Select a version and update or rollback packages.
 - **Webhooks**: Automatically clear update transients on GitHub push events.
 
+## New Features
+- **Rollback Functionality**: Easily revert plugins and themes to previous versions.
+- **Enhanced Error Handling**: Improved user-facing error messages and detailed backend logging for better debugging.
+
+## Screenshots
+### Admin Dashboard
+![Admin Dashboard](https://example.com/screenshot1.png)
+
+### Package Management
+![Package Management](https://example.com/screenshot2.png)
+
 ## FAQ
 ### What permissions are required for the GitHub App?
 The GitHub App requires the following permissions:
@@ -46,6 +57,12 @@ The GitHub App requires the following permissions:
 
 ### What happens if validation fails?
 Ensure your App ID, Installation ID, and Private Key are correct. Revalidate after correcting any errors.
+
+### How do I rollback a package?
+Navigate to the `WP2 Updates` menu, select the package, and choose the rollback option. The plugin will automatically fetch and install the previous version.
+
+### What happens if an update fails?
+The plugin provides detailed error messages and logs to help you identify and resolve the issue. Check the WordPress debug log for more information.
 
 ## Contributing
 We welcome contributions! Please see the [Contributing Guide](docs/wiki/Contributing.md) for details.

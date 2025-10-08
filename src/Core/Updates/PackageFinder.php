@@ -63,7 +63,7 @@ class PackageFinder
             ];
         }
 
-        return $managed;
+        return apply_filters('wp2_update_managed_plugins', $managed);
     }
 
     /**

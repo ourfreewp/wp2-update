@@ -44,11 +44,3 @@ Yes, WP2 Update is free and open-source. However, premium features may be introd
 2. Plugin admin interface.
 
 == Changelog ==
-
-= 1.0 =
-* Initial release.
-
-== Upgrade Notice ==
-
-= 1.0 =
-Initial release.
