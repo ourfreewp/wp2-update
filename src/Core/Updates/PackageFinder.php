@@ -59,7 +59,6 @@ class PackageFinder
                 'name'     => $plugin['Name'] ?? $slug,
                 'version'  => $plugin['Version'] ?? '0.0.0',
                 'type'     => 'plugin',
-                'app_slug' => Service::DEFAULT_APP_SLUG,
             ];
         }
 
@@ -96,7 +95,6 @@ class PackageFinder
                 'name'     => $theme->get('Name') ?: $slug,
                 'version'  => $theme->get('Version') ?: '0.0.0',
                 'type'     => 'theme',
-                'app_slug' => Service::DEFAULT_APP_SLUG,
             ];
         }
 

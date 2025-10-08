@@ -2,8 +2,13 @@
 
 namespace WP2\Update\Utils;
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 use WP2\Update\Init;
 use WP2\Update\Core\API\Service;
+
 
 /**
  * Small collection of helpers used across the trimmed plugin.
@@ -77,5 +82,26 @@ final class SharedUtils
         }
 
         return null;
+    }
+
+    /**
+     * Retrieves the GitHub Webhook Secret securely.
+     * @return string The webhook secret.
+     */
+    public function get_webhook_secret(): string
+    {
+        // Retrieve the secret from the database or environment
+        $secret = get_option('wp2_update_webhook_secret');
+
+        if (!$secret) {
+            // Fallback to environment variable if not set in the database
+            $secret = getenv('WP2_UPDATE_WEBHOOK_SECRET');
+        }
+
+        if (!$secret) {
+            throw new \RuntimeException('Webhook secret is not configured.');
+        }
+
+        return $secret;
     }
 }

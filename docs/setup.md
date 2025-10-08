@@ -9,15 +9,11 @@
 
 ## Configuration
 1. Navigate to `WP2 Updates` in the WordPress admin menu.
-2. Enter your GitHub App credentials:
-   - App Name
-   - App ID
-   - Installation ID
-   - Private Key
-3. Save the credentials and validate the connection.
+2. Click the **Connect to GitHub** button.
+3. Follow the on-screen instructions to authorize the creation of a GitHub App.
+4. Once redirected back to WordPress, the connection will be automatically validated.
 
 ## Usage
-- **Validate Connection**: Ensure your GitHub App credentials are correct.
 - **Sync Packages**: Fetch the latest packages and their releases.
 - **Manage Updates**: Select a version and update or rollback packages.
 - **Webhooks**: Automatically clear update transients on GitHub push events.

@@ -51,6 +51,8 @@ const actions = {
 	'sync-packages': debounce(async () => {
 		showLoadingSpinner();
 		appState.setKey('isLoading', true);
+		const syncStatusElement = document.querySelector('#sync-status');
+
 		try {
 			// This single endpoint is assumed to fetch repos and their latest releases.
 			const result = await apiRequest('wp2-update/v1/sync-packages', { method: 'GET' });
@@ -67,6 +69,10 @@ const actions = {
 				},
 				error: null, // Clear any previous error
 			});
+			if (syncStatusElement) {
+				syncStatusElement.textContent = 'Last sync succeeded at ' + new Date().toLocaleString();
+				syncStatusElement.className = 'sync-status success';
+			}
 			showToast('Successfully synced with GitHub.');
 		} catch (error) {
 			console.error('[Sync Failed]', error);
@@ -75,8 +81,14 @@ const actions = {
 				isLoading: false,
 				error: error.message, // Set the error state
 			});
-			showToast('Failed to sync packages. Please try again.', 'error');
+			appState.setKey('syncError', error.message || 'An unknown error occurred during sync.');
+			if (syncStatusElement) {
+				syncStatusElement.textContent = 'Last sync failed at ' + new Date().toLocaleString();
+				syncStatusElement.className = 'sync-status error';
+			}
+			showToast('Sync failed: ' + (error.message || 'Unknown error'), 'error');
 		} finally {
+			appState.setKey('isLoading', false);
 			hideLoadingSpinner();
 		}
 	}, 300), // Debounce with a 300ms delay
@@ -124,6 +136,33 @@ const actions = {
 			);
 			appState.setKey('packages', updatedPackages);
 		}
+	},
+
+	/**
+	 * ACTION: Performs a health check on the installation.
+	 * This action calls the backend health check endpoint and shows the results in the UI.
+	 */
+	'health-check': async () => {
+		showLoadingSpinner();
+		try {
+			const response = await apiRequest('wp2-update/v1/health-status', { method: 'GET' });
+			console.log('Health Check Results:', response);
+			showToast('Health check completed successfully.', 'success');
+		} catch (error) {
+			console.error('Health Check Failed:', error);
+			showToast('Health check failed. See console for details.', 'error');
+		} finally {
+			hideLoadingSpinner();
+		}
+	},
+
+	/**
+	 * ACTION: Configure GitHub App Manifest.
+	 * Displays a form to configure the App Name and optional Organization.
+	 */
+	'configure-manifest': async () => {
+		appState.setKey('currentStage', 'configure-manifest');
+		renderAppView('configure-manifest');
 	},
 };
 
@@ -216,7 +255,7 @@ const hideLoadingSpinner = () => {
 document.addEventListener('DOMContentLoaded', () => {
 	const appContainer = document.getElementById('wp2-update_app');
 	if (!appContainer) {
-		console.error('[WP2 Update] Main application container #wp2-update-app not found.');
+		console.error('[WP2 Update] Main application container #wp2-update-app not found. Please ensure the container exists in the DOM before initializing the app.');
 		return;
 	}
 
@@ -245,4 +284,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 	initializeApp();
+
+	// Check for the button with ID 'otw_action_rebuild_menus'
+	const rebuildMenusButton = document.getElementById('otw_action_rebuild_menus');
+	if (rebuildMenusButton) {
+		rebuildMenusButton.addEventListener('click', () => {
+			console.log('Rebuild menus action triggered.');
+			// Add logic for rebuilding menus here
+		});
+	} else {
+		console.warn('Button with ID "otw_action_rebuild_menus" not found.');
+	}
 });

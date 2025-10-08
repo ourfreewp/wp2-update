@@ -80,53 +80,74 @@ export const initUI = () => {
  * @param {Function} [onCancel] - Optional callback to execute if the user cancels.
  */
 export const showConfirmationModal = (message, onConfirm, onCancel) => {
-    // Create the modal elements
-    const modal = document.createElement('div');
-    modal.className = 'wp2-modal';
-    modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-labelledby', 'modal-title');
-    modal.setAttribute('aria-describedby', 'modal-description');
-    modal.setAttribute('aria-hidden', 'false');
+    const modal = document.getElementById('disconnect-modal');
+    if (!modal) {
+        console.error('Modal element not found in the DOM.');
+        return;
+    }
 
-    const overlay = document.createElement('div');
-    overlay.className = 'wp2-modal-overlay';
+    const messageEl = modal.querySelector('.modal-message');
+    const confirmButton = modal.querySelector('.modal-confirm');
+    const cancelButton = modal.querySelector('.modal-cancel');
 
-    const content = document.createElement('div');
-    content.className = 'wp2-modal-content';
+    if (messageEl) messageEl.textContent = message;
 
-    const messageEl = document.createElement('p');
-    messageEl.id = 'modal-description';
-    messageEl.textContent = message;
+    const closeModal = () => {
+        modal.classList.remove('is-visible');
+        confirmButton.removeEventListener('click', handleConfirm);
+        cancelButton.removeEventListener('click', handleCancel);
+    };
 
-    const buttonContainer = document.createElement('div');
-    buttonContainer.className = 'wp2-modal-buttons';
+    const handleConfirm = () => {
+        closeModal();
+        if (onConfirm) onConfirm();
+    };
 
-    const confirmButton = document.createElement('button');
-    confirmButton.className = 'button button-primary';
-    confirmButton.textContent = 'Confirm';
-    confirmButton.setAttribute('aria-label', 'Confirm action');
-    confirmButton.addEventListener('click', () => {
-        document.body.removeChild(modal);
-        onConfirm();
-    });
-
-    const cancelButton = document.createElement('button');
-    cancelButton.className = 'button';
-    cancelButton.textContent = 'Cancel';
-    cancelButton.setAttribute('aria-label', 'Cancel action');
-    cancelButton.addEventListener('click', () => {
-        document.body.removeChild(modal);
+    const handleCancel = () => {
+        closeModal();
         if (onCancel) onCancel();
+    };
+
+    confirmButton.addEventListener('click', handleConfirm);
+    cancelButton.addEventListener('click', handleCancel);
+
+    modal.classList.add('is-visible');
+};
+
+/**
+ * Renders the package table with sync status and error handling.
+ * @param {Array} packages - The list of packages to display.
+ */
+export const renderPackageTable = (packages) => {
+    const tableBody = document.getElementById('package-table-body');
+    tableBody.innerHTML = ''; // Clear existing content
+
+    packages.forEach((pkg) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${pkg.name}</td>
+            <td>${pkg.version}</td>
+            <td>${pkg.status}</td>
+        `;
+        tableBody.appendChild(row);
     });
 
-    // Append elements
-    buttonContainer.appendChild(confirmButton);
-    buttonContainer.appendChild(cancelButton);
-    content.appendChild(messageEl);
-    content.appendChild(buttonContainer);
-    modal.appendChild(overlay);
-    modal.appendChild(content);
+    // Check for sync errors
+    if (appState.get().syncError) {
+        const errorRow = document.createElement('tr');
+        errorRow.innerHTML = `
+            <td colspan="5" style="color: red; text-align: center;">
+                ${appState.get().syncError}
+                <button id="retry-sync" style="margin-left: 10px;">Retry</button>
+            </td>
+        `;
+        tableBody.appendChild(errorRow);
 
-    // Add the modal to the DOM
-    document.body.appendChild(modal);
+        document.getElementById('retry-sync').addEventListener('click', () => {
+            appState.setKey('syncError', null);
+            actions['sync-packages']();
+        });
+
+        return;
+    }
 };

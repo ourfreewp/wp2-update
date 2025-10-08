@@ -2,6 +2,10 @@
 
 namespace WP2\Update\Core\API\GitHubApp;
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 use WP2\Update\Core\API\Service;
 
 /**
@@ -56,5 +60,19 @@ class Init
     public function test_connection(): array
     {
         return $this->service->test_connection();
+    }
+
+    /**
+     * Saves the GitHub App manifest configuration.
+     *
+     * @param string $appName The name of the GitHub App.
+     * @param string|null $organization The optional organization name.
+     * @return void
+     */
+    public function saveManifestConfig(string $appName, ?string $organization): void
+    {
+        // Example logic to save the manifest configuration
+        update_option('wp2_github_app_name', $appName);
+        update_option('wp2_github_organization', $organization);
     }
 }

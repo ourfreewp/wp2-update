@@ -60,6 +60,7 @@ export const appState = atom({
         },
     },
     packages: [],
+    syncError: null, // New property to track synchronization errors
 });
 
 /**
@@ -68,6 +69,15 @@ export const appState = atom({
  */
 export const isAnyPackageUpdating = computed(appState, (state) => {
     return state.packages.some((pkg) => pkg.status === 'updating');
+});
+
+/**
+ * Derived state to check if any action should be disabled.
+ * This includes when the app is loading or any package is updating.
+ * @type {import('nanostores').ReadableAtom<boolean>}
+ */
+export const isActionDisabled = computed(appState, (state) => {
+    return state.isLoading || state.packages.some((pkg) => pkg.status === 'updating');
 });
 
 // Utility function to persist state to sessionStorage
@@ -125,6 +135,7 @@ const restoredState = restoreState('appState', {
         },
     },
     packages: [],
+    syncError: null, // New property to track synchronization errors
 });
 
 // Validate the restored state
@@ -142,6 +153,7 @@ const validRestoredState = validateRestoredState(restoredState, {
         },
     },
     packages: [],
+    syncError: null, // New property to track synchronization errors
 });
 
 // Initialize appState with restored values

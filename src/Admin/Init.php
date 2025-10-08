@@ -2,6 +2,10 @@
 
 namespace WP2\Update\Admin;
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
 use WP2\Update\Core\API\Service as GitHubService;
 use WP2\Update\Core\Updates\PackageFinder;
@@ -46,7 +50,7 @@ class Init
     public function register_hooks(): void
     {
         add_action('admin_menu', [$this, 'register_menu']);
-        add_action('admin_post_wp2_save_github_app', [$this, 'handle_save_credentials']);
+        add_action('admin_post_wp2_save_github_app', [$this, 'ajax_save_credentials']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
         add_action('rest_api_init', [$this, 'register_rest_routes']);
         $this->register_debug_hooks(); // Register debug hooks
@@ -117,6 +121,46 @@ class Init
     }
 
     /**
+     * REST API handler to save GitHub App credentials.
+     *
+     * @param WP_REST_Request $request The REST API request object.
+     * @return WP_REST_Response The REST API response object.
+     */
+    public function rest_save_credentials(WP_REST_Request $request): WP_REST_Response
+    {
+        if (!current_user_can('manage_options')) {
+            return new WP_REST_Response(
+                ['message' => __('You do not have permission to perform this action.', 'wp2-update')],
+                403
+            );
+        }
+
+        $appName        = sanitize_text_field($request->get_param('wp2_app_name'));
+        $appId          = absint($request->get_param('wp2_app_id'));
+        $installationId = absint($request->get_param('wp2_installation_id'));
+        $privateKey     = sanitize_textarea_field($request->get_param('wp2_private_key'));
+        $webhookSecret  = sanitize_text_field($request->get_param('wp2_webhook_secret'));
+
+        $this->githubService->store_app_credentials([
+            'name'            => $appName,
+            'app_id'          => $appId,
+            'installation_id' => $installationId,
+            'private_key'     => $privateKey,
+        ]);
+
+        if (!empty($webhookSecret)) {
+            update_option('wp2_webhook_secret', wp_hash_password($webhookSecret));
+        }
+
+        do_action('wp2_update_credentials_saved', $appId, $installationId);
+
+        return new WP_REST_Response(
+            ['message' => __('Credentials saved successfully.', 'wp2-update')],
+            200
+        );
+    }
+
+    /**
      * Registers REST API routes for the plugin.
      *
      * This method defines the following routes:
@@ -128,6 +172,12 @@ class Init
     public function register_rest_routes(): void
     {
         error_log('[DEBUG] register_rest_routes executed.');
+
+        register_rest_route('wp2-update/v1', '/save-credentials', [
+            'methods'             => 'POST',
+            'callback'            => [$this, 'rest_save_credentials'],
+            'permission_callback' => [$this, 'check_permissions'],
+        ]);
 
         register_rest_route('wp2-update/v1', '/connection-status', [
             'methods'             => 'GET',
@@ -149,7 +199,7 @@ class Init
 
         register_rest_route('wp2-update/v1', '/validate-connection', [
             'methods'             => 'POST',
-            'callback'            => [$this, 'validate_connection'],
+            'callback'            => [$this, 'rest_validate_connection'],
             'permission_callback' => [$this, 'check_permissions'],
         ]);
 
@@ -195,9 +245,42 @@ class Init
             'permission_callback' => [$this, 'check_permissions'],
         ]);
 
+        // Register health check endpoint
+        $this->register_health_check_endpoint();
+
         global $wp_rest_server;
         if (isset($wp_rest_server)) {
             do_action('qm/debug', '[DEBUG] Registered REST Routes: ' . print_r($wp_rest_server->get_routes(), true));
+        }
+
+        /**
+         * Registers REST routes for the "Configure Manifest" step.
+         */
+        register_rest_route('wp2-update/v1', '/github/save-manifest', [
+            'methods'  => 'POST',
+            'callback' => [$this, 'save_manifest'],
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
+        ]);
+    }
+
+    /**
+     * Saves the GitHub App manifest configuration.
+     *
+     * @param WP_REST_Request $request The REST request object.
+     * @return WP_REST_Response The REST response object.
+     */
+    public function save_manifest(WP_REST_Request $request): WP_REST_Response
+    {
+        $appName = sanitize_text_field($request->get_param('appName'));
+        $organization = sanitize_text_field($request->get_param('organization'));
+
+        try {
+            $this->githubApp->saveManifestConfig($appName, $organization);
+            return new WP_REST_Response(['success' => true, 'message' => 'Manifest saved successfully.'], 200);
+        } catch (Exception $e) {
+            return new WP_REST_Response(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
@@ -211,8 +294,19 @@ class Init
      */
     public function check_permissions(): bool
     {
-        $nonce = $_REQUEST['wp2_update_nonce'] ?? '';
-        return current_user_can('manage_options') && wp_verify_nonce($nonce, 'wp2_update_nonce');
+        $nonce = isset($_REQUEST['wp2_update_nonce']) ? sanitize_text_field(wp_unslash($_REQUEST['wp2_update_nonce'])) : '';
+
+        if (!current_user_can('manage_options')) {
+            error_log('Permission denied: User lacks manage_options capability.');
+            return false;
+        }
+
+        if (!wp_verify_nonce($nonce, 'wp2_update_nonce')) {
+            error_log('Permission denied: Invalid nonce provided.');
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -320,48 +414,32 @@ class Init
     }
 
     /**
-     * Triggers the update for a specific package.
+     * Manages package updates and rollbacks.
      */
     public function manage_packages(WP_REST_Request $request): WP_REST_Response
     {
+        $action = $request->get_param('action');
+        $package = $request->get_param('package');
+        $version = $request->get_param('version');
+
+        if (!$this->check_permissions()) {
+            return new WP_REST_Response(['error' => 'Unauthorized'], 403);
+        }
+
         try {
-            $repoSlug = $request->get_param('repo_slug');
-            $version = $request->get_param('version');
+            if ($action === 'update' || $action === 'rollback') {
+                if (!$package || !$version) {
+                    throw new \InvalidArgumentException('Package and version are required.');
+                }
 
-            if (!$repoSlug || !$version) {
-                return new WP_REST_Response(['error' => 'Missing required parameters.'], 400);
+                $normalizedVersion = $this->utils->normalize_version($version);
+                $this->githubService->install_package_version($package, $normalizedVersion);
+
+                return new WP_REST_Response(['success' => true], 200);
             }
 
-            // Fetch the release for the requested version
-            $release = $this->githubService->get_release_by_version($repoSlug, $version);
-            if (!$release) {
-                return new WP_REST_Response(['error' => 'Release not found.'], 404);
-            }
-
-            // Get the download URL for the release asset
-            $downloadUrl = $this->utils->get_zip_url_from_release($release);
-            if (!$downloadUrl) {
-                return new WP_REST_Response(['error' => 'Download URL not found.'], 404);
-            }
-
-            // Download the release asset to a temporary file
-            $tempFile = $this->githubService->download_to_temp_file($downloadUrl);
-            if (!$tempFile) {
-                return new WP_REST_Response(['error' => 'Failed to download the release asset.'], 500);
-            }
-
-            // Ensure the correct upgrader is used based on the package type
-            $upgrader = strpos($repoSlug, '/themes/') !== false ? new \Theme_Upgrader() : new \Plugin_Upgrader();
-
-            // Install the update
-            $result = $upgrader->install($tempFile);
-
-            if (is_wp_error($result)) {
-                return new WP_REST_Response(['error' => $result->get_error_message()], 500);
-            }
-
-            return new WP_REST_Response(['success' => true, 'message' => 'Package updated successfully.'], 200);
-        } catch (Exception $e) {
+            throw new \InvalidArgumentException('Invalid action.');
+        } catch (\Exception $e) {
             return new WP_REST_Response(['error' => $e->getMessage()], 500);
         }
     }
@@ -403,16 +481,32 @@ class Init
             ]
         );
 
+        // Localize strings for JavaScript
+        wp_localize_script('wp2-update-admin', 'wp2UpdateL10n', [
+            'noReleasesFound' => __('No releases found.', 'wp2-update'),
+            'syncFailed' => __('Sync failed. Please try again.', 'wp2-update'),
+            'rollbackPrompt' => __('Enter the version to rollback to:', 'wp2-update'),
+            'rollbackSuccess' => __('Rollback completed successfully.', 'wp2-update'),
+            'rollbackFailed' => __('Rollback failed. See console for details.', 'wp2-update'),
+        ]);
+
         // Debug log to confirm localization
         do_action('qm/debug', '[DEBUG] Localized wpApiSettings for wp2-update-admin-main.');
     }
 
     /**
-     * Enqueue admin scripts and styles using Vite loader.
+     * Enqueue admin scripts and styles using Vite loader, conditionally for the plugin's settings page.
      */
     public function enqueue_admin_scripts(): void
     {
-        $manifest_path = WP2_UPDATE_PLUGIN_DIR . 'dist/.vite/manifest.json';
+        $screen = get_current_screen();
+        if (!$screen || $screen->id !== 'toplevel_page_wp2-update') {
+            return;
+        }
+
+        $this->localize_admin_script(); // Ensure scripts are localized
+
+        $manifest_path = trailingslashit(WP2_UPDATE_PLUGIN_DIR) . 'dist/.vite/manifest.json';
 
         if (!file_exists($manifest_path)) {
             do_action('qm/debug', '[ERROR] Manifest file not found: ' . $manifest_path);
@@ -467,91 +561,61 @@ class Init
     }
 
     /**
-     * Handles incoming webhook requests with enhanced validation.
+     * Handles incoming GitHub webhook requests.
+     * Validates the request and processes relevant events.
      */
-    public function handle_webhook(WP_REST_Request $request): WP_REST_Response
+    public function handle_webhook(): void
     {
-        $signature = $request->get_header('X-Hub-Signature-256');
-
-        try {
-            $payload = $request->get_body();
-
-            // Validate the signature
-            $credentials = $this->githubService->get_stored_credentials();
-            $secret = $credentials['webhook_secret'] ?? ''; // Use the webhook secret instead of the private key
-            $calculatedSignature = 'sha256=' . hash_hmac('sha256', $payload, $secret);
-
-            if (!$signature || !hash_equals($calculatedSignature, $signature)) {
-                error_log('Webhook validation failed: Invalid or missing signature.');
-                return new WP_REST_Response(
-                    ['success' => false, 'message' => 'Invalid or missing signature.'],
-                    403
-                );
-            }
-
-            // Decode the payload
-            $data = json_decode($payload, true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                error_log('Webhook payload decoding failed: ' . json_last_error_msg());
-                return new WP_REST_Response(
-                    ['success' => false, 'message' => 'Invalid JSON payload.'],
-                    400
-                );
-            }
-
-            // Validate the User-Agent header
-            $userAgent = $request->get_header('User-Agent');
-            if (strpos($userAgent, 'GitHub-Hookshot') === false) {
-                error_log('Webhook validation failed: Invalid User-Agent.');
-                return new WP_REST_Response(
-                    ['success' => false, 'message' => 'Invalid User-Agent.'],
-                    403
-                );
-            }
-
-            // Retrieve the stored webhook secret
-            $storedSecret = get_option('wp2_webhook_secret');
-            if (!$storedSecret || !wp_check_password($secret, $storedSecret)) {
-                error_log('Webhook validation failed: Secret mismatch.');
-                return new WP_REST_Response(
-                    ['success' => false, 'message' => 'Secret mismatch.'],
-                    403
-                );
-            }
-
-            // Process the webhook event
-            $event = $request->get_header('X-GitHub-Event');
-            if ($event === 'push') {
-                $this->processPushEvent($data);
-            } elseif ($event === 'release') {
-                $this->processReleaseEvent($data);
-            } else {
-                error_log('Unhandled webhook event type: ' . $event);
-                return new WP_REST_Response(
-                    ['success' => false, 'message' => 'Unhandled event type.'],
-                    400
-                );
-            }
-
-            // Ensure the release event deletes update transients
-            if ($event === 'release') {
-                if (isset($data['action']) && in_array($data['action'], ['published', 'deleted'], true)) {
-                    delete_site_transient('update_plugins');
-                    delete_site_transient('update_themes');
-                }
-            }
-        } catch (Exception $e) {
-            error_log('Unexpected error in webhook handler: ' . $e->getMessage());
-            return new WP_REST_Response(
-                ['success' => false, 'message' => 'An unexpected error occurred while processing the webhook.'],
-                500
-            );
+        // Ensure the request method is POST
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            error_log('Webhook Error: Invalid request method.');
+            http_response_code(405); // Method Not Allowed
+            echo 'Invalid request method.';
+            exit;
         }
 
-        return new WP_REST_Response(
-            ['success' => true, 'message' => 'Webhook processed successfully.'],
-            200
-        );
+        // Retrieve the raw POST body
+        $payload = file_get_contents('php://input');
+        $signature = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
+
+        if (empty($payload) || empty($signature)) {
+            error_log('Webhook Error: Missing payload or signature.');
+            http_response_code(400); // Bad Request
+            echo 'Missing payload or signature.';
+            exit;
+        }
+
+        // Validate the signature
+        $secret = $this->utils->get_webhook_secret(); // Assume this retrieves the stored secret
+        $hash = 'sha256=' . hash_hmac('sha256', $payload, $secret);
+
+        if (!hash_equals($hash, $signature)) {
+            error_log('Webhook Error: Signature validation failed.');
+            http_response_code(401); // Unauthorized
+            echo 'Signature validation failed.';
+            exit;
+        }
+
+        // Decode the payload
+        $data = json_decode($payload, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log('Webhook Error: Invalid JSON payload.');
+            http_response_code(400); // Bad Request
+            echo 'Invalid JSON payload.';
+            exit;
+        }
+
+        // Process the event
+        $event = $_SERVER['HTTP_X_GITHUB_EVENT'] ?? '';
+        if ($event === 'release' && ($data['action'] ?? '') === 'published') {
+            // Process release event
+            error_log('Webhook Info: Release event processed successfully.');
+        } else {
+            error_log('Webhook Info: Unhandled event type: ' . $event);
+        }
+
+        http_response_code(200); // OK
+        echo 'Webhook processed successfully.';
     }
 
     private function processPushEvent(array $data): void
@@ -758,5 +822,38 @@ class Init
 
         // Output a minimal HTML structure
         echo '<div id="wp2-update-github-callback"></div>';
+    }
+
+    /**
+     * Registers a REST endpoint for health checks.
+     */
+    public function register_health_check_endpoint(): void
+    {
+        register_rest_route('wp2-update/v1', '/health-status', [
+            'methods' => 'GET',
+            'callback' => [$this, 'get_health_status'],
+            'permission_callback' => [$this, 'check_permissions'],
+        ]);
+    }
+
+    /**
+     * Callback for the health check endpoint.
+     */
+    public function get_health_status(WP_REST_Request $request): WP_REST_Response
+    {
+        $status = [
+            'credentials_stored' => !empty($this->githubService->get_stored_credentials()),
+            'jwt_mintable' => $this->githubService->generateJWT() !== null,
+            'github_api_accessible' => false,
+        ];
+
+        try {
+            $testConnection = $this->githubService->test_connection();
+            $status['github_api_accessible'] = $testConnection['success'] ?? false;
+        } catch (\Exception $e) {
+            $status['github_api_error'] = $e->getMessage();
+        }
+
+        return new WP_REST_Response($status, 200);
     }
 }

@@ -18,7 +18,7 @@ const localization = {
     noReleasesFound: 'No releases found.',
     notInstalled: 'Not Installed',
     updating: 'Updating...',
-    installUpdate: 'Install / Update',
+    installUpdate: 'Update',
     loadingPackages: 'Loading packages, please wait...',
     noRepositories: 'No repositories found. Please ensure your GitHub App has been granted access to the correct repositories on GitHub.com.'
 };
@@ -60,6 +60,9 @@ const createPackageRow = (pkg) => {
                         data-package-repo="${pkg.repo}"
                         ${!hasReleases || isUpdating ? 'disabled' : ''}>
                         ${isUpdating ? `<span class="spinner is-active"></span> ${localization.updating}` : localization.installUpdate}
+                    </button>
+                    <button class="button rollback-button" data-package-repo="${pkg.repo}" ${isUpdating ? 'disabled' : ''}>
+                        Rollback
                     </button>`
                 }
             </td>
@@ -103,3 +106,60 @@ export const renderPackageTable = (packages, isLoading) => {
         lastSyncEl.textContent = `Last Synced: ${window.wp2UpdateAppState.connection.health.lastSync}`;
     }
 };
+
+/**
+ * Renders the "Configure Manifest" step.
+ */
+export const renderConfigureManifest = () => {
+    const container = document.querySelector('#configure-manifest');
+    if (!container) return;
+
+    container.innerHTML = `
+        <h2>Configure GitHub App</h2>
+        <form id="manifest-config-form">
+            <label for="app-name">App Name</label>
+            <input type="text" id="app-name" name="app-name" required />
+
+            <label for="organization">Organization (Optional)</label>
+            <input type="text" id="organization" name="organization" />
+
+            <button type="submit" class="button button-primary">Save and Continue</button>
+        </form>
+    `;
+
+    const form = container.querySelector('#manifest-config-form');
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const appName = form.querySelector('#app-name').value;
+        const organization = form.querySelector('#organization').value;
+
+        try {
+            await apiRequest('wp2-update/v1/github/save-manifest', {
+                method: 'POST',
+                body: JSON.stringify({ appName, organization }),
+            });
+            showToast('Manifest saved successfully.');
+            appState.setKey('currentStage', 'post-configuration');
+            renderAppView('post-configuration');
+        } catch (error) {
+            console.error('Failed to save manifest:', error);
+            showToast('Failed to save manifest. Please try again.', 'error');
+        }
+    });
+};
+
+// Add event listener for rollback buttons
+document.addEventListener('click', (event) => {
+    if (event.target.matches('.rollback-button')) {
+        const repo = event.target.getAttribute('data-package-repo');
+        const version = prompt('Enter the version to rollback to:');
+        if (version) {
+            // Call the update-package action with rollback
+            actions['update-package']({
+                package: repo,
+                version,
+                action: 'rollback',
+            });
+        }
+    }
+});

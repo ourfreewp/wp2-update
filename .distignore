@@ -1,21 +1,17 @@
-.git/
-.github/
-.gitignore
-.distignore
-node_modules
-package.json
-package-lock.json
-Gruntfile.js
-webpack.config.js
-composer.json
-composer.lock
-vendor/bin/
-.DS_Store
-Thumbs.db
-.editorconfig
-.vscode/
-.eslintrc.cjs
-vite.config.js
+# Exclude development files and directories
+node_modules/
+assets/
+src/
 tests/
-tests/Feature/Mocks/
-tests/Unit/Mocks/
+.vscode/
+.git/
+composer.lock
+package-lock.json
+.vite/
+.env
+*.log
+
+# Include only necessary files
+!/languages/
+!/vendor/
+!/wp2-update.php

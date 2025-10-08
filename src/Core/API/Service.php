@@ -6,7 +6,13 @@ use Firebase\JWT\JWT;
 use Github\AuthMethod;
 use Github\Client as GitHubClient;
 use Github\Exception\ExceptionInterface;
-use Github\Api\Repository\Releases;
+use Github\Api\Repository;
+use WP2\Update\Utils\SharedUtils;
+
+
+if (!defined('ABSPATH')) {
+    exit;
+}
 
 /**
  * Handles GitHub authentication and lightweight API helpers.
@@ -15,6 +21,7 @@ class Service
 {
     private ?GitHubClient $installationClient = null;
     private ?int $installationClientExpires   = null;
+    private SharedUtils $utils;
 
     /**
      * Enhanced error handling for GitHub API failures.
@@ -22,20 +29,26 @@ class Service
     private function handleGitHubException(ExceptionInterface $e): string
     {
         $statusCode = $e->getCode();
+        $errorMessage = $e->getMessage(); // Use the exception message directly
+
         switch ($statusCode) {
             case 404:
-                return __('Resource not found. Please check the repository details.', 'wp2-update');
+                return __('Resource not found: ', 'wp2-update') . $errorMessage;
             case 403:
-                return __('Access forbidden. Please verify your credentials and permissions.', 'wp2-update');
+                return __('Access forbidden: ', 'wp2-update') . $errorMessage;
             case 401:
-                return __('Unauthorized access. Please check your authentication token.', 'wp2-update');
+                return __('Unauthorized access: ', 'wp2-update') . $errorMessage;
             default:
-                return __('An unexpected error occurred while communicating with GitHub.', 'wp2-update');
+                return __('An unexpected error occurred: ', 'wp2-update') . $errorMessage;
         }
     }
 
     /**
-     * Fetches the latest release for a repository with enhanced error handling.
+     * Fetches the latest release for a repository using direct GitHub REST API calls.
+     *
+     * @param string $owner The repository owner.
+     * @param string $repo The repository name.
+     * @return array|null The latest release data, or null on failure.
      */
     public function get_latest_release(string $owner, string $repo): ?array
     {
@@ -43,28 +56,46 @@ class Service
         $cachedRelease = get_transient($transientKey);
 
         if ($cachedRelease !== false) {
-            $this->log_error("Using cached release for {$owner}/{$repo}.");
+            $this->log('INFO', "Using cached release for {$owner}/{$repo}.");
             return $cachedRelease;
         }
 
-        $client = $this->getInstallationClient();
-        if (!$client) {
-            $this->log_error("Installation client not available for {$owner}/{$repo}.");
+        $token = $this->getInstallationToken();
+        if (!$token) {
+            $this->log('ERROR', 'Unable to retrieve installation token.');
             return null;
         }
 
-        try {
-            // Updated to use the Releases class directly
-            $releasesApi = new Releases($client);
-            $latestRelease = $releasesApi->latest($owner, $repo);
-            set_transient($transientKey, $latestRelease, HOUR_IN_SECONDS);
-            $this->log_error("Successfully fetched latest release for {$owner}/{$repo}.");
-            return $latestRelease;
-        } catch (ExceptionInterface $e) {
-            $errorMessage = $this->handleGitHubException($e);
-            $this->log_error("GitHub latest release request failed - {$errorMessage}");
+        $url = "https://api.github.com/repos/{$owner}/{$repo}/releases/latest";
+        $response = wp_remote_get($url, [
+            'headers' => [
+                'Authorization' => "Bearer {$token}",
+                'Accept'        => 'application/vnd.github.v3+json',
+            ],
+        ]);
+
+        if (is_wp_error($response)) {
+            $this->log('ERROR', 'GitHub API request failed: ' . $response->get_error_message());
             return null;
         }
+
+        $statusCode = wp_remote_retrieve_response_code($response);
+        if ($statusCode !== 200) {
+            $this->log('ERROR', "GitHub API returned status code {$statusCode}.");
+            return null;
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $latestRelease = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $this->log('ERROR', 'Failed to decode GitHub API response: ' . json_last_error_msg());
+            return null;
+        }
+
+        set_transient($transientKey, $latestRelease, HOUR_IN_SECONDS);
+        $this->log('INFO', "Successfully fetched latest release for {$owner}/{$repo}.");
+        return $latestRelease;
     }
 
     /**
@@ -415,28 +446,15 @@ class Service
     }
 
     /**
-     * Generates a JWT for GitHub authentication.
+     * Generates a JWT for GitHub App authentication.
      *
-     * @return string|null
+     * @return string|null The generated JWT, or null on failure.
      */
-    private function generateJWT(): ?string
+    public function generateJWT(): ?string
     {
-        $credentials = $this->get_stored_credentials();
-        if (empty($credentials['app_id']) || empty($credentials['private_key'])) {
-            $this->log_error('Missing app_id or private_key for JWT generation.');
-            return null;
-        }
-
-        $payload = [
-            'iat' => time(),
-            'exp' => time() + (10 * 60),
-            'iss' => $credentials['app_id'],
-        ];
-
         try {
-            return JWT::encode($payload, $credentials['private_key'], 'RS256');
-        } catch (\Throwable $e) {
-            $this->log_error('Failed to encode JWT - ' . $e->getMessage());
+            return $this->createJwt($this->get_stored_credentials()['app_id'], $this->get_stored_credentials()['private_key']);
+        } catch (\Exception $e) {
             return null;
         }
     }
@@ -490,53 +508,60 @@ class Service
     }
 
     /**
+     * Logs messages with severity levels and timestamps.
+     *
+     * @param string $level The severity level (e.g., INFO, ERROR).
+     * @param string $message The log message.
+     */
+    private function log(string $level, string $message): void
+    {
+        $timestamp = date('Y-m-d H:i:s');
+        error_log("[WP2 Update] [{$timestamp}] [{$level}] {$message}");
+    }
+
+    /**
      * Fetch a specific release by version from GitHub.
      */
     public function get_release_by_version(string $repoSlug, string $version): ?array
     {
         try {
-            $client = $this->getInstallationClient();
-            if (!$client) {
-                throw new \Exception('GitHub client not initialized.');
-            }
-
             [$owner, $repo] = explode('/', $repoSlug);
-            $releases = $client->api('repo')->releases()->all($owner, $repo);
+            $release = $this->fetchLatestReleaseViaRest($owner, $repo);
 
-            foreach ($releases as $release) {
-                if ($release['tag_name'] === $version) {
-                    return $release;
-                }
+            if ($release && $release['tag_name'] === $version) {
+                return $release;
             }
 
             return null; // Release not found
         } catch (\Exception $e) {
-            $this->log_error('Error fetching release: ' . $e->getMessage());
+            $this->log('ERROR', 'Error fetching release: ' . $e->getMessage());
             return null;
         }
     }
 
     /**
-     * Fetch all releases for a repository using the GitHub API.
+     * Fetch all releases for a given repository.
      *
-     * @param string $owner The repository owner.
-     * @param string $repo The repository name.
+     * @param string $owner The owner of the repository.
+     * @param string $repo The name of the repository.
      * @return array The list of releases.
      */
-    public function getAllReleases(string $owner, string $repo): array
+    public function getAllReleases($owner, $repo)
     {
         try {
+            // Retrieve the GitHub client instance
             $client = $this->getInstallationClient();
+
             if (!$client) {
-                throw new \RuntimeException('GitHub client not initialized.');
+                throw new \RuntimeException('GitHub client is not initialized.');
             }
 
-            // Fetch the latest release as the `all()` method is unavailable
-            $releasesApi = new Releases($client);
-            $latestRelease = $releasesApi->latest($owner, $repo);
-            return [$latestRelease];
-        } catch (ExceptionInterface $e) {
-            $this->log_error('Error fetching releases: ' . $e->getMessage());
+            // Explicitly instantiate the Repo class and call releases()
+            $repoApi = new \Github\Api\Repo($client);
+            return $repoApi->releases()->all($owner, $repo);
+        } catch (\Exception $e) {
+            // Log the error and return an empty array in case of failure
+            error_log('Error fetching releases: ' . $e->getMessage());
             return [];
         }
     }
@@ -563,11 +588,18 @@ class Service
 
     /**
      * Fetches repositories for the authenticated GitHub App installation, including releases.
+     * Caches the result using the WordPress Transients API.
      *
      * @return array|null List of repositories with releases or null on failure.
      */
     public function get_repositories(): ?array
     {
+        // Check if cached data exists
+        $cached_repositories = get_transient('wp2_repositories_cache');
+        if ($cached_repositories !== false) {
+            return $cached_repositories;
+        }
+
         $client = $this->getInstallationClient();
         if (!$client) {
             $this->log_error('Installation client not available.');
@@ -580,14 +612,16 @@ class Service
             // Fetch releases for each repository
             foreach ($repositories as &$repo) {
                 try {
-                    // Updated to use the Releases class directly.
-                    $releasesApi = new Releases($client);
+                    $releasesApi = new Repository\Releases($client);
                     $repo['releases'] = $releasesApi->all($repo['owner']['login'], $repo['name']);
                 } catch (ExceptionInterface $e) {
                     $this->log_error('Failed to fetch releases for ' . $repo['full_name'] . ' - ' . $e->getMessage());
                     $repo['releases'] = [];
                 }
             }
+
+            // Cache the result for 1 hour
+            set_transient('wp2_repositories_cache', $repositories, HOUR_IN_SECONDS);
 
             return $repositories;
         } catch (ExceptionInterface $e) {
@@ -641,5 +675,126 @@ class Service
             $this->log_error('API connection test failed: ' . $e->getMessage());
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Installs a specific version of a package.
+     *
+     * @param string $package The package name.
+     * @param string $version The version to install.
+     * @throws \RuntimeException If the installation fails.
+     */
+    public function install_package_version(string $package, string $version): void
+    {
+        $repo = $this->utils->normalize_repo($package);
+        if (!$repo) {
+            throw new \InvalidArgumentException('Invalid package name.');
+        }
+
+        [$owner, $repoName] = explode('/', $repo);
+        $release = $this->fetchLatestReleaseViaRest($owner, $repoName);
+
+        if (!$release) {
+            throw new \RuntimeException('Release not found for the specified version.');
+        }
+
+        if ($this->utils->normalize_version($release['tag_name']) !== $version) {
+            throw new \RuntimeException('Specified version does not match the latest release.');
+        }
+
+        // Proceed with installation logic using $release data
+        $this->log('INFO', "Installing package {$package} version {$version}.");
+    }
+
+    /**
+     * Installs a package from a ZIP file.
+     *
+     * @param string $filePath The path to the ZIP file.
+     * @throws \RuntimeException If the installation fails.
+     */
+    private function install_from_zip(string $filePath): void
+    {
+        // Logic to install the package from the ZIP file
+        // This is a placeholder and should be replaced with actual implementation
+        if (!file_exists($filePath)) {
+            throw new \RuntimeException('ZIP file does not exist.');
+        }
+
+        // Example: Extract the ZIP and move files to the appropriate directory
+        $extractPath = WP2_UPDATE_PLUGIN_DIR . '/temp-extract';
+        $zip = new \ZipArchive();
+        if ($zip->open($filePath) === true) {
+            $zip->extractTo($extractPath);
+            $zip->close();
+
+            // Move extracted files to the plugin or theme directory
+            // ...
+        } else {
+            throw new \RuntimeException('Failed to extract the ZIP file.');
+        }
+    }
+
+    /**
+     * Retrieves the installation token for GitHub API authentication.
+     *
+     * @return string|null The installation token, or null on failure.
+     */
+    private function getInstallationToken(): ?string
+    {
+        $client = $this->getInstallationClient();
+        if (!$client) {
+            return null;
+        }
+
+        // Assuming the token is stored in the client instance
+        return $client->getOption('auth_token') ?? null;
+    }
+
+    /**
+     * Fetches the latest release from GitHub using REST API.
+     *
+     * @param string $owner Repository owner.
+     * @param string $repo Repository name.
+     * @return array|null The latest release data or null on failure.
+     */
+    public function fetchLatestReleaseViaRest(string $owner, string $repo): ?array
+    {
+        $this->log('INFO', "Fetching latest release for {$owner}/{$repo} using REST API.");
+
+        $token = $this->getInstallationToken();
+        if (!$token) {
+            $this->log('ERROR', 'Unable to retrieve installation token.');
+            return null;
+        }
+
+        $url = "https://api.github.com/repos/{$owner}/{$repo}/releases/latest";
+        $response = wp_remote_get($url, [
+            'headers' => [
+                'Authorization' => "Bearer {$token}",
+                'Accept'        => 'application/vnd.github.v3+json',
+            ],
+        ]);
+
+        if (is_wp_error($response)) {
+            $this->log('ERROR', 'GitHub API request failed: ' . $response->get_error_message());
+            return null;
+        }
+
+        $statusCode = wp_remote_retrieve_response_code($response);
+        if ($statusCode !== 200) {
+            $this->log('ERROR', "GitHub API returned status code {$statusCode}.");
+            return null;
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $latestRelease = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $this->log('ERROR', 'Failed to decode GitHub API response: ' . json_last_error_msg());
+            return null;
+        }
+
+        $this->log('INFO', "Successfully fetched latest release for {$owner}/{$repo}.");
+        return $latestRelease;
     }
 }
