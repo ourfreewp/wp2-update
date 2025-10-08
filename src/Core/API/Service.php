@@ -6,6 +6,7 @@ use Firebase\JWT\JWT;
 use Github\AuthMethod;
 use Github\Client as GitHubClient;
 use Github\Exception\ExceptionInterface;
+use Github\Api\Repository\Releases;
 
 /**
  * Handles GitHub authentication and lightweight API helpers.
@@ -16,7 +17,25 @@ class Service
     private ?int $installationClientExpires   = null;
 
     /**
-     * Fetches the latest release for a repository.
+     * Enhanced error handling for GitHub API failures.
+     */
+    private function handleGitHubException(ExceptionInterface $e): string
+    {
+        $statusCode = $e->getCode();
+        switch ($statusCode) {
+            case 404:
+                return __('Resource not found. Please check the repository details.', 'wp2-update');
+            case 403:
+                return __('Access forbidden. Please verify your credentials and permissions.', 'wp2-update');
+            case 401:
+                return __('Unauthorized access. Please check your authentication token.', 'wp2-update');
+            default:
+                return __('An unexpected error occurred while communicating with GitHub.', 'wp2-update');
+        }
+    }
+
+    /**
+     * Fetches the latest release for a repository with enhanced error handling.
      */
     public function get_latest_release(string $owner, string $repo): ?array
     {
@@ -35,12 +54,15 @@ class Service
         }
 
         try {
-            $latestRelease = $client->repo()->releases()->latest($owner, $repo);
+            // Updated to use the Releases class directly
+            $releasesApi = new Releases($client);
+            $latestRelease = $releasesApi->latest($owner, $repo);
             set_transient($transientKey, $latestRelease, HOUR_IN_SECONDS);
             $this->log_error("Successfully fetched latest release for {$owner}/{$repo}.");
             return $latestRelease;
         } catch (ExceptionInterface $e) {
-            $this->log_error('GitHub latest release request failed - ' . $e->getMessage());
+            $errorMessage = $this->handleGitHubException($e);
+            $this->log_error("GitHub latest release request failed - {$errorMessage}");
             return null;
         }
     }
@@ -495,22 +517,129 @@ class Service
     }
 
     /**
-     * Fetches the repositories for the authenticated installation.
+     * Fetch all releases for a repository using the GitHub API.
+     *
+     * @param string $owner The repository owner.
+     * @param string $repo The repository name.
+     * @return array The list of releases.
      */
-    public function get_repositories(): array
+    public function getAllReleases(string $owner, string $repo): array
     {
         try {
             $client = $this->getInstallationClient();
             if (!$client) {
-                throw new \Exception('GitHub client not initialized.');
+                throw new \RuntimeException('GitHub client not initialized.');
             }
 
-            // Use the search API as a fallback to fetch repositories
-            $repositories = $client->api('search')->repositories('user:your-github-username');
-            return $repositories['items'] ?? [];
-        } catch (\Exception $e) {
-            $this->log_error('Error fetching repositories: ' . $e->getMessage());
+            // Fetch the latest release as the `all()` method is unavailable
+            $releasesApi = new Releases($client);
+            $latestRelease = $releasesApi->latest($owner, $repo);
+            return [$latestRelease];
+        } catch (ExceptionInterface $e) {
+            $this->log_error('Error fetching releases: ' . $e->getMessage());
             return [];
+        }
+    }
+
+    /**
+     * Fetch repositories for the authenticated user.
+     *
+     * @return array The list of repositories.
+     */
+    public function getUserRepositories(): array
+    {
+        try {
+            $client = $this->getInstallationClient();
+            if (!$client) {
+                throw new \RuntimeException('GitHub client not initialized.');
+            }
+
+            return $client->currentUser()->repositories();
+        } catch (\Exception $e) {
+            $this->log_error('Error fetching user repositories: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Fetches repositories for the authenticated GitHub App installation, including releases.
+     *
+     * @return array|null List of repositories with releases or null on failure.
+     */
+    public function get_repositories(): ?array
+    {
+        $client = $this->getInstallationClient();
+        if (!$client) {
+            $this->log_error('Installation client not available.');
+            return null;
+        }
+
+        try {
+            $repositories = $client->currentUser()->repositories();
+
+            // Fetch releases for each repository
+            foreach ($repositories as &$repo) {
+                try {
+                    // Updated to use the Releases class directly.
+                    $releasesApi = new Releases($client);
+                    $repo['releases'] = $releasesApi->all($repo['owner']['login'], $repo['name']);
+                } catch (ExceptionInterface $e) {
+                    $this->log_error('Failed to fetch releases for ' . $repo['full_name'] . ' - ' . $e->getMessage());
+                    $repo['releases'] = [];
+                }
+            }
+
+            return $repositories;
+        } catch (ExceptionInterface $e) {
+            $this->log_error('Failed to fetch repositories - ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Mint a JWT for GitHub authentication.
+     *
+     * @return string|null The generated JWT or null on failure.
+     */
+    public function mintJWT(): ?string
+    {
+        try {
+            $credentials = $this->get_stored_credentials();
+            if (empty($credentials['app_id']) || empty($credentials['private_key'])) {
+                throw new \RuntimeException('Missing App ID or Private Key.');
+            }
+
+            $payload = [
+                'iat' => time(),
+                'exp' => time() + (10 * 60), // 10 minutes expiration
+                'iss' => $credentials['app_id'],
+            ];
+
+            return JWT::encode($payload, $credentials['private_key'], 'RS256');
+        } catch (\Exception $e) {
+            $this->log_error('Failed to mint JWT: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Perform a test API connection to GitHub.
+     *
+     * @return array{success:bool,message:string}
+     */
+    public function testAPIConnection(): array
+    {
+        try {
+            $client = $this->getInstallationClient(true);
+            if (!$client) {
+                throw new \RuntimeException('Failed to authenticate with GitHub.');
+            }
+
+            $client->apps()->listRepositories();
+            return ['success' => true, 'message' => 'API connection successful.'];
+        } catch (\Exception $e) {
+            $this->log_error('API connection test failed: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 }

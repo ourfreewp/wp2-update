@@ -8,23 +8,12 @@
         return;
     }
 
-    // Send the code to the backend
-    fetch(ajaxurl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+    // Send the code to the backend using apiRequest
+    apiRequest('wp2_update_save_github_code', {
         body: JSON.stringify({
-            action: 'wp2_update_save_github_code',
             code: code,
         }),
     })
-        .then((response) => {
-            if (!response.ok) {
-                throw new Error('Failed to save GitHub code.');
-            }
-            return response.json();
-        })
         .then((data) => {
             console.log('GitHub code saved successfully:', data);
             // Redirect back to the main settings page

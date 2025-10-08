@@ -58,6 +58,13 @@ const actions = {
 				...appState.get(),
 				packages: result.repositories || [],
 				isLoading: false,
+				connection: {
+					...appState.get().connection,
+					health: {
+						...appState.get().connection.health,
+						lastSync: new Date().toISOString(),
+					},
+				},
 			});
 			showToast('Successfully synced with GitHub.');
 		} finally {
@@ -103,7 +110,10 @@ const actions = {
 			showToast(`Failed to update ${repo}: ${error.message}`, 'error');
 
 			// Revert the package's status to its original state
-			appState.setKey('packages', originalPackages);
+			const updatedPackages = originalPackages.map(p =>
+				p.repo === repo ? { ...p, status: 'error', errorMessage: error.message } : p
+			);
+			appState.setKey('packages', updatedPackages);
 		}
 	},
 };
@@ -204,11 +214,26 @@ document.addEventListener('DOMContentLoaded', () => {
 	initUI(); // Initialize tooltips, tabs, etc.
 	appContainer.addEventListener('click', handleAction);
 
-	// Subscribe to state changes to automatically re-render the UI
-	appState.listen((state) => {
-		renderAppView(state.currentStage);
-		renderPackageTable(state.packages, state.isLoading);
+	// Disable global actions if any package is updating
+	const syncButton = document.querySelector('[data-action="sync-packages"]');
+	const disconnectButton = document.querySelector('[data-action="disconnect"]');
+
+	if (syncButton) syncButton.disabled = isAnyPackageUpdating.get();
+	if (disconnectButton) disconnectButton.disabled = isAnyPackageUpdating.get();
+
+	// Subscribe to state changes to dynamically update button states
+	isAnyPackageUpdating.subscribe((isUpdating) => {
+		if (syncButton) syncButton.disabled = isUpdating;
+		if (disconnectButton) disconnectButton.disabled = isUpdating;
 	});
+
+	// Expose appState for timestamp updates in components.js
+    window.wp2UpdateAppState = appState.get();
+    appState.listen((state) => {
+        window.wp2UpdateAppState = state;
+        renderAppView(state.currentStage);
+        renderPackageTable(state.packages, state.isLoading);
+    });
 
 	initializeApp();
 });

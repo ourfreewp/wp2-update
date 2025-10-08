@@ -19,6 +19,7 @@ class Init
     private PackageFinder $packages;
     private Pages $pages;
     private GitHubApp $githubApp;
+    private SharedUtils $utils; // Add this property to the class
 
     /**
      * Constructor for the Init class.
@@ -33,6 +34,7 @@ class Init
         $this->githubService = $githubService;
         $this->packages      = $packages;
         $this->githubApp     = $githubApp;
+        $this->utils         = $utils; // Initialize the utils property
         $this->pages         = new Pages($githubService, $packages, $githubApp);
     }
 
@@ -86,6 +88,7 @@ class Init
         $appId          = isset($_POST['wp2_app_id']) ? absint($_POST['wp2_app_id']) : 0;
         $installationId = isset($_POST['wp2_installation_id']) ? absint($_POST['wp2_installation_id']) : 0;
         $privateKey     = isset($_POST['wp2_private_key']) ? sanitize_textarea_field(wp_unslash($_POST['wp2_private_key'])) : '';
+        $webhookSecret  = isset($_POST['wp2_webhook_secret']) ? sanitize_text_field(wp_unslash($_POST['wp2_webhook_secret'])) : '';
 
         $this->githubService->store_app_credentials([
             'name'            => $appName,
@@ -93,6 +96,10 @@ class Init
             'installation_id' => $installationId,
             'private_key'     => $privateKey,
         ]);
+
+        if (!empty($webhookSecret)) {
+            update_option('wp2_webhook_secret', wp_hash_password($webhookSecret));
+        }
 
         // Action hook to trigger events after saving credentials
         do_action('wp2_update_credentials_saved', $appId, $installationId);
@@ -288,16 +295,21 @@ class Init
             }
 
             // Fetch repositories from GitHub
-            $githubRepos = $this->githubService->get_repositories();
+            $githubRepos = $this->githubService->getUserRepositories();
 
             // Merge GitHub data with installed packages
             $mergedData = [];
             foreach ($githubRepos as $repo) {
                 $repoSlug = $repo['full_name'];
+                $releases = $this->githubService->getAllReleases($repo['owner']['login'], $repo['name']);
                 $mergedData[] = [
                     'repo' => $repoSlug,
-                    'latest_version' => $repo['tag_name'] ?? null,
+                    'name' => $repo['name'] ?? '',
+                    'description' => $repo['description'] ?? '',
+                    'latest_version' => $releases[0]['tag_name'] ?? null,
                     'installed_version' => $installedMap[$repoSlug] ?? null,
+                    'releases' => $releases,
+                    'status' => $installedMap[$repoSlug] === ($releases[0]['tag_name'] ?? null) ? 'up-to-date' : 'outdated',
                 ];
             }
 
@@ -396,129 +408,62 @@ class Init
     }
 
     /**
-     * Enqueue assets from Vite's manifest.json.
+     * Enqueue admin scripts and styles using Vite loader.
      */
-    public function enqueue_vite_assets(string $entry): void
+    public function enqueue_admin_scripts(): void
     {
-        $manifest_path = plugin_dir_path(__DIR__) . 'dist/.vite/manifest.json'; // Adjusted relative path
+        $manifest_path = WP2_UPDATE_PLUGIN_DIR . 'dist/.vite/manifest.json';
+
         if (!file_exists($manifest_path)) {
-            $this->log_and_notify('Vite manifest not found: ' . $manifest_path);
+            do_action('qm/debug', '[ERROR] Manifest file not found: ' . $manifest_path);
             return;
         }
 
         $manifest = json_decode(file_get_contents($manifest_path), true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            $this->log_and_notify('Failed to decode Vite manifest JSON: ' . json_last_error_msg());
+            do_action('qm/debug', '[ERROR] Failed to decode Vite manifest JSON: ' . json_last_error_msg());
             return;
         }
 
-        // Adjusted to use the correct key from the manifest
-        $entry_key = $entry . '.js';
-        if (!isset($manifest[$entry_key])) {
-            $this->log_and_notify('Entry not found in Vite manifest: ' . $entry_key);
-            return;
-        }
+        // Enqueue admin script
+        if (isset($manifest['assets/scripts/admin-main.js'])) {
+            $script_path = $manifest['assets/scripts/admin-main.js']['file'];
+            $script_url = WP2_UPDATE_PLUGIN_URL . 'dist/' . $script_path;
 
-        $entry_data = $manifest[$entry_key];
-
-        // Enqueue the main JS file
-        if (isset($entry_data['file'])) {
             wp_enqueue_script(
-                'wp2-update-' . $entry,
-                plugin_dir_url(dirname(__DIR__)) . 'dist/' . $entry_data['file'],
-                [],
+                'wp2-update-admin-main',
+                $script_url,
+                ['wp-api-fetch'],
                 null,
                 true
             );
+
+            wp_localize_script(
+                'wp2-update-admin-main',
+                'wpApiSettings',
+                [
+                    'root' => esc_url_raw(rest_url()),
+                    'nonce' => wp_create_nonce('wp_rest')
+                ]
+            );
+
+            do_action('qm/debug', '[DEBUG] Enqueued admin-main.js with URL: ' . $script_url);
         }
 
-        // Enqueue associated CSS files
-        if (isset($entry_data['css'])) {
-            foreach ($entry_data['css'] as $css_file) {
-                wp_enqueue_style(
-                    'wp2-update-' . $entry . '-css',
-                    plugin_dir_url(dirname(__DIR__)) . 'dist/' . $css_file,
-                    [],
-                    null
-                );
-            }
+        // Enqueue admin style
+        if (isset($manifest['assets/styles/admin-main.scss'])) {
+            $style_path = $manifest['assets/styles/admin-main.scss']['file'];
+            $style_url = WP2_UPDATE_PLUGIN_URL . 'dist/' . $style_path;
+
+            wp_enqueue_style(
+                'wp2-update-admin-main',
+                $style_url,
+                [],
+                null
+            );
+
+            do_action('qm/debug', '[DEBUG] Enqueued admin-main.css with URL: ' . $style_url);
         }
-
-        if (isset($entry_data['css'])) {
-            foreach ($entry_data['css'] as $css_file) {
-                do_action('qm/debug', 'Enqueuing CSS URL: ' . plugin_dir_url(dirname( __DIR__)) . 'dist/' . $css_file);
-            }
-        }
-
-        $plugin_url = plugin_dir_url(dirname(__DIR__));
-
-        if (isset($entry_data['css'])) {
-            foreach ($entry_data['css'] as $css_file) {
-                do_action('qm/debug', 'Final CSS URL: ' . $plugin_url . 'dist/' . $css_file);
-            }
-        }
-    }
-
-    /**
-     * Enqueue admin scripts and styles using Vite loader.
-     */
-    public function enqueue_admin_scripts(): void
-    {
-
-        $screen = get_current_screen();
-
-        // Dynamically load hashed filenames from manifest.json
-        $manifest_path = plugin_dir_path(dirname(__DIR__)) . 'dist/.vite/manifest.json';
-
-        if (file_exists($manifest_path)) {
-            $manifest = json_decode(file_get_contents($manifest_path), true);
-
-            if (isset($manifest['assets/scripts/admin-main.js'])) {
-                $script_path = $manifest['assets/scripts/admin-main.js']['file'];
-                $script_version = filemtime(plugin_dir_path(dirname(__DIR__)) . 'dist/' . $script_path);
-                $script_url = plugin_dir_url(dirname(__DIR__)) . 'dist/' . $script_path . '?ver=' . $script_version;
-
-                wp_enqueue_script(
-                    'wp2-update-admin-main',
-                    $script_url,
-                    [ 'wp-api-fetch' ],
-                    null,
-                    true
-                );
-
-                // Localize the script with REST API settings
-                wp_localize_script(
-                    'wp2-update-admin-main',
-                    'wpApiSettings',
-                    [
-                        'root' => esc_url_raw(rest_url()),
-                        'nonce' => wp_create_nonce('wp_rest')
-                    ]
-                );
-
-                // Debug log to confirm localization
-                do_action('qm/debug', '[DEBUG] Localized wpApiSettings for wp2-update-admin-main.');
-            }
-
-            if (isset($manifest['assets/styles/admin-main.scss'])) {
-                $style_path = $manifest['assets/styles/admin-main.scss']['file'];
-                $style_version = filemtime(plugin_dir_path(dirname(__DIR__)) . 'dist/' . $style_path);
-                $style_url = plugin_dir_url(dirname(__DIR__)) . 'dist/' . $style_path . '?ver=' . $style_version;
-
-                wp_enqueue_style(
-                    'wp2-update-admin-main',
-                    $style_url,
-                    [],
-                    null
-                );
-            }
-        } else {
-            do_action('qm/debug', '[ERROR] Manifest file not found: ' . $manifest_path);
-        }
-
-        // Debug logs to confirm script enqueuing
-        do_action('qm/debug', '[DEBUG] Enqueuing admin-main.js with URL: ' . $script_url);
-        do_action('qm/debug', '[DEBUG] Enqueuing admin-style.css with URL: ' . $style_url);
     }
 
     /**
@@ -551,6 +496,26 @@ class Init
                 return new WP_REST_Response(
                     ['success' => false, 'message' => 'Invalid JSON payload.'],
                     400
+                );
+            }
+
+            // Validate the User-Agent header
+            $userAgent = $request->get_header('User-Agent');
+            if (strpos($userAgent, 'GitHub-Hookshot') === false) {
+                error_log('Webhook validation failed: Invalid User-Agent.');
+                return new WP_REST_Response(
+                    ['success' => false, 'message' => 'Invalid User-Agent.'],
+                    403
+                );
+            }
+
+            // Retrieve the stored webhook secret
+            $storedSecret = get_option('wp2_webhook_secret');
+            if (!$storedSecret || !wp_check_password($secret, $storedSecret)) {
+                error_log('Webhook validation failed: Secret mismatch.');
+                return new WP_REST_Response(
+                    ['success' => false, 'message' => 'Secret mismatch.'],
+                    403
                 );
             }
 
@@ -596,7 +561,12 @@ class Init
 
     private function processReleaseEvent(array $data): void
     {
-        // Logic for processing release events
+        // Clear update transients
+        delete_site_transient('update_plugins');
+        delete_site_transient('update_themes');
+
+        // Log the release event
+        error_log('Processed release event: ' . json_encode($data));
     }
 
     /**
@@ -663,9 +633,13 @@ class Init
             return;
         }
 
+        $current_user = wp_get_current_user();
         $debug_data = [
-            'wp2UpdateData' => isset($GLOBALS['wp2UpdateData']) ? $GLOBALS['wp2UpdateData'] : 'Not defined',
-            'Current User' => wp_get_current_user(),
+            'wp2UpdateData' => isset($GLOBALS['wp2UpdateData']) ? 'Defined' : 'Not defined',
+            'Current User' => [
+                'ID' => $current_user->ID,
+                'user_login' => $current_user->user_login,
+            ],
             'Admin URL' => admin_url(),
             'AJAX URL' => admin_url('admin-ajax.php'),
         ];
