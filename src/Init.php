@@ -2,32 +2,27 @@
 
 namespace WP2\Update;
 
+use WP2\Update\Admin\Init as AdminInit;
+use WP2\Update\Core\API\Service as GitHubService;
+use WP2\Update\Core\Updates\PackageFinder;
+use WP2\Update\Utils\SharedUtils;
+use WP2\Update\Core\API\CredentialService;
+use WP2\Update\Core\API\GitHubClientFactory;
+use WP2\Update\Core\API\ReleaseService;
+use WP2\Update\Core\API\RepositoryService;
+use WP2\Update\Core\Updates\PackageService;
+use WP2\Update\Core\API\ConnectionService;
+
 // Prevent multiple inclusions of this file.
 if (class_exists(__NAMESPACE__ . '\\Init', false)) {
     return;
 }
-
-use WP2\Update\Admin\Init as AdminInit;
-use WP2\Update\Core\API\GitHubApp\Init as GitHubApp;
-use WP2\Update\Core\API\Service;
-use WP2\Update\Core\Updates\PackageFinder;
-use WP2\Update\Core\Updates\PluginUpdater;
-use WP2\Update\Core\Updates\ThemeUpdater;
-use WP2\Update\Utils\SharedUtils;
 
 /**
  * Main bootstrap class for the plugin.
  */
 final class Init
 {
-    private Service $githubService;
-    private SharedUtils $utils;
-    private GitHubApp $githubApp;
-    private PackageFinder $packageFinder;
-    private PluginUpdater $pluginUpdater;
-    private ThemeUpdater $themeUpdater;
-    private AdminInit $admin;
-
     /**
      * Entry point called from the plugin loader.
      */
@@ -39,26 +34,19 @@ final class Init
 
     public function __construct()
     {
-        $githubClient = new \Github\Client();
-        $this->githubService = new Service($githubClient);
-        $this->githubApp = new GitHubApp($this->githubService);
-        $this->utils = new SharedUtils($this->githubApp, $this->githubService);
-        $this->packageFinder = new PackageFinder($this->utils);
-        $this->pluginUpdater = new PluginUpdater($this->packageFinder, $this->githubService, $this->utils);
-        $this->themeUpdater  = new ThemeUpdater($this->packageFinder, $this->githubService, $this->utils);
-        $this->admin         = new AdminInit($this->githubService, $this->packageFinder, $this->utils, $this->githubApp);
+        // Constructor can be used for dependency injection if needed in the future.
     }
 
     /**
-     * Register WordPress hooks for the simplified plugin.
+     * Register WordPress hooks for the plugin.
      */
     private function register(): void
     {
-        $this->admin->register_hooks();
-        $this->pluginUpdater->register_hooks();
-        $this->themeUpdater->register_hooks();
+        // Load the text domain for translations.
+        add_action('plugins_loaded', [self::class, 'load_textdomain']);
 
-        add_action('init', [self::class, 'load_textdomain']);
+        // Initialize core components.
+        add_action('init', [$this, 'initialize_components']);
     }
 
     /**
@@ -67,5 +55,34 @@ final class Init
     public static function load_textdomain(): void
     {
         load_plugin_textdomain('wp2-update', false, dirname(WP2_UPDATE_PLUGIN_FILE) . '/languages');
+    }
+
+    /**
+     * Initialize core components of the plugin.
+     */
+    public function initialize_components(): void
+    {
+        $credentialService = new CredentialService();
+        $clientFactory = new GitHubClientFactory($credentialService);
+        $releaseService = new ReleaseService($clientFactory);
+        $repositoryService = new RepositoryService($clientFactory);
+        $connectionService = new ConnectionService($clientFactory, $credentialService);
+        $sharedUtils = new SharedUtils();
+        $packageService = new PackageService($repositoryService, $releaseService, $sharedUtils, $clientFactory);
+
+        // Instantiate controllers with their dependencies
+        $credentialsController = new \WP2\Update\Rest\Controllers\CredentialsController($credentialService);
+        $connectionController = new \WP2\Update\Rest\Controllers\ConnectionController($connectionService);
+        $packagesController = new \WP2\Update\Rest\Controllers\PackagesController($packageService);
+
+        // Pass the controller instances to the router
+        $router = new \WP2\Update\Rest\Router($credentialsController, $connectionController, $packagesController);
+        $router->register_routes();
+
+        // Initialize admin functionality.
+        if (is_admin()) {
+            $adminInit = new AdminInit($connectionService, $packageService);
+            $adminInit->register_hooks();
+        }
     }
 }

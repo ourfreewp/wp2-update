@@ -3,10 +3,13 @@
  * @description Main script for the WP2 Update admin UI. (v3 - Complete Implementation)
  */
 
-import { apiRequest } from './modules/api.js';
-import { appState } from './modules/state.js';
-import { showToast, initUI, showConfirmationModal } from './modules/ui.js';
-import { renderAppView, renderPackageTable } from './modules/components.js';
+import { api_request } from './modules/api/index.js';
+import { app_state } from './modules/state/store.js';
+import { toast } from './modules/ui/toast.js';
+import { init_ui } from './modules/ui/init.js';
+import { confirm_modal } from './modules/ui/modal.js';
+import { render_view } from './modules/components/views.js';
+import { render_package_table } from './modules/components/table.js';
 import debounce from 'lodash/debounce';
 
 /**
@@ -20,7 +23,7 @@ const actions = {
 	 * Fetches the secure GitHub App creation URL from our backend and redirects the user.
 	 */
 	'start-connection': async () => {
-		const { url } = await apiRequest('wp2-update/v1/github/connect-url', { method: 'GET' });
+		const { url } = await api_request('wp2-update/v1/github/connect-url', { method: 'GET' });
 		if (url) {
 			window.location.href = url; // User is sent to GitHub
 		}
@@ -31,15 +34,15 @@ const actions = {
 	 * Tells the backend to delete the stored credentials and resets the UI.
 	 */
 	disconnect: async () => {
-		showConfirmationModal(
-			'Are you sure you want to disconnect? This will remove your credentials.',
+		confirm_modal(
+			__('Are you sure you want to disconnect? This will remove your credentials.', 'wp2-update'),
 			async () => {
-				await apiRequest('wp2-update/v1/github/disconnect');
-				appState.set({ ...appState.get(), currentStage: 'pre-connection', packages: [] });
-				showToast('Disconnected successfully.');
+				await api_request('wp2-update/v1/github/disconnect');
+				app_state.set({ ...app_state.get(), currentStage: 'pre-connection', packages: [] });
+				toast(__('Disconnected successfully.', 'wp2-update'));
 			},
 			() => {
-				showToast('Disconnect action canceled.', 'error');
+				toast('Disconnect action canceled.', 'error');
 			}
 		);
 	},
@@ -50,20 +53,20 @@ const actions = {
 	 */
 	'sync-packages': debounce(async () => {
 		showLoadingSpinner();
-		appState.setKey('isLoading', true);
+		app_state.setKey('isLoading', true);
 		const syncStatusElement = document.querySelector('#sync-status');
 
 		try {
 			// This single endpoint is assumed to fetch repos and their latest releases.
-			const result = await apiRequest('wp2-update/v1/sync-packages', { method: 'GET' });
-			appState.set({
-				...appState.get(),
+			const result = await api_request('wp2-update/v1/sync-packages', { method: 'GET' });
+			app_state.set({
+				...app_state.get(),
 				packages: result.repositories || [],
 				isLoading: false,
 				connection: {
-					...appState.get().connection,
+					...app_state.get().connection,
 					health: {
-						...appState.get().connection.health,
+						...app_state.get().connection.health,
 						lastSync: new Date().toISOString(),
 					},
 				},
@@ -73,22 +76,22 @@ const actions = {
 				syncStatusElement.textContent = 'Last sync succeeded at ' + new Date().toLocaleString();
 				syncStatusElement.className = 'sync-status success';
 			}
-			showToast('Successfully synced with GitHub.');
+			toast('Successfully synced with GitHub.');
 		} catch (error) {
 			console.error('[Sync Failed]', error);
-			appState.set({
-				...appState.get(),
+			app_state.set({
+				...app_state.get(),
 				isLoading: false,
 				error: error.message, // Set the error state
 			});
-			appState.setKey('syncError', error.message || 'An unknown error occurred during sync.');
+			app_state.setKey('syncError', error.message || 'An unknown error occurred during sync.');
 			if (syncStatusElement) {
 				syncStatusElement.textContent = 'Last sync failed at ' + new Date().toLocaleString();
 				syncStatusElement.className = 'sync-status error';
 			}
-			showToast('Sync failed: ' + (error.message || 'Unknown error'), 'error');
+			toast('Sync failed: ' + (error.message || 'Unknown error'), 'error');
 		} finally {
-			appState.setKey('isLoading', false);
+			app_state.setKey('isLoading', false);
 			hideLoadingSpinner();
 		}
 	}, 300), // Debounce with a 300ms delay
@@ -105,36 +108,36 @@ const actions = {
 		if (!select) throw new Error('Could not find the release dropdown for this package.');
 
 		const version = select.value;
-		const originalPackages = appState.get().packages;
+		const originalPackages = app_state.get().packages;
 
 		// Optimistically set the package's status to 'updating'
 		const updatedPackages = originalPackages.map(p =>
 			p.repo === repo ? { ...p, status: 'updating' } : p
 		);
-		appState.setKey('packages', updatedPackages);
+		app_state.setKey('packages', updatedPackages);
 
 		try {
-			await apiRequest('wp2-update/v1/manage-packages', {
-				body: { action: 'update', repo_slug: repo, version },
+			await api_request('wp2-update/v1/manage-packages', {
+				body: { action: 'update', repo_slug: repo, version, type: button.dataset.packageType },
 			});
 
-			showToast(`${repo} update to ${version} initiated.`);
+			toast(`${repo} update to ${version} initiated.`);
 
 			// Update only the relevant package instead of refreshing all data
-			const refreshedPackage = await apiRequest(`wp2-update/v1/package/${repo}`, { method: 'GET' });
-			const newPackages = appState.get().packages.map(p =>
+			const refreshedPackage = await api_request(`wp2-update/v1/package/${repo}`, { method: 'GET' });
+			const newPackages = app_state.get().packages.map(p =>
 				p.repo === repo ? { ...p, ...refreshedPackage } : p
 			);
-			appState.setKey('packages', newPackages);
+			app_state.setKey('packages', newPackages);
 		} catch (error) {
 			console.error(`[Update Failed: ${repo}]`, error);
-			showToast(`Failed to update ${repo}: ${error.message}`, 'error');
+			toast(`Failed to update ${repo}: ${error.message}`, 'error');
 
 			// Revert the package's status to its original state
 			const updatedPackages = originalPackages.map(p =>
 				p.repo === repo ? { ...p, status: 'error', errorMessage: error.message } : p
 			);
-			appState.setKey('packages', updatedPackages);
+			app_state.setKey('packages', updatedPackages);
 		}
 	},
 
@@ -145,12 +148,12 @@ const actions = {
 	'health-check': async () => {
 		showLoadingSpinner();
 		try {
-			const response = await apiRequest('wp2-update/v1/health-status', { method: 'GET' });
+			const response = await api_request('wp2-update/v1/health-status', { method: 'GET' });
 			console.log('Health Check Results:', response);
-			showToast('Health check completed successfully.', 'success');
+			toast('Health check completed successfully.', 'success');
 		} catch (error) {
 			console.error('Health Check Failed:', error);
-			showToast('Health check failed. See console for details.', 'error');
+			toast('Health check failed. See console for details.', 'error');
 		} finally {
 			hideLoadingSpinner();
 		}
@@ -161,8 +164,8 @@ const actions = {
 	 * Displays a form to configure the App Name and optional Organization.
 	 */
 	'configure-manifest': async () => {
-		appState.setKey('currentStage', 'configure-manifest');
-		renderAppView('configure-manifest');
+		app_state.setKey('currentStage', 'configure-manifest');
+		render_view('configure-manifest');
 	},
 };
 
@@ -184,7 +187,7 @@ const handleAction = async (event) => {
 			await actions[action](button);
 		} catch (error) {
 			console.error(`[Action Failed: ${action}]`, error);
-			showToast(error.message, 'error');
+			toast(error.message, 'error');
 		} finally {
 			// Restore button only if it hasn't been re-rendered
 			const currentButton = document.querySelector(`[data-action="${action}"]`);
@@ -201,24 +204,36 @@ const handleAction = async (event) => {
  * It determines if the site is connected and sets the correct initial state.
  */
 const initializeApp = async () => {
-	const appContainer = document.getElementById('wp2-update_app');
+	const appContainer = document.getElementById('wp2-update-app');
 	if (!appContainer) return;
 
-	appState.setKey('isLoading', true);
+	app_state.setKey('isLoading', true);
 
 	try {
-		const status = await apiRequest('wp2-update/v1/github/connection-status', { method: 'GET' });
+		const status = await api_request('wp2-update/v1/github/connection-status', { method: 'GET' });
 		if (status.connected) {
-			appState.setKey('currentStage', 'managing');
+			app_state.setKey('currentStage', 'managing');
 			await actions['sync-packages'](); // Sync packages automatically if connected
 		} else {
-			appState.setKey('currentStage', 'pre-connection');
+			app_state.setKey('currentStage', 'pre-connection');
 		}
 	} catch (error) {
-		appState.setKey('currentStage', 'pre-connection');
-		showToast(error.message, 'error');
+		app_state.setKey('currentStage', 'pre-connection');
+		toast(error.message, 'error');
 	} finally {
-		appState.setKey('isLoading', false);
+		app_state.setKey('isLoading', false);
+	}
+};
+
+/**
+ * Derived state to track if any package is updating
+ */
+const isAnyPackageUpdating = {
+	get: () => app_state.get().packages.some(pkg => pkg.status === 'updating'),
+	subscribe: (callback) => {
+		app_state.listen((state) => {
+			callback(state.packages.some(pkg => pkg.status === 'updating'));
+		});
 	}
 };
 
@@ -253,13 +268,14 @@ const hideLoadingSpinner = () => {
  * Main function to set up the application.
  */
 document.addEventListener('DOMContentLoaded', () => {
-	const appContainer = document.getElementById('wp2-update_app');
+	// Ensure the main application container exists before initializing.
+	const appContainer = document.getElementById('wp2-update-app');
 	if (!appContainer) {
-		console.error('[WP2 Update] Main application container #wp2-update-app not found. Please ensure the container exists in the DOM before initializing the app.');
+		console.error('[WP2 Update] Main application container #wp2-update-app not found.');
 		return;
 	}
 
-	initUI(); // Initialize tooltips, tabs, etc.
+	init_ui(); // Initialize tooltips, tabs, etc.
 	appContainer.addEventListener('click', handleAction);
 
 	// Disable global actions if any package is updating
@@ -276,23 +292,12 @@ document.addEventListener('DOMContentLoaded', () => {
 	});
 
 	// Expose appState for timestamp updates in components.js
-    window.wp2UpdateAppState = appState.get();
-    appState.listen((state) => {
+    window.wp2UpdateAppState = app_state.get();
+    app_state.listen((state) => {
         window.wp2UpdateAppState = state;
-        renderAppView(state.currentStage);
-        renderPackageTable(state.packages, state.isLoading);
+        render_view(state.currentStage);
+        render_package_table(state.packages, state.isLoading);
     });
 
 	initializeApp();
-
-	// Check for the button with ID 'otw_action_rebuild_menus'
-	const rebuildMenusButton = document.getElementById('otw_action_rebuild_menus');
-	if (rebuildMenusButton) {
-		rebuildMenusButton.addEventListener('click', () => {
-			console.log('Rebuild menus action triggered.');
-			// Add logic for rebuilding menus here
-		});
-	} else {
-		console.warn('Button with ID "otw_action_rebuild_menus" not found.');
-	}
 });

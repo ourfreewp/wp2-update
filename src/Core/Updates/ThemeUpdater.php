@@ -2,30 +2,33 @@
 
 namespace WP2\Update\Core\Updates;
 
-use WP2\Update\Core\API\Service as GitHubService;
+use WP2\Update\Core\API\ReleaseService;
 use WP2\Update\Utils\SharedUtils;
 use WP_Error;
+use WP2\Update\Core\Config;
+use WP2\Update\Config as WP2Config;
 
 /**
  * Integrates theme updates with GitHub releases.
  */
-class ThemeUpdater
+class ThemeUpdater extends AbstractUpdater
 {
-    private PackageFinder $packages;
-    private GitHubService $githubService;
+    private ReleaseService $releaseService;
     private SharedUtils $utils;
 
-    public function __construct(PackageFinder $packages, GitHubService $githubService, SharedUtils $utils)
+    public function __construct(PackageFinder $packages, ReleaseService $releaseService, SharedUtils $utils)
     {
-        $this->packages      = $packages;
-        $this->githubService = $githubService;
-        $this->utils         = $utils;
+        parent::__construct($packages, $releaseService, $utils);
     }
 
-    public function register_hooks(): void
+    protected function get_managed_items(): array
     {
-        add_filter('pre_set_site_transient_update_themes', [$this, 'inject_updates']);
-        add_filter('upgrader_pre_download', [$this, 'maybe_provide_authenticated_package'], 10, 4);
+        return $this->packages->get_managed_themes();
+    }
+
+    protected function get_transient_hook(): string
+    {
+        return 'pre_set_site_transient_update_themes';
     }
 
     /**
@@ -40,7 +43,7 @@ class ThemeUpdater
             return $transient;
         }
 
-        foreach ($this->packages->get_managed_themes() as $slug => $theme) {
+        foreach ($this->get_managed_items() as $slug => $theme) {
             $repoParts = explode('/', $theme['repo']);
             if (count($repoParts) !== 2) {
                 continue;
@@ -48,7 +51,7 @@ class ThemeUpdater
 
             [$owner, $repo] = $repoParts;
 
-            $release = $this->githubService->get_latest_release($owner, $repo);
+            $release = $this->releaseService->get_latest_release($owner, $repo);
             if (!$release) {
                 continue;
             }
@@ -60,7 +63,7 @@ class ThemeUpdater
                 continue;
             }
 
-            $packageUrl = $this->utils->get_zip_url_from_release($release);
+            $packageUrl = $this->releaseService->get_zip_url_from_release($release);
             if (!$packageUrl) {
                 continue;
             }
@@ -81,7 +84,7 @@ class ThemeUpdater
      *
      * @param mixed         $reply
      * @param string        $package
-     * @param \WP_Upgrader  $upgrader
+     * @param mixed         $upgrader
      * @param array         $hookExtra
      * @return mixed
      */
@@ -98,11 +101,15 @@ class ThemeUpdater
             return $reply;
         }
 
-        $file = $this->githubService->download_to_temp_file($package);
+        $token = $this->releaseService->getInstallationToken();
+        $file = $this->releaseService->download_to_temp_file($package, $token);
         if (!$file) {
-            return new WP_Error('wp2_download_failed', __('WP2 Update could not download the package from GitHub.', 'wp2-update'));
+            return new WP_Error('wp2_download_failed', __('WP2 Update could not download the package from GitHub.', \WP2\Update\Config::TEXT_DOMAIN));
         }
 
         return $file;
     }
 }
+
+require_once ABSPATH . 'wp-admin/includes/file.php';
+require_once ABSPATH . 'wp-admin/includes/plugin.php';

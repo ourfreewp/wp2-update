@@ -2,8 +2,8 @@ import { defineConfig } from 'vite';
 import path from 'path';
 import sassDts from 'vite-plugin-sass-dts';
 
-// Define your plugin's public path
-const PLUGIN_PATH = '/wp-content/plugins/wp2-update'; // <-- Change 'wp2-update' to your plugin's folder name
+// Dynamically determine the plugin path
+const PLUGIN_PATH = process.env.PLUGIN_PATH || '/wp-content/plugins/wp2-update';
 
 export default defineConfig(({ command }) => ({
   plugins: [sassDts()],

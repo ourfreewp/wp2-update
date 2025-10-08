@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme and plugin updates.
- * Version:           0.0.19
+ * Version:           0.0.20
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -41,8 +41,6 @@ require_once $autoloader;
  * This is the single entry point that fires when all plugins are loaded.
  */
 function wp2_update_run() {
-    // The autoloader makes the WP2\Update\Init class available.
-    // We just need to call the static boot method to get things started.
     \WP2\Update\Init::boot();
 }
 // Hook the single entry point to 'plugins_loaded'.
@@ -59,4 +57,42 @@ add_filter('wp_headers', function ($headers) {
         }
     }
     return $headers;
+});
+
+// Dynamically load Vite-built assets.
+add_action('admin_enqueue_scripts', function() {
+    $manifest_path = WP2_UPDATE_PLUGIN_DIR . '/dist/.vite/manifest.json';
+
+    if (!file_exists($manifest_path)) {
+        wp_die(__('Vite manifest not found. Please build the assets.', 'wp2-update'));
+    }
+
+    $manifest = json_decode(file_get_contents($manifest_path), true);
+
+    // Enqueue the main JavaScript file.
+    if (isset($manifest['admin-main.js'])) {
+        wp_enqueue_script(
+            'wp2-update-admin-main',
+            WP2_UPDATE_PLUGIN_URL . 'dist/' . $manifest['admin-main.js']['file'],
+            [],
+            null,
+            true
+        );
+
+        // Localize data for the script.
+        wp_add_inline_script('wp2-update-admin-main', 'const wp2UpdateData = ' . json_encode([
+            'nonce'   => wp_create_nonce('wp2_update_nonce'),
+            'apiRoot' => esc_url_raw(rest_url('wp2-update/v1/')),
+        ]) . ';', 'before');
+    }
+
+    // Enqueue the main CSS file.
+    if (isset($manifest['admin-style.css'])) {
+        wp_enqueue_style(
+            'wp2-update-admin-style',
+            WP2_UPDATE_PLUGIN_URL . 'dist/' . $manifest['admin-style.css']['file'],
+            [],
+            null
+        );
+    }
 });

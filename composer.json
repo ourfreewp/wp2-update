@@ -5,6 +5,7 @@
 	"autoload": {
 		"psr-4": {
 			"WP2\\Update\\": "src/",
+			"WP2\\Update\\Admin\\Screens\\": "src/Admin/Screens/",
 			"Tests\\": "tests/"
 		}
 	},
@@ -19,7 +20,6 @@
 		"knplabs/github-api": "^3.1",
 		"symfony/http-client": "^7.3",
 		"nyholm/psr7": "^1.8",
-		"woocommerce/action-scheduler": "^3.9",
 		"symfony/polyfill-mbstring": "^1.33",
 		"firebase/php-jwt": "^6.11"
 	},

@@ -2,7 +2,7 @@
 Contributors: (your WordPress.org username)
 Tags: updates, GitHub, private plugins, private themes
 Requires at least: 5.8
-Tested up to: 6.3
+Tested up to: 6.8
 Stable tag: 1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -20,9 +20,11 @@ WP2 Update provides a seamless way to manage private WordPress updates. By using
 
 == Installation ==
 
-1. Upload the plugin files to the `/wp-content/plugins/wp2-update` directory, or install the plugin through the WordPress plugins screen directly.
-2. Activate the plugin through the 'Plugins' screen in WordPress.
-3. Follow the setup wizard to connect your GitHub App.
+1. Download the plugin ZIP file.
+2. Navigate to the WordPress admin dashboard.
+3. Go to Plugins > Add New > Upload Plugin.
+4. Select the ZIP file and click Install Now.
+5. Activate the plugin.
 
 == Frequently Asked Questions ==
 

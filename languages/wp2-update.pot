@@ -15,34 +15,6 @@ msgstr ""
 msgid "GitHub App credentials are incomplete. Please configure the app first."
 msgstr ""
 
-#: src/Core/API/Service.php:563
-msgid "GitHub client not initialized."
-msgstr ""
-
-#: src/Core/API/Service.php:573
-msgid "No downloadable asset found for the specified version."
-msgstr ""
-
-#: src/Core/API/Service.php:579
-msgid "Failed to download the update file."
-msgstr ""
-
-#: src/Core/API/Service.php:589
-msgid "Package %s updated to version %s successfully."
-msgstr ""
-
-#: src/Core/API/Service.php:593
-msgid "Package %s rolled back successfully."
-msgstr ""
-
-#: src/Core/API/Service.php:597
-msgid "Invalid action specified."
-msgstr ""
-
-#: src/Core/API/Service.php:603
-msgid "Failed to manage package: %s"
-msgstr ""
-
 #: assets/scripts/admin-main.js:123
 msgid "Validation failed. Please check your credentials."
 msgstr ""
