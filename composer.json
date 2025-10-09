@@ -36,6 +36,6 @@
 		}
 	},
 	"scripts": {
-		"build": "composer install --no-dev && npm run build"
+		"build": "composer install --no-dev && npm install && npm run build"
 	}
 }
