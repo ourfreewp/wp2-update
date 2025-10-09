@@ -127,16 +127,15 @@ jobs:
           set -euo pipefail
           STAGING_DIR="staging/${{ env.PLUGIN_SLUG }}"
           mkdir -p "$STAGING_DIR"
-
+          
           # Use rsync with --exclude-from to read patterns from .distignore.
-          # This is much more maintainable than a hardcoded list.
           rsync -av --delete --exclude-from='.distignore' ./ "$STAGING_DIR/"
-
-          # Create the zip file from the clean staging directory.
+          
+          # Create the zip file from the staging directory to ensure correct structure.
           pushd staging >/dev/null
           zip -r "../${{ steps.prep.outputs.PKG_NAME }}" "${{ env.PLUGIN_SLUG }}/"
           popd >/dev/null
-
+          
           echo "PACKAGE_PATH=${{ steps.prep.outputs.PKG_NAME }}" >> "$GITHUB_OUTPUT"
 
       - name: Generate SHA256 Checksum
