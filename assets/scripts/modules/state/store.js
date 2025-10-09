@@ -1,5 +1,34 @@
 import { atom, computed } from 'nanostores';
 
+const parse_default_manifest = () => {
+	try {
+		if (!window.wp2UpdateData || !window.wp2UpdateData.githubAppManifest) {
+			return {};
+		}
+		const raw = JSON.parse(window.wp2UpdateData.githubAppManifest);
+		return typeof raw === 'object' && raw ? raw : {};
+	} catch (error) {
+		console.warn('WP2 Update: unable to parse default manifest.', error);
+		return {};
+	}
+};
+
+const default_manifest = parse_default_manifest();
+const pretty_default_manifest = (() => {
+	try {
+		return JSON.stringify(default_manifest, null, 2);
+	} catch {
+		return '{}';
+	}
+})();
+
+const default_manifest_draft = {
+	name: default_manifest?.name || (window.wp2UpdateData?.siteName ? `${window.wp2UpdateData.siteName} Updater` : ''),
+	accountType: 'user',
+	organization: '',
+	manifestJson: pretty_default_manifest,
+};
+
 /**
  * @typedef {'pre-connection'|'credentials'|'syncing'|'managing'|'configure-manifest'|'post-configuration'} AppStage
  * @typedef {'idle'|'updating'|'rollback'|'error'} PackageStatus
@@ -24,6 +53,7 @@ export const app_state = atom({
 	},
 	packages: [],
 	syncError: null,
+	manifestDraft: default_manifest_draft,
 });
 
 export const is_any_pkg_updating = computed(app_state, (s) =>
@@ -41,6 +71,7 @@ const persist = (s) => {
 			currentStage: s.currentStage,
 			connection: s.connection,
 			packages: s.packages,
+			manifestDraft: s.manifestDraft,
 		})); // Removed syncError from the persisted payload
 	} catch {}
 };
@@ -52,7 +83,7 @@ const restore = () => {
 		if (!raw) return;
 		const obj = JSON.parse(raw);
 		if (obj && typeof obj === 'object' && Array.isArray(obj.packages)) {
-			app_state.set({ ...app_state.get(), ...obj });
+			app_state.set({ ...app_state.get(), ...obj, manifestDraft: obj.manifestDraft || default_manifest_draft });
 		} else {
 			console.warn('Restored state is invalid. Using default state.');
 		}

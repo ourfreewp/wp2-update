@@ -36,6 +36,7 @@ export default defineConfig(({ command }) => ({
         'admin-main': path.resolve(__dirname, 'assets/scripts/admin-main.js'),
         'admin-style': path.resolve(__dirname, 'assets/styles/admin-main.scss'),
       },
+      external: ['wp2UpdateData'], // Mark wp2UpdateData as external to prevent Rollup from bundling it
     },
 
     // Ensure compatibility with older browsers by transpiling to ES2015

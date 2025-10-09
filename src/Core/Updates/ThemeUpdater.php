@@ -4,7 +4,7 @@ namespace WP2\Update\Core\Updates;
 
 use WP2\Update\Core\API\ReleaseService;
 use WP2\Update\Core\API\GitHubClientFactory;
-use WP2\Update\Utils\SharedUtils;
+use WP2\Update\Utils\Formatting;
 use WP_Error;
 
 /**
@@ -13,11 +13,13 @@ use WP_Error;
 class ThemeUpdater extends AbstractUpdater
 {
     protected ReleaseService $releaseService;
-    protected SharedUtils $utils;
+    protected GitHubClientFactory $clientFactory;
 
-    public function __construct(PackageFinder $packages, ReleaseService $releaseService, SharedUtils $utils, GitHubClientFactory $clientFactory)
+    public function __construct(PackageFinder $packages, ReleaseService $releaseService, GitHubClientFactory $clientFactory)
     {
-        parent::__construct($packages, $releaseService, $utils, $clientFactory);
+        $this->releaseService = $releaseService;
+        $this->clientFactory = $clientFactory;
+        parent::__construct($packages, $releaseService, $clientFactory);
     }
 
     protected function get_managed_items(): array
@@ -55,8 +57,8 @@ class ThemeUpdater extends AbstractUpdater
                 continue;
             }
 
-            $latestVersion  = $this->utils->normalize_version($release['tag_name'] ?? '');
-            $currentVersion = $this->utils->normalize_version($transient->checked[$slug] ?? $theme['version']);
+            $latestVersion  = Formatting::normalize_version($release['tag_name'] ?? '');
+            $currentVersion = Formatting::normalize_version($transient->checked[$slug] ?? $theme['version']);
 
             if (!$latestVersion || version_compare($latestVersion, $currentVersion, '<=')) {
                 continue;

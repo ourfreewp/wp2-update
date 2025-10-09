@@ -5,7 +5,8 @@ namespace WP2\Update\Core\Updates;
 use WP2\Update\Core\API\RepositoryService;
 use WP2\Update\Core\API\ReleaseService;
 use WP2\Update\Core\API\GitHubClientFactory;
-use WP2\Update\Utils\SharedUtils;
+use WP2\Update\Utils\Formatting;
+use WP2\Update\Utils\Logger;
 
 /**
  * Handles package-related operations.
@@ -14,15 +15,15 @@ class PackageService
 {
     private RepositoryService $repositoryService;
     private ReleaseService $releaseService;
-    private SharedUtils $utils;
     private GitHubClientFactory $clientFactory;
+    private PackageFinder $packageFinder;
 
-    public function __construct(RepositoryService $repositoryService, ReleaseService $releaseService, SharedUtils $utils, GitHubClientFactory $clientFactory)
+    public function __construct(RepositoryService $repositoryService, ReleaseService $releaseService, GitHubClientFactory $clientFactory, PackageFinder $packageFinder)
     {
         $this->repositoryService = $repositoryService;
         $this->releaseService = $releaseService;
-        $this->utils = $utils;
         $this->clientFactory = $clientFactory;
+        $this->packageFinder = $packageFinder;
     }
 
     /**
@@ -32,18 +33,16 @@ class PackageService
      */
     public function sync_packages(): array
     {
-        $managedPackages = $this->repositoryService->get_managed_repositories();
-        $syncedData = [];
-
-        foreach ($managedPackages as $package) {
-            $latestRelease = $this->releaseService->get_latest_release($package['owner'], $package['repo']);
-            $syncedData[] = [
-                'package' => $package,
-                'latest_release' => $latestRelease,
-            ];
+        $repositories = $this->repositoryService->get_managed_repositories();
+        if (empty($repositories)) {
+            return [];
         }
 
-        return $syncedData;
+        foreach ($repositories as &$repository) {
+            $repository['normalized_repo'] = Formatting::normalize_repo($repository['repo'] ?? '');
+        }
+
+        return $repositories;
     }
 
     /**
@@ -54,46 +53,40 @@ class PackageService
      * @param string $version
      * @return bool
      */
-    public function manage_packages(string $action, string $package, string $version, string $type): bool
+    public function manage_packages(string $action, string $repoSlug, string $version, ?string $packageType = null): bool
     {
         try {
-            $release = $this->releaseService->get_release_by_version($package, $version);
-            if (!$release) {
-                throw new \RuntimeException('Release not found.');
+            $normalizedRepo = Formatting::normalize_repo($repoSlug);
+            if (!$normalizedRepo) {
+                throw new \Exception('Invalid repository slug provided.');
             }
 
-            if ($action === 'rollback') {
-                $previousVersion = $this->releaseService->get_previous_version($package, $version);
-                if (!$previousVersion) {
-                    throw new \RuntimeException('Previous version not found for rollback.');
-                }
+            $release = $this->releaseService->get_release_by_version($normalizedRepo, $version);
+            if (!$release) {
+                throw new \Exception("Release '{$version}' not found for repository '{$normalizedRepo}'.");
+            }
 
-                $zipUrl = $this->releaseService->get_zip_url_from_release($previousVersion);
-                if (!$zipUrl) {
-                    throw new \RuntimeException('Download URL for rollback not found.');
-                }
-            } else {
-                $zipUrl = $this->releaseService->get_zip_url_from_release($release);
-                if (!$zipUrl) {
-                    throw new \RuntimeException('Download URL not found.');
-                }
+            $zipUrl = $this->releaseService->get_zip_url_from_release($release);
+            if (!$zipUrl) {
+                throw new \Exception('Download URL not found in release assets.');
             }
 
             $token = $this->clientFactory->getInstallationToken();
             if (!$token) {
-                throw new \RuntimeException('Failed to retrieve authentication token.');
+                throw new \Exception('Failed to retrieve authentication token.');
             }
 
-            $tempFile = $this->download_package($zipUrl);
+            $tempFile = $this->releaseService->download_package($zipUrl, $token);
             if (!$tempFile) {
-                throw new \RuntimeException('Failed to download package.');
+                throw new \Exception('Failed to download package from GitHub.');
             }
 
+            $type = $packageType ?: $this->get_package_type_by_repo($normalizedRepo);
             $this->install_from_zip($tempFile, $type);
 
             return true;
         } catch (\Exception $e) {
-            // Log the error
+            Logger::log('ERROR', 'Package management failed: ' . $e->getMessage());
             return false;
         }
     }
@@ -133,40 +126,93 @@ class PackageService
      */
     public function get_all_packages(): array
     {
-        $repositories = $this->repositoryService->get_managed_repositories();
-        $packages = [];
-
-        foreach ($repositories as $repo) {
-            $latestRelease = $this->releaseService->get_latest_release($repo['owner']['login'], $repo['name']);
-            $packages[] = [
-                'name' => $repo['name'],
-                'owner' => $repo['owner']['login'],
-                'latest_release' => $latestRelease,
-            ];
-        }
-
-        return $packages;
+        return $this->sync_packages();
     }
 
     /**
      * Downloads a package to a temporary file.
      *
-     * @param string $url The package URL.
-     * @return string|null The path to the downloaded file, or null on failure.
+     * @param string $url   The package URL.
+     * @param string $token The GitHub installation token.
+     * @return string|null  The path to the downloaded file, or null on failure.
      */
-    public function download_package(string $url): ?string
+    private function download_package(string $url, string $token): ?string
     {
-        if (!function_exists('download_url')) {
-            require_once ABSPATH . 'wp-admin/includes/file.php';
-        }
+        return $this->releaseService->download_package($url, $token);
+    }
 
-        $tempFile = download_url($url);
-
-        if (is_wp_error($tempFile)) {
-            $this->utils->log_error('Failed to download package: ' . $tempFile->get_error_message());
+    public function get_package_status(string $repoSlug): ?array
+    {
+        $repoSlug = Formatting::normalize_repo($repoSlug) ?? '';
+        if ('' === $repoSlug) {
             return null;
         }
 
-        return $tempFile;
+        foreach ($this->sync_packages() as $package) {
+            if (($package['repo'] ?? '') === $repoSlug) {
+                return $package;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalize_repository(array $repository): array
+    {
+        $owner = '';
+        if (!empty($repository['owner']['login'])) {
+            $owner = (string) $repository['owner']['login'];
+        } elseif (!empty($repository['owner'])) {
+            $owner = (string) $repository['owner'];
+        }
+
+        $name = isset($repository['name']) ? (string) $repository['name'] : '';
+        $fullName = isset($repository['full_name']) ? (string) $repository['full_name'] : '';
+
+        if ('' === $fullName && '' !== $owner && '' !== $name) {
+            $fullName = $owner . '/' . $name;
+        }
+
+        return [$owner, $name, $fullName];
+    }
+
+    private function infer_type_from_topics(array $topics): ?string
+    {
+        if (in_array('wordpress-theme', $topics, true)) {
+            return 'theme';
+        }
+
+        if (in_array('wordpress-plugin', $topics, true)) {
+            return 'plugin';
+        }
+
+        return null;
+    }
+
+    private function resolve_installed_package(string $repoSlug): ?array
+    {
+        $normalized = Formatting::normalize_repo($repoSlug);
+        if (!$normalized) {
+            return null;
+        }
+
+        foreach ($this->packageFinder->get_managed_packages() as $package) {
+            if (($package['repo'] ?? '') === $normalized) {
+                return $package;
+            }
+        }
+
+        return null;
+    }
+
+    private function get_package_type_by_repo(string $repoSlug): ?string
+    {
+        $packages = $this->packageFinder->get_managed_packages();
+        foreach ($packages as $package) {
+            if ($package['repo'] === $repoSlug) {
+                return $package['type'];
+            }
+        }
+        return null;
     }
 }

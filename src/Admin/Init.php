@@ -7,6 +7,9 @@ use WP2\Update\Admin\Assets\Manager as AssetManager;
 use WP2\Update\Core\API\ConnectionService;
 use WP2\Update\Core\Updates\PackageService;
 
+/**
+ * Initializes all admin-facing functionality, including menus and assets.
+ */
 final class Init {
     private ConnectionService $connectionService;
     private PackageService $packageService;
@@ -16,44 +19,26 @@ final class Init {
         $this->packageService = $packageService;
     }
 
+    /**
+     * Registers all necessary hooks for the admin area.
+     */
     public function register_hooks(): void {
-        add_action('admin_menu', [$this, 'register_admin_menu']);
-        add_action('admin_enqueue_scripts', [AssetManager::class, 'enqueue_admin_assets']);
+        try {
+            // Register the menu pages.
+            $menuManager = new MenuManager($this->connectionService, $this->packageService);
+            add_action('admin_menu', [$menuManager, 'register_menu']);
 
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            add_action('admin_notices', [$this, 'render_debug_panel']);
+            // Register the asset enqueueing hooks.
+            AssetManager::register_hooks();
+        } catch (\Exception $e) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[WP2-Update] Admin Initialization Error: ' . $e->getMessage());
+            }
+
+            add_action('admin_notices', function () {
+                echo '<div class="notice notice-error"><p>' . esc_html__('An error occurred during admin initialization. Please check the logs for details.', 'wp2-update') . '</p></div>';
+            });
         }
-    }
-
-    public function register_admin_menu(): void {
-        $menuManager = new MenuManager($this->connectionService, $this->packageService);
-        $menuManager->register_menu();
-    }
-
-    public function render_debug_panel(): void {
-        if (!current_user_can('manage_options')) {
-            return;
-        }
-
-        $user = wp_get_current_user();
-        $debug = [
-            'user'       => ['id' => $user->ID, 'login' => $user->user_login],
-            'admin_url'  => admin_url(),
-            'ajax_url'   => admin_url('admin-ajax.php'),
-            'localized_data' => isset($data) ? $data : 'wp2UpdateData is not defined.',
-            'i18n_function' => function_exists('__') ? 'Available' : 'Not defined. Ensure wp-i18n is loaded.',
-            'available_actions' => [
-                'start-connection',
-                'disconnect',
-                'sync-packages',
-                'update-package'
-            ],
-        ];
-        ?>
-        <div class="notice notice-info is-dismissible">
-            <h2><?php echo esc_html__('WP2 Update Debug Panel', 'wp2-update'); ?></h2>
-            <pre><?php echo esc_html(print_r($debug, true)); ?></pre>
-        </div>
-        <?php
     }
 }
+

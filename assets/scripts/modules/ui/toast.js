@@ -1,12 +1,15 @@
 import Toastify from 'toastify-js';
 
 /**
- * @param {string} text
- * @param {'success'|'error'} [type='success']
+ * Enhanced toast function to include optional detailed error messages.
+ * @param {string} text - The main message to display.
+ * @param {'success'|'error'} [type='success'] - The type of toast (success or error).
+ * @param {string} [details] - Optional detailed message for errors.
  */
-export const toast = (text, type = 'success') => {
+export const toast = (text, type = 'success', details) => {
+	const message = details && type === 'error' ? `${text}\nDetails: ${details}` : text;
 	Toastify({
-		text,
+		text: message,
 		duration: 4000,
 		gravity: 'bottom',
 		position: 'right',

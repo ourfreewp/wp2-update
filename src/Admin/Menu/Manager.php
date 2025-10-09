@@ -16,6 +16,8 @@ final class Manager {
     }
 
     public function register_menu(): void {
+        do_action('wp2_update_before_register_menu');
+
         add_menu_page(
             esc_html__('WP2 Updates', 'wp2-update'),
             esc_html__('WP2 Updates', 'wp2-update'),
@@ -33,5 +35,7 @@ final class Manager {
             'wp2-update-github-callback',
             [GitHubScreensManager::class, 'render_github_callback']
         );
+
+        do_action('wp2_update_after_register_menu');
     }
 }

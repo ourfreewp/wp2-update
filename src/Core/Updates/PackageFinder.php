@@ -2,7 +2,7 @@
 
 namespace WP2\Update\Core\Updates;
 
-use WP2\Update\Utils\SharedUtils; // Import SharedUtils
+use WP2\Update\Utils\Formatting;
 
 /**
  * Scans the installation for themes and plugins that declare an Update URI.
@@ -44,7 +44,7 @@ class PackageFinder
 
         foreach (get_plugins() as $slug => $plugin) {
             $updateUri = $plugin['UpdateURI'] ?? $plugin['Update URI'] ?? '';
-            $repo      = SharedUtils::normalize_repo($updateUri); // Updated to use SharedUtils
+            $repo      = Formatting::normalize_repo($updateUri); // Updated to use SharedUtils
 
             if (!$repo) {
                 continue;
@@ -81,7 +81,7 @@ class PackageFinder
 
         foreach (wp_get_themes() as $slug => $theme) {
             $updateUri = $theme->get('UpdateURI') ?: $theme->get('Update URI');
-            $repo      = SharedUtils::normalize_repo($updateUri); // Updated to use SharedUtils
+            $repo      = Formatting::normalize_repo($updateUri); // Updated to use SharedUtils
 
             if (!$repo) {
                 continue;

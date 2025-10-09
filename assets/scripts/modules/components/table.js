@@ -25,6 +25,9 @@ const row_html = (pkg) => {
 	const isUpdating = pkg.status === 'updating';
 	const isError = pkg.status === 'error';
 	const releases = Array.isArray(pkg.releases) ? pkg.releases : [];
+	if (!releases.length && pkg.latest_release) {
+		releases.push(pkg.latest_release);
+	}
 	const hasReleases = releases.length > 0;
 
 	return `
@@ -40,13 +43,20 @@ const row_html = (pkg) => {
 		${!hasReleases
 			? `<span class="description">${t.noReleasesFound}</span>`
 			: `<select class="release-dropdown" data-package-repo="${escape_html(pkg.repo)}" ${isUpdating ? 'disabled' : ''}>
-				${releases.map(rel => `<option value="${escape_html(rel.tag_name)}">${escape_html(rel.name)} ${rel.prerelease ? '(Pre-release)' : ''}</option>`).join('')}
+				${releases.map(rel => {
+					const rawTag = rel?.tag_name || '';
+					const tag = escape_html(rawTag);
+					const rawLabel = rel?.name || rawTag || '';
+					const label = rawLabel ? escape_html(rawLabel) : t.noReleasesFound;
+					const suffix = rel?.prerelease ? ` ${escape_html(__('(Pre-release)', 'wp2-update'))}` : '';
+					return `<option value="${tag}">${label}${suffix}</option>`;
+				}).join('')}
 			  </select>`}
 	</td>
 	<td class="package-actions">
 		${isError
 			? err_badge(pkg.errorMessage)
-			: `<button class="button button-primary" data-action="update-package" data-package-repo="${escape_html(pkg.repo)}" ${isUpdating ? 'disabled' : ''}>${t.update}</button>`}
+			: `<button class="button button-primary" data-action="update-package" data-package-repo="${escape_html(pkg.repo)}" data-package-type="${escape_html(pkg.type || '')}" ${isUpdating ? 'disabled' : ''}>${t.update}</button>`}
 	</td>
 </tr>`;
 };

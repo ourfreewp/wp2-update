@@ -4,20 +4,18 @@ namespace WP2\Update\Core\Updates;
 
 use WP2\Update\Core\API\ReleaseService;
 use WP2\Update\Core\API\GitHubClientFactory;
-use WP2\Update\Utils\SharedUtils;
+use WP2\Update\Utils\Formatting;
 
 abstract class AbstractUpdater
 {
     protected PackageFinder $packages;
     protected ReleaseService $releaseService;
-    protected SharedUtils $utils;
     protected GitHubClientFactory $clientFactory;
 
-    public function __construct(PackageFinder $packages, ReleaseService $releaseService, SharedUtils $utils, GitHubClientFactory $clientFactory)
+    public function __construct(PackageFinder $packages, ReleaseService $releaseService, GitHubClientFactory $clientFactory)
     {
         $this->packages       = $packages;
         $this->releaseService = $releaseService;
-        $this->utils          = $utils;
         $this->clientFactory  = $clientFactory;
     }
 
@@ -46,7 +44,7 @@ abstract class AbstractUpdater
             [$owner, $repo] = $repoParts;
 
             $latestRelease = $this->releaseService->get_latest_release($owner, $repo);
-            if ($latestRelease && version_compare($latestRelease['tag_name'], $transient->checked[$slug], '>')) {
+            if ($latestRelease && version_compare(Formatting::normalize_version($latestRelease['tag_name']), Formatting::normalize_version($transient->checked[$slug]), '>')) {
                 $transient->response[$slug] = [
                     'new_version' => $latestRelease['tag_name'],
                     'package'     => $latestRelease['zipball_url'],

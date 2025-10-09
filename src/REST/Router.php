@@ -53,9 +53,27 @@ final class Router {
         ]);
 
         register_rest_route('wp2-update/v1', '/github/connect-url', [
-            'methods'             => 'GET',
+            'methods'             => ['GET', 'POST'],
             'callback'            => [$this->credentialsController, 'rest_get_connect_url'],
             'permission_callback' => [$this->credentialsController, 'check_permissions'],
+            'args'                => [
+                'account_type' => [
+                    'required' => true,
+                    'type'     => 'string',
+                    'enum'     => ['user', 'organization'],
+                    'description' => 'The type of GitHub account (user or organization).',
+                ],
+                'organization' => [
+                    'required' => false,
+                    'type'     => 'string',
+                    'description' => 'The slug of the organization (required if account_type is organization).',
+                ],
+                'manifest' => [
+                    'required' => true,
+                    'type'     => 'string',
+                    'description' => 'The GitHub App manifest JSON.',
+                ],
+            ],
         ]);
 
         register_rest_route('wp2-update/v1', '/github/exchange-code', [
@@ -80,6 +98,18 @@ final class Router {
             'methods'             => 'POST',
             'callback'            => [$this->credentialsController, 'rest_disconnect'],
             'permission_callback' => [$this->credentialsController, 'check_permissions'],
+        ]);
+
+        register_rest_route('wp2-update/v1', '/refresh-nonce', [
+            'methods'             => 'GET',
+            'callback'            => static function () {
+                return rest_ensure_response([
+                    'nonce' => wp_create_nonce('wp_rest'),
+                ]);
+            },
+            'permission_callback' => static function () {
+                return current_user_can('manage_options');
+            },
         ]);
     }
 }

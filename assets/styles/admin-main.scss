@@ -2,11 +2,12 @@
  * @file admin-main.scss
  * @brief WP2 Admin UI Stylesheet for Robust Workflow
  * @version 2.0.0
+ * Main stylesheet for the WP2 Update admin interface.
  */
 
 /* ==========================================================================
-   1. Design System (CSS Variables)
-   ========================================================================== */
+	1. Design System (CSS Variables)
+	========================================================================== */
 :root {
 	--wp2-color-primary: #2271b1;
 	--wp2-color-success: #00a32a;
@@ -24,17 +25,18 @@
 }
 
 /* ==========================================================================
-   2. Base & Layout
-   ========================================================================== */
+	2. Base & Layout
+	========================================================================== */
 .wp2-wrap {
 	font-family: var(--wp2-font-family);
 	color: var(--wp2-color-text);
 }
 
+/* --- Layout --- */
 .workflow-step {
-	margin-bottom: calc(var(--wp2-spacing-unit) * 6);
-	padding-bottom: calc(var(--wp2-spacing-unit) * 4);
-	border-bottom: 2px dashed var(--wp2-color-border);
+	margin-bottom: calc(var(--wp2-spacing-unit) * 3);
+	padding-bottom: calc(var(--wp2-spacing-unit) * 3);
+	border-bottom: 1px solid var(--wp2-color-border);
 
 	&:last-child {
 		border-bottom: none;
@@ -54,8 +56,8 @@
 }
 
 /* ==========================================================================
-   3. Components
-   ========================================================================== */
+	3. Components
+	========================================================================== */
 
 /* Card */
 .wp2-card {
@@ -222,46 +224,99 @@
 	}
 }
 
-// Added spinner styles for maintainability.
+/* --- Components --- */
+#wp2-package-table {
+	margin-top: calc(var(--wp2-spacing-unit) * 2);
+}
 
+.error-message {
+	color: var(--wp2-color-error);
+}
+
+#manifest-config-form .field {
+	margin-bottom: calc(var(--wp2-spacing-unit) * 2);
+}
+
+#manifest-config-form label {
+	display: block;
+	margin-bottom: var(--wp2-spacing-unit);
+	font-weight: 600;
+}
+
+#manifest-config-form input[type="text"],
+#manifest-config-form textarea {
+	width: 100%;
+	max-width: 600px;
+}
+
+#manifest-config-form textarea {
+	font-family: monospace;
+	height: 250px;
+}
+
+/* --- Modal --- */
+.wp2-modal {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.6);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+}
+
+.wp2-modal[hidden] {
+	display: none;
+}
+
+.modal-content {
+	background-color: var(--wp2-color-bg-card);
+	padding: calc(var(--wp2-spacing-unit) * 4);
+	border-radius: var(--wp2-border-radius);
+	width: 90%;
+	max-width: 400px;
+	text-align: center;
+}
+
+.modal-actions {
+	margin-top: calc(var(--wp2-spacing-unit) * 3);
+	display: flex;
+	justify-content: center;
+	gap: var(--wp2-spacing-unit);
+}
+
+/* --- Global Spinner --- */
+#wp2-global-spinner,
 .wp2-global-spinner {
 	position: fixed;
 	top: 50%;
 	left: 50%;
 	transform: translate(-50%, -50%);
-	z-index: 9999;
+	width: 40px;
+	height: 40px;
+	border: 4px solid var(--wp2-color-border);
+	border-top-color: var(--wp2-color-primary);
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+	z-index: 99999;
+}
+
+#wp2-global-spinner[hidden] {
+	display: none;
+}
+
+/* Keep legacy .wp2-global-spinner for compatibility */
+.wp2-global-spinner {
 	width: 50px;
 	height: 50px;
 	border: 5px solid rgba(0, 0, 0, 0.1);
 	border-top: 5px solid var(--wp2-color-primary);
-	border-radius: 50%;
-	animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-	0% {
-		transform: rotate(0deg);
-	}
-
-	100% {
-		transform: rotate(360deg);
-	}
-}
-
-@keyframes pulse {
-
-	0%,
-	100% {
-		opacity: 1;
-	}
-
-	50% {
-		opacity: 0.5;
-	}
-}
-
-
-
+/* Toastify styles */
 .toastify {
 	padding: 12px 20px;
 	color: #ffffff;
@@ -339,5 +394,29 @@
 		left: 0;
 		right: 0;
 		max-width: fit-content;
+	}
+}
+
+/* Animations */
+@keyframes spin {
+	0% {
+		transform: rotate(0deg);
+	}
+
+	100%,
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes pulse {
+
+	0%,
+	100% {
+		opacity: 1;
+	}
+
+	50% {
+		opacity: 0.5;
 	}
 }

@@ -70,7 +70,7 @@ class CredentialService
      */
     public function clear_stored_credentials(): void
     {
-        delete_option('wp2_github_app_credentials');
+        delete_option(Config::OPTION_CREDENTIALS);
     }
 
     /**
@@ -80,7 +80,7 @@ class CredentialService
      */
     public function get_decrypted_webhook_secret(): string
     {
-        $record = get_option('wp2_github_app_credentials', []);
+        $record = get_option(Config::OPTION_CREDENTIALS, []);
         if (empty($record['webhook_secret'])) {
             return '';
         }
@@ -100,8 +100,8 @@ class CredentialService
      */
     public function clear_credentials(): bool
     {
-        // Clear stored credentials from the database or other storage.
-        delete_option('wp2_update_github_credentials');
+        // Consolidated to ensure only the correct option key is deleted.
+        $this->clear_stored_credentials();
         return true;
     }
 

@@ -1,6 +1,3 @@
-import { __ } from 'wp2UpdateData'; // Assume localization data is available
-import { toast } from '../ui/toast.js';
-
 export const render_configure_manifest = () => {
     const container = document.querySelector('#configure-manifest');
     if (!container) return;

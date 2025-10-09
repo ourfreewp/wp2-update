@@ -28,46 +28,51 @@ final class PackagesController {
     }
 
     public function sync_packages(WP_REST_Request $request): WP_REST_Response {
-        $result = $this->packageService->sync_packages();
-        return new WP_REST_Response($result, 200);
+        $packages = $this->packageService->sync_packages();
+        return new WP_REST_Response(['packages' => $packages], 200);
     }
 
     public function manage_packages(WP_REST_Request $request): WP_REST_Response {
         $action  = (string) $request->get_param('action');
-        $package = (string) $request->get_param('package');
+        $repoSlug = (string) ($request->get_param('package') ?: $request->get_param('repo_slug'));
         $version = (string) $request->get_param('version');
-        $type    = (string) $request->get_param('type');
+        $typeParam = $request->get_param('type');
+        $type    = is_string($typeParam) ? $typeParam : null;
 
-        $success = $this->packageService->manage_packages($action, $package, $version, $type);
-
-        if (!$success) {
-            return new WP_REST_Response(['message' => 'Failed to manage package.'], 400);
+        if ('' === $action || '' === $repoSlug || '' === $version) {
+            return new WP_REST_Response(['message' => esc_html__('Missing required parameters.', 'wp2-update')], 400);
         }
 
-        return new WP_REST_Response(['message' => 'Package managed successfully.'], 200);
+        $success = $this->packageService->manage_packages($action, $repoSlug, $version, $type);
+
+        if (!$success) {
+            return new WP_REST_Response(['message' => esc_html__('Failed to manage package.', 'wp2-update')], 400);
+        }
+
+        return new WP_REST_Response(['message' => esc_html__('Package managed successfully.', 'wp2-update')], 200);
     }
 
     public function rest_get_package_status(WP_REST_Request $request): WP_REST_Response {
         $repoSlug = $request->get_param('repo_slug');
 
         if (empty($repoSlug)) {
-            return new WP_REST_Response(['message' => 'Repository slug is required.'], 400);
+            return new WP_REST_Response(['message' => esc_html__('Repository slug is required.', 'wp2-update')], 400);
         }
 
         $status = $this->packageService->get_package_status($repoSlug);
 
         if (!$status) {
-            return new WP_REST_Response(['message' => 'Package not found.'], 404);
+            return new WP_REST_Response(['message' => esc_html__('Package not found.', 'wp2-update')], 404);
         }
 
-        return new WP_REST_Response(['status' => $status], 200);
+        return new WP_REST_Response(['package' => $status], 200);
     }
 
     public function rest_get_packages(WP_REST_Request $request): WP_REST_Response {
         $packages = $this->packageService->get_all_packages();
 
         if (empty($packages)) {
-            return new WP_REST_Response(['message' => 'No packages found.'], 404);
+            return new WP_REST_Response(['message' => esc_html__('No packages found.', 'wp2-update')], 404);
         }
 
         return new WP_REST_Response(['packages' => $packages], 200);

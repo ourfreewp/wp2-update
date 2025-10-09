@@ -6,8 +6,15 @@ if (!current_nonce || !apiRoot) {
 	console.error('WP2 Update: missing wp2UpdateData.nonce/apiRoot');
 }
 
-const build_url = (endpoint) =>
-	`${apiRoot.replace(/\/+$/, '')}/${String(endpoint).replace(/^\/+/, '')}`;
+const build_url = (endpoint, query) => {
+	const base = `${apiRoot.replace(/\/+$/, '')}/${String(endpoint).replace(/^\/+/, '')}`;
+	if (!query || typeof query !== 'object' || !Object.keys(query).length) {
+		return base;
+	}
+
+	const search = new URLSearchParams(query);
+	return `${base}?${search.toString()}`;
+};
 
 const json_headers = () => ({
 	'Content-Type': 'application/json',
@@ -33,14 +40,18 @@ const refresh_nonce = async () => {
 export const api_request = async (endpoint, options = {}, retries = 3) => {
 	for (let attempt = 0; attempt < retries; attempt++) {
 		try {
-			const url = build_url(endpoint);
+			const { params, headers: headerOverrides, ...restOptions } = options;
+			const url = build_url(endpoint, params);
 			const init = {
 				method: 'POST',
-				headers: json_headers(),
-				...options,
-				headers: { ...json_headers(), ...(options.headers || {}) },
+				...restOptions,
+				headers: { ...json_headers(), ...(headerOverrides || {}) },
 			};
 			if (init.body && typeof init.body !== 'string') init.body = JSON.stringify(init.body);
+
+			if ((init.method || 'POST').toUpperCase() === 'GET') {
+				delete init.body;
+			}
 
 			const res = await fetch(url, init);
 			if (res.status === 204) return null;

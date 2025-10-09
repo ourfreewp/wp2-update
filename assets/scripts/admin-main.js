@@ -1,178 +1,190 @@
-console.log('admin-main.js loaded');
-
 import debounce from 'lodash/debounce';
-import { api_request } from './modules/api/index.js';
 import { app_state } from './modules/state/store.js';
+import { api_request } from './modules/api/index.js';
 import { toast } from './modules/ui/toast.js';
 import { confirm_modal } from './modules/ui/modal.js';
-import { init_ui } from './modules/ui/init.js';
+import { show_global_spinner, hide_global_spinner } from './modules/ui/spinner.js';
 import { render_view } from './modules/components/views.js';
 import { render_package_table } from './modules/components/table.js';
-import { show_global_spinner, hide_global_spinner } from './modules/ui/spinner.js';
+import { render_configure_manifest } from './modules/components/manifest-config.js';
 
-// Define actions
+// --- Main Application Logic ---
+
 const actions = {
-  'start-connection': async () => {
-    try {
-      const payload = await api_request('github/connect-url', { method: 'GET' });
-      register_manifest(payload);
-    } catch (error) {
-      toast(__('Error starting GitHub connection: ', 'wp2-update') + error.message, 'error');
-    }
-  },
-  'disconnect': async () => {
-    confirm_modal(
-      __('Are you sure you want to disconnect? This will remove your credentials.', 'wp2-update'),
-      async () => {
-        await api_request('github/disconnect');
-        app_state.set({ ...app_state.get(), currentStage: 'pre-connection', packages: [] });
-        toast(__('Disconnected successfully.', 'wp2-update'));
-      },
-      () => toast(__('Disconnect action canceled.', 'wp2-update'))
-    );
-  },
-  'sync-packages': debounce(async () => {
-    show_global_spinner();
-    app_state.set({ ...app_state.get(), isLoading: true });
-    try {
-      const result = await api_request('sync-packages', { method: 'GET' });
-      app_state.set({
-        ...app_state.get(),
-        packages: result.repositories || [],
-        isLoading: false,
-        connection: {
-          ...app_state.get().connection,
-          health: {
-            ...app_state.get().connection.health,
-            lastSync: new Date().toISOString(),
-          },
-        },
-        syncError: null,
-      });
-      toast(__('Successfully synced with GitHub.', 'wp2-update'));
-    } catch (error) {
-      app_state.set({
-        ...app_state.get(),
-        isLoading: false,
-        syncError: error.message || __('Sync failed.', 'wp2-update'),
-      });
-      toast(__('Sync failed: ', 'wp2-update') + (error.message || __('Unknown error', 'wp2-update')), 'error');
-    } finally {
-      hide_global_spinner();
-    }
-  }, 300),
-  'update-package': async (button) => {
-    const repo = button?.dataset.packageRepo;
-    const version = document.querySelector(`.release-dropdown[data-package-repo="${repo}"]`)?.value;
-    if (!repo || !version) throw new Error('Missing package repo or version.');
-    confirm_modal(
-      __('Are you sure you want to update this package?', 'wp2-update'),
-      async () => {
+	'start-connection': () => {
+		app_state.set({ ...app_state.get(), currentStage: 'configure-manifest' });
+	},
+	'disconnect': () => {
+		confirm_modal(
+			'Are you sure you want to disconnect?',
+			async () => {
+				try {
+					show_global_spinner();
+					await api_request('github/disconnect');
+					app_state.set({ ...app_state.get(), currentStage: 'pre-connection', packages: [] });
+					toast('Disconnected successfully.');
+				} catch (error) {
+					toast(error.message, 'error');
+				} finally {
+					hide_global_spinner();
+				}
+			}
+		);
+	},
+	'sync-packages': debounce(async () => {
+		show_global_spinner();
+		app_state.set({ ...app_state.get(), isLoading: true, syncError: null });
+		try {
+			const { packages = [] } = await api_request('sync-packages', { method: 'GET' });
+			app_state.set({ ...app_state.get(), packages, isLoading: false, currentStage: 'managing' });
+			toast('Successfully synced with GitHub.');
+		} catch (error) {
+			app_state.set({ ...app_state.get(), isLoading: false, syncError: error.message });
+			toast(error.message, 'error');
+		} finally {
+			hide_global_spinner();
+		}
+	}, 500),
+	'update-package': async (button) => {
+		const repo = button?.dataset.packageRepo;
+		const version = document.querySelector(`select[data-package-repo="${repo}"]`)?.value;
+		if (!repo || !version) return;
+
+		confirm_modal(`Update ${repo} to ${version}?`, async () => {
+			try {
+				show_global_spinner();
+				await api_request('manage-packages', { body: { repo_slug: repo, version, action: 'update' } });
+				toast(`Update initiated for ${repo}.`);
+			} catch (error) {
+				toast(error.message, 'error');
+			} finally {
+				hide_global_spinner();
+			}
+		});
+	},
+	'submit-manifest-config': async (button) => {
+        const state = app_state.get();
+        const draft = state.manifestDraft;
+
         try {
-          await api_request('manage-packages', {
-            body: { action: 'update', repo_slug: repo, version },
-          });
-          toast(`${repo} update to ${version} initiated.`);
+            show_global_spinner();
+            button.disabled = true;
+            const payload = await api_request('github/connect-url', {
+                method: 'POST',
+                body: {
+                    name: draft.name,
+                    account_type: draft.accountType,
+                    organization: draft.organization,
+                    manifest: draft.manifestJson,
+                }
+            });
+            
+            const manifestForm = document.createElement('form');
+            manifestForm.action = `${payload.account}?state=${encodeURIComponent(payload.state)}`;
+            manifestForm.method = 'post';
+            manifestForm.target = '_blank';
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'manifest';
+            input.value = payload.manifest;
+            manifestForm.appendChild(input);
+            document.body.appendChild(manifestForm);
+            manifestForm.submit();
+            manifestForm.remove();
+
         } catch (error) {
-          toast(`Failed to update ${repo}: ${error.message}`, 'error');
+            toast(error.message, 'error');
+        } finally {
+            hide_global_spinner();
+            button.disabled = false;
         }
-      }
-    );
-  },
-  'create-github-app': async () => {
-    const orgInput = document.querySelector('#organization');
-    const orgName = orgInput?.value.trim();
-
-    if (!orgName) {
-      toast(__('Please enter an organization name.', 'wp2-update'), 'error');
-      return;
+    },
+    'cancel-manifest-config': () => {
+        app_state.set({ ...app_state.get(), currentStage: 'pre-connection' });
     }
-
-    try {
-      show_global_spinner();
-      const { url } = await api_request('github/connect-url', {
-        method: 'GET',
-        params: { organization: orgName },
-      });
-
-      if (url) {
-        window.location.href = url;
-      } else {
-        toast(__('Failed to generate GitHub App URL.', 'wp2-update'), 'error');
-      }
-    } catch (error) {
-      toast(__('Error generating GitHub App URL: ', 'wp2-update') + error.message, 'error');
-    } finally {
-      hide_global_spinner();
-    }
-  },
 };
 
-// Helper function to register manifest
-const register_manifest = ({ account, manifest, state }) => {
-  const form = document.createElement('form');
-  form.action = `${account}?state=${encodeURIComponent(state)}`;
-  form.method = 'post';
-  form.target = '_blank';
+// --- GitHub Callback Handler ---
 
-  const input = document.createElement('input');
-  input.type = 'hidden';
-  input.name = 'manifest';
-  input.value = manifest;
-  form.appendChild(input);
+const handleGitHubCallback = () => {
+	const container = document.getElementById('wp2-update-github-callback');
+	if (!container) return;
+	
+    const notice = (message, isError = false) => {
+        container.innerHTML = `<div class="notice ${isError ? 'notice-error' : 'notice-success'}"><p>${message}</p></div>`;
+    };
 
-  document.body.appendChild(form);
-  form.submit();
-  form.remove();
+	const params = new URLSearchParams(window.location.search);
+	const code = params.get('code');
+	const state = params.get('state');
+
+	if (!code || !state) {
+		notice('Invalid callback parameters.', true);
+		return;
+	}
+
+	notice('Finalizing GitHub connection...');
+
+	(async () => {
+		try {
+			await api_request('github/exchange-code', { body: { code, state } });
+			notice('Connection successful! You can close this window.');
+            if (window.opener) {
+                window.opener.postMessage('wp2-update-github-connected', window.location.origin);
+            }
+		} catch (error) {
+			notice(`Error: ${error.message}`, true);
+		}
+	})();
 };
 
-// Initialize the app
+// --- App Initialization ---
+
 const init_app = () => {
-  document.addEventListener('click', async (e) => {
-    const button = e.target.closest('button[data-action]');
-    if (!button) return;
-    const action = button.dataset.action;
-    if (actions[action]) {
-      try {
-        await actions[action](button);
-      } catch (error) {
-        console.error(`[Action Failed: ${action}]`, error);
-        toast(error.message || 'An error occurred.', 'error');
-      }
-    }
-  });
+	document.addEventListener('click', (e) => {
+		const button = e.target.closest('button[data-action]');
+		if (button?.dataset.action && actions[button.dataset.action]) {
+			e.preventDefault();
+			actions[button.dataset.action](button);
+		}
+	});
 
-  init_ui();
-  app_state.listen((state) => {
-    render_view(state.currentStage);
-    render_package_table(state.packages, state.isLoading);
-  });
+    const manifestForm = document.getElementById('manifest-config-form');
+    if(manifestForm){
+        manifestForm.addEventListener('input', (e) => {
+            const draft = { ...app_state.get().manifestDraft };
+            const { name, value } = e.target;
+            if(name === 'app-name') draft.name = value;
+            if(name === 'account-type') draft.accountType = value;
+            if(name === 'organization') draft.organization = value;
+            if(name === 'manifest-json') draft.manifestJson = value;
+            app_state.set({ ...app_state.get(), manifestDraft: draft });
+        });
+    }
+
+    window.addEventListener('message', (event) => {
+        if (event.data === 'wp2-update-github-connected') {
+            toast('GitHub App connected successfully!');
+            actions['sync-packages']();
+        }
+    });
+
+	app_state.listen((state) => {
+		render_view(state.currentStage);
+		render_package_table(state.packages, state.isLoading, state.syncError);
+        render_configure_manifest(state.manifestDraft);
+	});
+
+    // Initial render
+    const initialState = app_state.get();
+    render_view(initialState.currentStage);
+    render_package_table(initialState.packages, initialState.isLoading, initialState.syncError);
+    render_configure_manifest(initialState.manifestDraft);
+
+	// Handle callback page separately
+	if (document.getElementById('wp2-update-github-callback')) {
+		handleGitHubCallback();
+	}
 };
 
 document.addEventListener('DOMContentLoaded', init_app);
-
-// Add fallbacks to prevent errors if wp2UpdateData or __ is undefined
-if (typeof wp2UpdateData === 'undefined') {
-    console.error('wp2UpdateData is not defined. Ensure it is localized properly in Manager.php.');
-    window.wp2UpdateData = {
-        pluginUrl: '',
-        restBase: '',
-        nonce: '',
-        user: { id: 0, login: 'Guest' },
-        availableActions: []
-    }; // Provide default values
-}
-
-// Add a fallback for the __ function if wp-i18n is not loaded
-if (typeof __ === 'undefined') {
-    console.error('The __ function is not defined. Ensure wp-i18n is loaded.');
-    window.__ = (text) => text; // Provide a fallback that returns the input text
-}
-
-console.log('Debugging WP2 Update:');
-console.log('wp2UpdateData:', typeof wp2UpdateData !== 'undefined' ? wp2UpdateData : 'wp2UpdateData is not defined.');
-console.log('The __ function:', typeof __ !== 'undefined' ? 'Available' : 'Not defined. Ensure wp-i18n is loaded.');
-console.log('App State:', app_state.get());
-console.log('Available Actions:', Object.keys(actions));
-console.log('Current User:', typeof wp2UpdateData !== 'undefined' && wp2UpdateData.user ? wp2UpdateData.user : 'User data not available.');
-console.log('Debugging wp2UpdateData:', typeof wp2UpdateData !== 'undefined' ? wp2UpdateData : 'wp2UpdateData is not defined.');

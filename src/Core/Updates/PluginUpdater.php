@@ -4,7 +4,7 @@ namespace WP2\Update\Core\Updates;
 
 use WP2\Update\Core\API\ReleaseService;
 use WP2\Update\Core\API\GitHubClientFactory;
-use WP2\Update\Utils\SharedUtils;
+use WP2\Update\Utils\Formatting;
 use WP_Error;
 use WP2\Update\Config;
 
@@ -18,11 +18,10 @@ class PluginUpdater extends AbstractUpdater
 {
     protected PackageFinder $packages;
     protected ReleaseService $releaseService;
-    protected SharedUtils $utils;
 
-    public function __construct(PackageFinder $packages, ReleaseService $releaseService, SharedUtils $utils, GitHubClientFactory $clientFactory)
+    public function __construct(PackageFinder $packages, ReleaseService $releaseService, GitHubClientFactory $clientFactory)
     {
-        parent::__construct($packages, $releaseService, $utils, $clientFactory);
+        parent::__construct($packages, $releaseService, $clientFactory);
     }
 
     /**
@@ -50,8 +49,8 @@ class PluginUpdater extends AbstractUpdater
                 continue;
             }
 
-            $latestVersion  = $this->utils->normalize_version($release['tag_name'] ?? '');
-            $currentVersion = $this->utils->normalize_version($transient->checked[$slug] ?? $plugin['version']);
+            $latestVersion  = Formatting::normalize_version($release['tag_name'] ?? '');
+            $currentVersion = Formatting::normalize_version($transient->checked[$slug] ?? $plugin['version']);
 
             if (!$latestVersion || version_compare($latestVersion, $currentVersion, '<=')) {
                 continue;

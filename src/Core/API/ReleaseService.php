@@ -61,9 +61,35 @@ class ReleaseService
     }
 
     /**
-     * Downloads a protected asset to a temporary file.
+     * Provides the GitHub installation token.
+     *
+     * @return string|null The installation token, or null on failure.
+     */
+    public function getInstallationToken(): ?string
+    {
+        return $this->clientFactory->getInstallationToken();
+    }
+
+    /**
+     * Downloads a package to a temporary file.
+     *
+     * @param string $url   The package URL.
+     * @param string $token The GitHub installation token.
+     * @return string|null  The path to the downloaded file, or null on failure.
      */
     public function download_to_temp_file(string $url, string $token): ?string
+    {
+        return $this->download_package($url, $token);
+    }
+
+    /**
+     * Downloads a package to a temporary file.
+     *
+     * @param string $url   The package URL.
+     * @param string $token The GitHub installation token.
+     * @return string|null  The path to the downloaded file, or null on failure.
+     */
+    public function download_package(string $url, string $token): ?string
     {
         if (!function_exists('wp_tempnam')) {
             require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -74,27 +100,39 @@ class ReleaseService
             return null;
         }
 
-        try {
-            $response = HttpClient::get($url, [
-                'timeout' => 300, // Increase timeout for large files
+        $response = wp_remote_get(
+            $url,
+            [
+                'timeout' => 300,
                 'headers' => [
                     'Authorization' => 'Bearer ' . $token,
+                    'Accept'        => 'application/octet-stream',
                 ],
-            ]);
+                'stream'   => true,
+                'filename' => $tempFile,
+            ]
+        );
 
-            if ($response === null) {
-                @unlink($tempFile);
-                Logger::log('ERROR', 'Failed to download package from ' . $url);
-                return null;
-            }
-
-            file_put_contents($tempFile, $response);
-            return $tempFile;
-        } catch (\Throwable $e) {
+        if (is_wp_error($response)) {
             @unlink($tempFile);
-            Logger::log('ERROR', 'Exception during file download: ' . $e->getMessage());
+            Logger::log('ERROR', 'Exception during file download: ' . $response->get_error_message());
             return null;
         }
+
+        $statusCode = wp_remote_retrieve_response_code($response);
+        if ($statusCode < 200 || $statusCode >= 300) {
+            @unlink($tempFile);
+            Logger::log('ERROR', 'Failed to download package from ' . $url . ' (HTTP ' . $statusCode . ').');
+            return null;
+        }
+
+        if (!file_exists($tempFile) || 0 === filesize($tempFile)) {
+            @unlink($tempFile);
+            Logger::log('ERROR', 'Downloaded package was empty for ' . $url);
+            return null;
+        }
+
+        return $tempFile;
     }
 
     /**
@@ -107,12 +145,17 @@ class ReleaseService
     public function get_release_by_version(string $repoSlug, string $version): ?array
     {
         try {
-            [$owner, $repo] = explode('/', $repoSlug);
+            $parts = explode('/', $repoSlug);
+            if (count($parts) !== 2) {
+                throw new \InvalidArgumentException('Invalid repository slug.');
+            }
+
+            [$owner, $repo] = $parts;
 
             $url = sprintf('https://api.github.com/repos/%s/%s/releases/tags/%s', $owner, $repo, $version);
             $releaseData = HttpClient::get($url, [
                 'headers' => [
-                    'Authorization' => 'Bearer ' . $this->getInstallationToken(),
+                    'Authorization' => 'Bearer ' . $this->clientFactory->getInstallationToken(),
                     'Accept'        => 'application/vnd.github.v3+json',
                 ],
             ]);
@@ -154,16 +197,6 @@ class ReleaseService
     }
 
     /**
-     * Provides access to the GitHubClientFactory's installation token.
-     *
-     * @return string|null The installation token, or null if unavailable.
-     */
-    public function getInstallationToken(): ?string
-    {
-        return $this->clientFactory->getInstallationToken();
-    }
-
-    /**
      * Retrieves the previous version of a package.
      *
      * @param string $package The package name.
@@ -172,8 +205,48 @@ class ReleaseService
      */
     public function get_previous_version(string $package, string $currentVersion): ?array
     {
-        // Logic to fetch the previous version from GitHub or other source
-        // Placeholder implementation
+        $token = $this->clientFactory->getInstallationToken(); // Directly use GitHubClientFactory
+        if (!$token) {
+            return null;
+        }
+
+        $parts = explode('/', $package);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        [$owner, $repo] = $parts;
+        $url = sprintf('https://api.github.com/repos/%s/%s/releases?per_page=20', $owner, $repo);
+        $releases = HttpClient::get($url, [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $token,
+                'Accept'        => 'application/vnd.github.v3+json',
+            ],
+        ]);
+
+        if (!is_array($releases)) {
+            return null;
+        }
+
+        $currentNormalized = ltrim((string) $currentVersion, 'v');
+        $foundCurrent = false;
+
+        foreach ($releases as $release) {
+            if (!is_array($release) || !empty($release['draft'])) {
+                continue;
+            }
+
+            $tag = isset($release['tag_name']) ? ltrim((string) $release['tag_name'], 'v') : '';
+
+            if ($foundCurrent) {
+                return $release;
+            }
+
+            if ($tag === $currentNormalized) {
+                $foundCurrent = true;
+            }
+        }
+
         return null;
     }
 }

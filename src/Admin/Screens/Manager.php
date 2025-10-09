@@ -2,58 +2,90 @@
 
 namespace WP2\Update\Admin\Screens;
 
+/**
+ * Handles rendering the admin screen for the WP2 Update plugin.
+ */
 final class Manager {
-    public static function render(): void {
-        self::render_header('WP2 Updates');
-        echo '<div id="wp2-update-root"></div>';
-        echo '<div id="wp2-update-app"></div>'; // Ensure this exists
-        echo '<div class="wp2-wrap">';
-        echo '  <section id="pre-connection" class="workflow-step">';
-        echo '    <h3>' . esc_html__( 'Connect GitHub App', 'wp2-update' ) . '</h3>';
-        echo '    <p>' . esc_html__( 'Start the connection flow to authorize your GitHub App.', 'wp2-update' ) . '</p>';
-        echo '    <button class="button button-primary" data-action="start-connection">' . esc_html__( 'Connect', 'wp2-update' ) . '</button>';
-        echo '  </section>';
-        echo '  <section id="manage-packages" class="workflow-step" hidden>'; 
-        echo '    <h3>' . esc_html__( 'Packages', 'wp2-update' ) . '</h3>';
-        echo '    <table id="wp2-package-table" class="widefat striped"><tbody></tbody></table>';
-        echo '  </section>';
-        echo '</div>';
-        echo '<div id="disconnect-modal" class="wp2-modal" hidden>…</div>';
-        self::render_footer();
-    }
 
-    public static function render_github_callback(): void {
-        if (!current_user_can('manage_options')) {
-            wp_die(__('You do not have sufficient permissions to access this page.', 'wp2-update'));
-        }
+	/**
+	 * Renders the main admin page for the plugin.
+	 * This acts as the root for the single-page application.
+	 */
+	public static function render(): void {
+		?>
+		<div class="wrap">
+			<h1><?php esc_html_e( 'WP2 Updates', 'wp2-update' ); ?></h1>
 
-        if (!check_admin_referer('wp_rest')) {
-            wp_die(__('Invalid request. Please try again.', 'wp2-update'));
-        }
+			<div id="wp2-update-app"></div>
 
-        self::enqueue_github_callback_script();
-        echo '<div id="wp2-update-github-callback"></div>';
-    }
+			<div id="configure-manifest" class="workflow-step">
+				<h2><?php esc_html_e( 'Configure GitHub Manifest', 'wp2-update' ); ?></h2>
+				<p><?php esc_html_e( 'Follow the steps below to configure your GitHub App manifest.', 'wp2-update' ); ?></p>
+			</div>
 
-    private static function render_header(string $title): void {
-        echo '<div class="wrap">';
-        echo '<h1>' . esc_html__($title, 'wp2-update') . '</h1>';
-    }
+			<div id="wp2-package-table" class="workflow-step">
+				<h2><?php esc_html_e( 'Manage Packages', 'wp2-update' ); ?></h2>
+				<p><?php esc_html_e( 'View and manage your installed packages.', 'wp2-update' ); ?></p>
+			</div>
 
-    private static function render_footer(): void {
-        echo '</div>';
-    }
+			<?php
+			self::render_modal(
+				'disconnect-modal',
+				__( 'Are you sure you want to disconnect?', 'wp2-update' ),
+				[
+					[ 'class' => 'modal-cancel button button-secondary', 'label' => __( 'Cancel', 'wp2-update' ) ],
+					[ 'class' => 'modal-confirm button button-danger', 'label' => __( 'Confirm', 'wp2-update' ) ],
+				]
+			);
+			?>
+		</div>
+		<?php
+	}
 
-    private static function enqueue_github_callback_script(): void {
-        wp_enqueue_script(
-            'wp2-update-github-callback',
-            WP2_UPDATE_PLUGIN_URL . 'assets/scripts/github-callback.js',
-            [],
-            null,
-            true
-        );
-        wp_localize_script('wp2-update-github-callback', 'wp2UpdateData', [
-            'nonce' => wp_create_nonce('wp_rest'),
-        ]);
-    }
+	/**
+	 * Renders a modal dialog.
+	 *
+	 * @param string $id      The ID of the modal.
+	 * @param string $message The message to display in the modal.
+	 * @param array  $actions An array of actions (buttons) for the modal.
+	 */
+	private static function render_modal( string $id, string $message, array $actions ): void {
+		?>
+		<div id="<?php echo esc_attr( $id ); ?>" class="wp2-modal" hidden>
+			<div class="modal-content">
+				<p class="modal-message"><?php echo esc_html( $message ); ?></p>
+				<div class="modal-actions">
+					<?php foreach ( $actions as $action ) : ?>
+						<button class="<?php echo esc_attr( $action['class'] ); ?>">
+							<?php echo esc_html( $action['label'] ); ?>
+						</button>
+					<?php endforeach; ?>
+				</div>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Renders the page for handling the GitHub App installation callback.
+	 * This is a separate endpoint from the main manager screen.
+	 */
+	public static function render_github_callback(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have sufficient permissions to access this page.', 'wp2-update' ) );
+		}
+
+		$state = isset( $_GET['state'] ) ? sanitize_text_field( wp_unslash( $_GET['state'] ) ) : '';
+
+		if ( empty( $state ) || ! wp_verify_nonce( $state, 'wp2-manifest' ) ) {
+			wp_die( esc_html__( 'Invalid callback request. Please restart the GitHub App installation.', 'wp2-update' ) );
+		}
+
+		?>
+		<div id="wp2-update-github-callback" class="wrap">
+			<p><?php esc_html_e( 'Completing GitHub App setup…', 'wp2-update' ); ?></p>
+		</div>
+		<?php
+	}
+
 }
