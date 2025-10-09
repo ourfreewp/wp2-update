@@ -1,7 +1,4 @@
 # Exclude development files and directories
-node_modules/
-assets/
-src/
 tests/
 .vscode/
 .git/
@@ -9,8 +6,3 @@ composer.lock
 package-lock.json
 .env
 *.log
-
-# Include only necessary files
-!/languages/
-!/vendor/
-!/wp2-update.php
