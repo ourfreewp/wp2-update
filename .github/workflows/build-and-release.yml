@@ -89,13 +89,13 @@ jobs:
         run: |
           composer install --no-dev --prefer-dist --no-progress --no-interaction --optimize-autoloader
 
-      - name: Quality Gate: PHP Syntax Check
+      - name: "Quality Gate: PHP Syntax Check"
         if: steps.check_release.outputs.exists == 'false'
         run: |
           set -euo pipefail
           find . -type f -name '*.php' -print0 | xargs -0 -n1 -P4 php -l
 
-      - name: Quality Gate: WordPress Coding Standards (Optional)
+      - name: "Quality Gate: WordPress Coding Standards (Optional)"
         if: steps.check_release.outputs.exists == 'false' && hashFiles('**/composer.json') != ''
         run: |
           if [ -x vendor/bin/phpcs ]; then
