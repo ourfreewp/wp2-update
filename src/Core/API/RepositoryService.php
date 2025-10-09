@@ -25,7 +25,7 @@ class RepositoryService
      *
      * @return array|null List of repositories with releases or null on failure.
      */
-    public function get_repositories(): ?array
+    public function get_repositories(int $cache_duration = HOUR_IN_SECONDS): ?array
     {
         // Check if cached data exists
         $cache_key = Config::TRANSIENT_REPOSITORIES_CACHE;
@@ -56,8 +56,8 @@ class RepositoryService
                 }
             }
 
-            // Cache the result for 1 hour
-            set_transient($cache_key, $repositories, HOUR_IN_SECONDS);
+            // Cache the result for the specified duration
+            set_transient($cache_key, $repositories, $cache_duration);
             Logger::log('INFO', 'Repositories cached successfully.');
 
             return $repositories;
@@ -83,5 +83,25 @@ class RepositoryService
         return array_filter($repositories, function ($repo) {
             return isset($repo['topics']) && in_array('wp2-managed', $repo['topics'], true);
         });
+    }
+
+    /**
+     * Retrieves cached repositories or fetches them if not cached.
+     *
+     * @return array List of cached repositories.
+     */
+    public function get_cached_repositories(): array
+    {
+        $cacheKey = 'wp2_cached_repositories';
+        $cached = get_transient($cacheKey);
+
+        if ($cached !== false) {
+            return $cached;
+        }
+
+        $repositories = $this->get_managed_repositories();
+        set_transient($cacheKey, $repositories, HOUR_IN_SECONDS);
+
+        return $repositories;
     }
 }

@@ -1,5 +1,7 @@
 import { app_state } from '../state/store.js';
 
+const { __ } = wp.i18n;
+
 const escape_html = (str) =>
 	String(str).replace(/[&<>'"`]/g, (match) => ({
 		'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;', '`': '&#96;',
@@ -18,6 +20,24 @@ const err_badge = (msg) => {
     return `<span class="error-message">${escape_html(message)}</span>`;
 };
 
+const normalize_version = (version) => {
+    if (!version) return '0.0.0';
+    return version.replace(/^v/, '');
+};
+
+const versionCompare = (v1, v2, operator) => {
+    const parse = (v) => v.split('.').map(Number);
+    const [a, b] = [parse(normalize_version(v1)), parse(normalize_version(v2))];
+
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const [x, y] = [a[i] || 0, b[i] || 0];
+        if (x !== y) {
+            return operator === '>' ? x > y : x < y;
+        }
+    }
+    return false;
+};
+
 /**
  * @param {any} pkg
  */
@@ -29,6 +49,12 @@ const row_html = (pkg) => {
 		releases.push(pkg.latest_release);
 	}
 	const hasReleases = releases.length > 0;
+
+	const installedVersion = pkg.installed || '';
+	const selectedVersion = releases[0]?.tag_name || '';
+	const actionLabel = versionCompare(installedVersion, selectedVersion, '>')
+		? __('Rollback', 'wp2-update')
+		: (pkg.installed ? __('Update', 'wp2-update') : __('Install', 'wp2-update'));
 
 	return `
 <tr id="package-row-${escape_html(pkg.repo.replace('/', '-'))}" class="${isUpdating ? 'updating' : ''} ${isError ? 'error' : ''}">
@@ -56,7 +82,7 @@ const row_html = (pkg) => {
 	<td class="package-actions">
 		${isError
 			? err_badge(pkg.errorMessage)
-			: `<button class="button button-primary" data-action="update-package" data-package-repo="${escape_html(pkg.repo)}" data-package-type="${escape_html(pkg.type || '')}" ${isUpdating ? 'disabled' : ''}>${t.update}</button>`}
+			: `<button class="button button-primary" data-action="update-package" data-package-repo="${escape_html(pkg.repo)}" data-package-type="${escape_html(pkg.type || '')}" ${isUpdating ? 'disabled' : ''}>${actionLabel}</button>`}
 	</td>
 </tr>`;
 };

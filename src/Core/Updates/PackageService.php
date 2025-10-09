@@ -33,16 +33,29 @@ class PackageService
      */
     public function sync_packages(): array
     {
-        $repositories = $this->repositoryService->get_managed_repositories();
-        if (empty($repositories)) {
-            return [];
+        $localPackages = $this->packageFinder->get_managed_packages();
+        $githubRepos = $this->repositoryService->get_managed_repositories();
+
+        $repoIndex = [];
+        foreach ($githubRepos as $repo) {
+            $repoSlug = Formatting::normalize_repo($repo['repo'] ?? '');
+            if ($repoSlug) {
+                $repoIndex[$repoSlug] = $repo;
+            }
         }
 
-        foreach ($repositories as &$repository) {
-            $repository['normalized_repo'] = Formatting::normalize_repo($repository['repo'] ?? '');
+        $packages = [];
+        foreach ($localPackages as $localPackage) {
+            $repoSlug = Formatting::normalize_repo($localPackage['UpdateURI'] ?? '');
+            $githubData = $repoIndex[$repoSlug] ?? null;
+
+            $packages[] = array_merge($localPackage, [
+                'releases' => $githubData['releases'] ?? [],
+                'latest_release' => $githubData['latest_release'] ?? null,
+            ]);
         }
 
-        return $repositories;
+        return $packages;
     }
 
     /**

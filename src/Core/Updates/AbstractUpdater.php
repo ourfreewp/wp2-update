@@ -4,19 +4,21 @@ namespace WP2\Update\Core\Updates;
 
 use WP2\Update\Core\API\ReleaseService;
 use WP2\Update\Core\API\GitHubClientFactory;
-use WP2\Update\Utils\Formatting;
+use WP2\Update\Core\API\RepositoryService;
 
 abstract class AbstractUpdater
 {
     protected PackageFinder $packages;
     protected ReleaseService $releaseService;
     protected GitHubClientFactory $clientFactory;
+    protected RepositoryService $repositoryService;
 
-    public function __construct(PackageFinder $packages, ReleaseService $releaseService, GitHubClientFactory $clientFactory)
+    public function __construct(PackageFinder $packages, ReleaseService $releaseService, GitHubClientFactory $clientFactory, RepositoryService $repositoryService)
     {
-        $this->packages       = $packages;
-        $this->releaseService = $releaseService;
-        $this->clientFactory  = $clientFactory;
+        $this->packages          = $packages;
+        $this->releaseService    = $releaseService;
+        $this->clientFactory     = $clientFactory;
+        $this->repositoryService = $repositoryService;
     }
 
     abstract protected function get_managed_items(): array;
@@ -26,7 +28,7 @@ abstract class AbstractUpdater
     public function register_hooks(): void
     {
         add_filter($this->get_transient_hook(), [$this, 'inject_updates']);
-        add_filter('upgrader_pre_download', [$this, 'maybe_provide_authenticated_package'], 10, 4); // Corrected to 4 arguments
+        add_filter('http_request_args', [$this, 'add_authorization_header'], 99, 2);
     }
 
     public function inject_updates(object $transient): object
@@ -35,19 +37,16 @@ abstract class AbstractUpdater
             return $transient;
         }
 
-        foreach ($this->get_managed_items() as $slug => $item) {
-            $repoParts = explode('/', $item['repo']);
-            if (count($repoParts) !== 2) {
-                continue;
-            }
+        $managedPackages = $this->packages->get_managed_packages();
 
-            [$owner, $repo] = $repoParts;
+        foreach ($managedPackages as $slug => $package) {
+            $installedVersion = $transient->checked[$slug] ?? null;
+            $latestRelease = $package['releases'][0] ?? null; // Assuming releases are sorted by version descending
 
-            $latestRelease = $this->releaseService->get_latest_release($owner, $repo);
-            if ($latestRelease && version_compare(Formatting::normalize_version($latestRelease['tag_name']), Formatting::normalize_version($transient->checked[$slug]), '>')) {
+            if ($latestRelease && version_compare($latestRelease['version'], $installedVersion, '>')) {
                 $transient->response[$slug] = [
-                    'new_version' => $latestRelease['tag_name'],
-                    'package'     => $latestRelease['zipball_url'],
+                    'new_version' => $latestRelease['version'],
+                    'package'     => $latestRelease['download_url'],
                     'slug'        => $slug,
                 ];
             }
@@ -56,15 +55,25 @@ abstract class AbstractUpdater
         return $transient;
     }
 
-    public function maybe_provide_authenticated_package($reply, string $package, $upgrader, array $hookExtra)
+    public function add_authorization_header(array $args, string $url): array
     {
-        if (strpos($package, 'github.com') !== false) {
+        if (strpos($url, 'github.com') !== false) {
             $token = $this->clientFactory->getInstallationToken();
             if ($token) {
-                $package = add_query_arg('access_token', $token, $package);
+                $args['headers']['Authorization'] = 'Bearer ' . $token;
             }
         }
+        return $args;
+    }
 
-        return $package;
+    public function inject_authorization_header(array $args, string $url): array
+    {
+        if (strpos($url, 'github.com') !== false) {
+            $token = $this->clientFactory->getInstallationToken();
+            if ($token) {
+                $args['headers']['Authorization'] = 'Bearer ' . $token;
+            }
+        }
+        return $args;
     }
 }

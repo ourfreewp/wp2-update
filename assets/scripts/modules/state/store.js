@@ -2,10 +2,10 @@ import { atom, computed } from 'nanostores';
 
 const parse_default_manifest = () => {
 	try {
-		if (!window.wp2UpdateData || !window.wp2UpdateData.githubAppManifest) {
+		if (!window.wp2UpdateData || !window.wp2UpdateData.manifest) {
 			return {};
 		}
-		const raw = JSON.parse(window.wp2UpdateData.githubAppManifest);
+		const raw = JSON.parse(window.wp2UpdateData.manifest);
 		return typeof raw === 'object' && raw ? raw : {};
 	} catch (error) {
 		console.warn('WP2 Update: unable to parse default manifest.', error);
@@ -45,7 +45,7 @@ const default_manifest_draft = {
  * syncError: string|null;
  * }>} */
 export const app_state = atom({
-	currentStage: 'pre-connection',
+	currentStage: 'configure-manifest',
 	isLoading: false,
 	connection: {
 		health: { lastSync: 'N/A', apiRemaining: 'N/A', webhookOk: false },

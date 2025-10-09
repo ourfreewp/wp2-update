@@ -43,13 +43,19 @@ final class PackagesController {
             return new WP_REST_Response(['message' => esc_html__('Missing required parameters.', 'wp2-update')], 400);
         }
 
-        $success = $this->packageService->manage_packages($action, $repoSlug, $version, $type);
+        try {
+            $success = $this->packageService->manage_packages($action, $repoSlug, $version, $type);
 
-        if (!$success) {
-            return new WP_REST_Response(['message' => esc_html__('Failed to manage package.', 'wp2-update')], 400);
+            if (!$success) {
+                return new WP_REST_Response(['message' => esc_html__('Failed to manage package.', 'wp2-update')], 400);
+            }
+
+            return new WP_REST_Response(['message' => esc_html__('Package managed successfully.', 'wp2-update')], 200);
+        } catch (\Exception $e) {
+            return new WP_REST_Response([
+                'message' => $e->getMessage(),
+            ], 400);
         }
-
-        return new WP_REST_Response(['message' => esc_html__('Package managed successfully.', 'wp2-update')], 200);
     }
 
     public function rest_get_package_status(WP_REST_Request $request): WP_REST_Response {

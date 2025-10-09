@@ -21,49 +21,63 @@ class ConnectionService
     }
 
     /**
+     * Validate stored credentials.
+     *
+     * @return array{success:bool,message:string}
+     */
+    private function validate_credentials(): array
+    {
+        $credentials = $this->credentialService->get_stored_credentials();
+        if (!$credentials) {
+            return ['success' => false, 'message' => __('GitHub credentials are not configured.', 'wp2-update')];
+        }
+
+        if (empty($credentials['app_id']) || empty($credentials['installation_id']) || empty($credentials['private_key'])) {
+            return ['success' => false, 'message' => __('Required credentials are missing.', 'wp2-update')];
+        }
+
+        return ['success' => true, 'message' => ''];
+    }
+
+    /**
+     * Test webhook delivery.
+     *
+     * @return bool
+     */
+    private function test_webhook(): bool
+    {
+        $webhookTestKey = 'wp2_update_webhook_test';
+        $webhookTestValue = uniqid('webhook_', true);
+        set_transient($webhookTestKey, $webhookTestValue, 60 * 5);
+
+        return get_transient($webhookTestKey) !== false;
+    }
+
+    /**
      * Attempt to connect to GitHub using the stored credentials.
      *
      * @return array{success:bool,message:string}
      */
     public function test_connection(): array
     {
-        $credentials = $this->credentialService->get_stored_credentials();
-        if (!$credentials) {
-            return [
-                'success' => false,
-                'message' => __('GitHub credentials are not configured.', 'wp2-update'),
-            ];
-        }
-
-        if (empty($credentials['app_id']) || empty($credentials['installation_id']) || empty($credentials['private_key'])) {
-            return [
-                'success' => false,
-                'message' => __('Required credentials are missing.', 'wp2-update'),
-            ];
+        $credentialValidation = $this->validate_credentials();
+        if (!$credentialValidation['success']) {
+            return $credentialValidation;
         }
 
         $client = $this->clientFactory->getInstallationClient(true);
         if (!$client) {
-            return [
-                'success' => false,
-                'message' => __('Unable to authenticate with GitHub.', 'wp2-update'),
-            ];
+            return ['success' => false, 'message' => __('Unable to authenticate with GitHub.', 'wp2-update')];
         }
 
         try {
             $client->apps()->listRepositories();
         } catch (ExceptionInterface $e) {
             \WP2\Update\Utils\Logger::log('ERROR', 'GitHub connection test failed: ' . $e->getMessage());
-            return [
-                'success' => false,
-                'message' => __('An error occurred while testing the connection.', 'wp2-update'),
-            ];
+            return ['success' => false, 'message' => __('An error occurred while testing the connection.', 'wp2-update')];
         }
 
-        return [
-            'success' => true,
-            'message' => __('Connection to GitHub succeeded.', 'wp2-update'),
-        ];
+        return ['success' => true, 'message' => __('Connection to GitHub succeeded.', 'wp2-update')];
     }
 
     /**
@@ -81,8 +95,15 @@ class ConnectionService
         ];
 
         try {
-            // Step 1: Mint JWT
+            $credentialValidation = $this->validate_credentials();
+            if (!$credentialValidation['success']) {
+                \WP2\Update\Utils\Logger::log('ERROR', $credentialValidation['message']);
+                return ['success' => false, 'steps' => $steps, 'error' => $credentialValidation['message']];
+            }
+
             $credentials = $this->credentialService->get_stored_credentials();
+
+            // Step 1: Mint JWT
             $jwt = $this->clientFactory->createJwt($credentials['app_id'], $credentials['private_key']);
             if (!$jwt) {
                 \WP2\Update\Utils\Logger::log('ERROR', 'Failed to mint JWT.');
@@ -91,22 +112,17 @@ class ConnectionService
             $steps[0]['status'] = 'success';
 
             // Step 2: Check App ID
-            if (empty($credentials['app_id'])) {
-                \WP2\Update\Utils\Logger::log('ERROR', 'App ID is missing in stored credentials.');
-                $steps[1]['status'] = 'error';
-                return ['success' => false, 'steps' => $steps, 'error' => __('App ID is missing in stored credentials.', 'wp2-update')];
-            }
             $steps[1]['status'] = 'success';
 
             // Step 3: Verify Installation ID
-            if (empty($credentials['installation_id'])) {
-                \WP2\Update\Utils\Logger::log('ERROR', 'Installation ID is missing in stored credentials.');
-                $steps[2]['status'] = 'error';
-                return ['success' => false, 'steps' => $steps, 'error' => __('Installation ID is missing in stored credentials.', 'wp2-update')];
-            }
             $steps[2]['status'] = 'success';
 
-            // Step 4: Test webhook delivery (placeholder)
+            // Step 4: Test webhook delivery
+            if (!$this->test_webhook()) {
+                \WP2\Update\Utils\Logger::log('ERROR', 'Webhook delivery test failed. Transient not cleared.');
+                $steps[3]['status'] = 'error';
+                return ['success' => false, 'steps' => $steps, 'error' => __('Webhook delivery test failed. Please check your webhook configuration.', 'wp2-update')];
+            }
             $steps[3]['status'] = 'success';
         } catch (\Exception $e) {
             \WP2\Update\Utils\Logger::log('ERROR', 'Exception during connection validation: ' . $e->getMessage());

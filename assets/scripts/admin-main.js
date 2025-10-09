@@ -21,7 +21,7 @@ const actions = {
 				try {
 					show_global_spinner();
 					await api_request('github/disconnect');
-					app_state.set({ ...app_state.get(), currentStage: 'pre-connection', packages: [] });
+					app_state.set({ ...app_state.get(), currentStage: 'disconnected', packages: [] });
 					toast('Disconnected successfully.');
 				} catch (error) {
 					toast(error.message, 'error');
@@ -47,13 +47,14 @@ const actions = {
 	}, 500),
 	'update-package': async (button) => {
 		const repo = button?.dataset.packageRepo;
+		const type = button?.dataset.packageType; // Added package type
 		const version = document.querySelector(`select[data-package-repo="${repo}"]`)?.value;
-		if (!repo || !version) return;
+		if (!repo || !version || !type) return;
 
 		confirm_modal(`Update ${repo} to ${version}?`, async () => {
 			try {
 				show_global_spinner();
-				await api_request('manage-packages', { body: { repo_slug: repo, version, action: 'update' } });
+				await api_request('manage-packages', { body: { repo_slug: repo, version, action: 'update', type: type } }); // Pass type to API
 				toast(`Update initiated for ${repo}.`);
 			} catch (error) {
 				toast(error.message, 'error');
@@ -78,7 +79,10 @@ const actions = {
                     manifest: draft.manifestJson,
                 }
             });
-            
+
+            // Transition to 'connecting-to-github' before submitting the form
+            app_state.set({ ...app_state.get(), currentStage: 'connecting-to-github' });
+
             const manifestForm = document.createElement('form');
             manifestForm.action = `${payload.account}?state=${encodeURIComponent(payload.state)}`;
             manifestForm.method = 'post';
@@ -99,9 +103,6 @@ const actions = {
             button.disabled = false;
         }
     },
-    'cancel-manifest-config': () => {
-        app_state.set({ ...app_state.get(), currentStage: 'pre-connection' });
-    }
 };
 
 // --- GitHub Callback Handler ---
@@ -109,7 +110,7 @@ const actions = {
 const handleGitHubCallback = () => {
 	const container = document.getElementById('wp2-update-github-callback');
 	if (!container) return;
-	
+
     const notice = (message, isError = false) => {
         container.innerHTML = `<div class="notice ${isError ? 'notice-error' : 'notice-success'}"><p>${message}</p></div>`;
     };
@@ -130,6 +131,7 @@ const handleGitHubCallback = () => {
 			await api_request('github/exchange-code', { body: { code, state } });
 			notice('Connection successful! You can close this window.');
             if (window.opener) {
+                // Post message to the opener window to trigger the next steps (sync packages)
                 window.opener.postMessage('wp2-update-github-connected', window.location.origin);
             }
 		} catch (error) {
@@ -141,50 +143,89 @@ const handleGitHubCallback = () => {
 // --- App Initialization ---
 
 const init_app = () => {
-	document.addEventListener('click', (e) => {
-		const button = e.target.closest('button[data-action]');
-		if (button?.dataset.action && actions[button.dataset.action]) {
-			e.preventDefault();
-			actions[button.dataset.action](button);
-		}
-	});
+    try {
+        console.log('Initializing app...');
 
-    const manifestForm = document.getElementById('manifest-config-form');
-    if(manifestForm){
-        manifestForm.addEventListener('input', (e) => {
-            const draft = { ...app_state.get().manifestDraft };
-            const { name, value } = e.target;
-            if(name === 'app-name') draft.name = value;
-            if(name === 'account-type') draft.accountType = value;
-            if(name === 'organization') draft.organization = value;
-            if(name === 'manifest-json') draft.manifestJson = value;
-            app_state.set({ ...app_state.get(), manifestDraft: draft });
-        });
-    }
-
-    window.addEventListener('message', (event) => {
-        if (event.data === 'wp2-update-github-connected') {
-            toast('GitHub App connected successfully!');
-            actions['sync-packages']();
+        // Debugging: Verify app_state initialization
+        if (!app_state || typeof app_state.get !== 'function') {
+            throw new Error('app_state is not initialized or does not have a get() method.');
         }
-    });
 
-	app_state.listen((state) => {
-		render_view(state.currentStage);
-		render_package_table(state.packages, state.isLoading, state.syncError);
-        render_configure_manifest(state.manifestDraft);
-	});
+        const initialState = app_state.get();
+        console.log('Initial App State:', initialState);
 
-    // Initial render
-    const initialState = app_state.get();
-    render_view(initialState.currentStage);
-    render_package_table(initialState.packages, initialState.isLoading, initialState.syncError);
-    render_configure_manifest(initialState.manifestDraft);
+        document.addEventListener('click', (e) => {
+            const button = e.target.closest('button[data-action]');
+            if (button?.dataset.action && actions[button.dataset.action]) {
+                e.preventDefault();
+                actions[button.dataset.action](button);
+            }
+        });
 
-	// Handle callback page separately
-	if (document.getElementById('wp2-update-github-callback')) {
-		handleGitHubCallback();
-	}
+        const manifestForm = document.getElementById('manifest-config-form');
+        if (manifestForm) {
+            manifestForm.addEventListener('input', debounce((e) => {
+                const draft = { ...app_state.get().manifestDraft };
+                const { name, value } = e.target;
+                if (name === 'app-name') draft.name = value;
+                if (name === 'app-type') draft.accountType = value;
+                if (name === 'organization') draft.organization = value;
+                if (name === 'manifest-json') draft.manifestJson = value;
+                app_state.set({ ...app_state.get(), manifestDraft: draft });
+            }, 300));
+        }
+
+        window.addEventListener('message', (event) => {
+            if (event.data === 'wp2-update-github-connected') {
+                toast('GitHub App connected successfully!');
+                actions['sync-packages']();
+            }
+        });
+
+        app_state.listen((state) => {
+            console.log('App state updated:', state);
+            render_view(state.currentStage);
+            render_package_table(state.packages, state.isLoading, state.syncError);
+            render_configure_manifest(state.manifestDraft);
+        });
+
+        // Initial render
+        render_view(initialState.currentStage);
+        render_package_table(initialState.packages, initialState.isLoading, initialState.syncError);
+        render_configure_manifest(initialState.manifestDraft);
+
+        // Handle callback page separately
+        if (document.getElementById('wp2-update-github-callback')) {
+            handleGitHubCallback();
+        }
+    } catch (error) {
+        console.error('Error initializing app:', error);
+    }
 };
 
-document.addEventListener('DOMContentLoaded', init_app);
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        show_global_spinner();
+        const connectionStatus = await api_request('connection-status', { method: 'GET' });
+
+        if (connectionStatus?.connected) {
+            app_state.set({ ...app_state.get(), currentStage: 'managing' });
+        } else {
+            app_state.set({ ...app_state.get(), currentStage: 'configure-manifest' });
+        }
+    } catch (error) {
+        console.error('Failed to fetch connection status:', error);
+        app_state.set({ ...app_state.get(), currentStage: 'configure-manifest' });
+    } finally {
+        hide_global_spinner();
+        init_app();
+    }
+});
+
+const appTypeSelect = document.querySelector('#app-type');
+const orgNameRow = document.querySelector('#org-name-row');
+if (appTypeSelect && orgNameRow) {
+    appTypeSelect.addEventListener('change', (event) => {
+        orgNameRow.style.display = event.target.value === 'organization' ? 'block' : 'none';
+    });
+}

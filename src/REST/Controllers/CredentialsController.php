@@ -58,7 +58,6 @@ final class CredentialsController {
     }
 
     public function rest_disconnect(WP_REST_Request $request): WP_REST_Response {
-        $this->credentialService->clear_stored_credentials();
         $this->credentialService->clear_credentials();
 
         do_action('wp2_update_credentials_disconnected');

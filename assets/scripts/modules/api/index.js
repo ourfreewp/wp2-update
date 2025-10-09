@@ -30,12 +30,31 @@ const refresh_nonce = async () => {
     const data = await res.json();
     current_nonce = data.nonce;
     console.log('Nonce refreshed successfully');
-};
+};update 
 
 /**
- * @param {string} endpoint
- * @param {RequestInit & {body?: any}} [options]
- * @param {number} [retries=3]
+ * Handles API requests with automatic nonce refresh.
+ *
+ * This function attempts to make an API request to the specified endpoint. If the request fails due to an invalid nonce,
+ * it will automatically refresh the nonce and retry the request up to three times.
+ *
+ * @param {string} endpoint - The API endpoint to call.
+ * @param {RequestInit & {body?: any}} [options] - Additional options for the fetch request, such as method, headers, and body.
+ * @param {number} [retries=3] - The number of retry attempts in case of a nonce-related failure.
+ *
+ * @returns {Promise<any>} - The JSON-parsed response from the API.
+ *
+ * @throws {Error} - Throws an error if all retry attempts fail or if the API returns an error.
+ *
+ * @example
+ * ```js
+ * try {
+ *   const data = await api_request('example-endpoint', { method: 'POST', body: { key: 'value' } });
+ *   console.log('API response:', data);
+ * } catch (error) {
+ *   console.error('API request failed:', error);
+ * }
+ * ```
  */
 export const api_request = async (endpoint, options = {}, retries = 3) => {
 	for (let attempt = 0; attempt < retries; attempt++) {

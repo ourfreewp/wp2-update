@@ -152,19 +152,13 @@ class ReleaseService
 
             [$owner, $repo] = $parts;
 
-            $url = sprintf('https://api.github.com/repos/%s/%s/releases/tags/%s', $owner, $repo, $version);
-            $releaseData = HttpClient::get($url, [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $this->clientFactory->getInstallationToken(),
-                    'Accept'        => 'application/vnd.github.v3+json',
-                ],
-            ]);
-
-            if ($releaseData === null) {
-                throw new \RuntimeException('Failed to fetch release data.');
+            $allReleases = $this->get_all_releases($owner, $repo);
+            foreach ($allReleases as $release) {
+                if ($release['tag_name'] === $version) {
+                    return $release;
+                }
             }
-
-            return $releaseData;
+            return null;
         } catch (\Exception $e) {
             Logger::log('ERROR', 'Error fetching release by version: ' . $e->getMessage());
             return null;
@@ -195,58 +189,92 @@ class ReleaseService
 
         return null;
     }
-
     /**
      * Retrieves the previous version of a package.
      *
-     * @param string $package The package name.
+     * @param string $repoSlug The repository slug (e.g., owner/repo).
      * @param string $currentVersion The current version of the package.
      * @return array|null The previous release data, or null if not found.
      */
-    public function get_previous_version(string $package, string $currentVersion): ?array
+    public function get_previous_version(string $repoSlug, string $currentVersion): ?array
     {
-        $token = $this->clientFactory->getInstallationToken(); // Directly use GitHubClientFactory
-        if (!$token) {
-            return null;
-        }
-
-        $parts = explode('/', $package);
-        if (count($parts) !== 2) {
-            return null;
-        }
-
-        [$owner, $repo] = $parts;
-        $url = sprintf('https://api.github.com/repos/%s/%s/releases?per_page=20', $owner, $repo);
-        $releases = HttpClient::get($url, [
-            'headers' => [
-                'Authorization' => 'Bearer ' . $token,
-                'Accept'        => 'application/vnd.github.v3+json',
-            ],
-        ]);
-
-        if (!is_array($releases)) {
-            return null;
-        }
-
-        $currentNormalized = ltrim((string) $currentVersion, 'v');
-        $foundCurrent = false;
-
-        foreach ($releases as $release) {
-            if (!is_array($release) || !empty($release['draft'])) {
-                continue;
+        try {
+            $parts = explode('/', $repoSlug);
+            if (count($parts) !== 2) {
+                throw new \InvalidArgumentException('Invalid repository slug.');
             }
 
-            $tag = isset($release['tag_name']) ? ltrim((string) $release['tag_name'], 'v') : '';
+            [$owner, $repo] = $parts;
+            $allReleases = $this->get_all_releases($owner, $repo);
 
-            if ($foundCurrent) {
-                return $release;
+            if (!is_array($allReleases)) {
+                return null;
             }
 
-            if ($tag === $currentNormalized) {
-                $foundCurrent = true;
+            $currentNormalized = ltrim((string) $currentVersion, 'v');
+            $previousRelease = null;
+
+            foreach ($allReleases as $release) {
+                if (!is_array($release) || !empty($release['draft'])) {
+                    continue;
+                }
+
+                $tag = isset($release['tag_name']) ? ltrim((string) $release['tag_name'], 'v') : '';
+
+                if (version_compare($tag, $currentNormalized, '<')) {
+                    $previousRelease = $release;
+                    break;
+                }
             }
+
+            return $previousRelease;
+        } catch (\Exception $e) {
+            Logger::log('ERROR', 'Error fetching previous version: ' . $e->getMessage());
+            return null;
         }
-
-        return null;
     }
+
+    /**
+     * Fetches all releases for a repository and caches them.
+     *
+     * @param string $owner The repository owner.
+     * @param string $repo The repository name.
+     * @return array|null The list of releases, or null on failure.
+     */
+    public function get_all_releases(string $owner, string $repo): ?array
+    {
+        $transientKey = sprintf(Config::TRANSIENT_ALL_RELEASES, $owner, $repo);
+        $cachedReleases = get_transient($transientKey);
+
+        if ($cachedReleases !== false) {
+            return $cachedReleases;
+        }
+
+        try {
+            $token = $this->clientFactory->getInstallationToken();
+            if (!$token) {
+                throw new \RuntimeException('Failed to generate GitHub installation token.');
+            }
+
+            $url = "https://api.github.com/repos/{$owner}/{$repo}/releases";
+            $releasesData = HttpClient::get($url, [
+                'headers' => [
+                    'Authorization' => "Bearer {$token}",
+                    'Accept'        => 'application/vnd.github.v3+json',
+                ],
+            ]);
+
+            if ($releasesData === null) {
+                throw new \RuntimeException('Failed to fetch releases data.');
+            }
+
+            set_transient($transientKey, $releasesData, DAY_IN_SECONDS);
+            return $releasesData;
+        } catch (\Exception $e) {
+            Logger::log('ERROR', 'Error fetching all releases: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+   
 }
