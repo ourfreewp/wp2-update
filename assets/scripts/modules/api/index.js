@@ -15,10 +15,14 @@ const json_headers = () => ({
 });
 
 const refresh_nonce = async () => {
-	const res = await fetch(build_url('wp2-update/v1/refresh-nonce'), { method: 'GET' });
-	if (!res.ok) throw new Error('Failed to refresh nonce');
-	const data = await res.json();
-	current_nonce = data.nonce;
+    const res = await fetch(build_url('refresh-nonce'), { method: 'GET' });
+    if (!res.ok) {
+        console.error('Failed to refresh nonce');
+        throw new Error('Failed to refresh nonce');
+    }
+    const data = await res.json();
+    current_nonce = data.nonce;
+    console.log('Nonce refreshed successfully');
 };
 
 /**

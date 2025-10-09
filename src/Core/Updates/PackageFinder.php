@@ -56,6 +56,7 @@ class PackageFinder
                 'name'     => $plugin['Name'] ?? $slug,
                 'version'  => $plugin['Version'] ?? '0.0.0',
                 'type'     => 'plugin',
+                'app_slug' => sanitize_title($plugin['Name'] ?? $slug),
             ];
         }
 
@@ -92,6 +93,7 @@ class PackageFinder
                 'name'     => $theme->get('Name') ?: $slug,
                 'version'  => $theme->get('Version') ?: '0.0.0',
                 'type'     => 'theme',
+                'app_slug' => sanitize_title($theme->get('Name') ?: $slug),
             ];
         }
 

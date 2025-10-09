@@ -3,22 +3,21 @@
 namespace WP2\Update\Core\Updates;
 
 use WP2\Update\Core\API\ReleaseService;
+use WP2\Update\Core\API\GitHubClientFactory;
 use WP2\Update\Utils\SharedUtils;
 use WP_Error;
-use WP2\Update\Core\Config;
-use WP2\Update\Config as WP2Config;
 
 /**
  * Integrates theme updates with GitHub releases.
  */
 class ThemeUpdater extends AbstractUpdater
 {
-    private ReleaseService $releaseService;
-    private SharedUtils $utils;
+    protected ReleaseService $releaseService;
+    protected SharedUtils $utils;
 
-    public function __construct(PackageFinder $packages, ReleaseService $releaseService, SharedUtils $utils)
+    public function __construct(PackageFinder $packages, ReleaseService $releaseService, SharedUtils $utils, GitHubClientFactory $clientFactory)
     {
-        parent::__construct($packages, $releaseService, $utils);
+        parent::__construct($packages, $releaseService, $utils, $clientFactory);
     }
 
     protected function get_managed_items(): array

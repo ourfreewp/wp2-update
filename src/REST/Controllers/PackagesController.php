@@ -1,21 +1,11 @@
 <?php
 
-namespace WP2\Update\Rest\Controllers;
+namespace WP2\Update\REST\Controllers;
 
 use WP2\Update\Security\Permissions;
-use WP2\Update\Core\Updates\PackageFinder;
-use WP2\Update\Core\API\Service as GitHubService;
-use WP2\Update\Utils\SharedUtils;
 use WP_REST_Request;
 use WP_REST_Response;
-use InvalidArgumentException;
-use Exception;
-use WP2\Update\Core\API\GitHubClientFactory;
-use WP2\Update\Core\API\CredentialService;
 use WP2\Update\Core\Updates\PackageService;
-use WP2\Update\Core\API\RepositoryService;
-use WP2\Update\Core\API\ReleaseService;
-use WP2\Update\Core\API\GitHubApp\Init as GitHubAppInit;
 
 final class PackagesController {
     private PackageService $packageService;
@@ -71,5 +61,15 @@ final class PackagesController {
         }
 
         return new WP_REST_Response(['status' => $status], 200);
+    }
+
+    public function rest_get_packages(WP_REST_Request $request): WP_REST_Response {
+        $packages = $this->packageService->get_all_packages();
+
+        if (empty($packages)) {
+            return new WP_REST_Response(['message' => 'No packages found.'], 404);
+        }
+
+        return new WP_REST_Response(['packages' => $packages], 200);
     }
 }

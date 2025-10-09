@@ -3,8 +3,6 @@
 namespace WP2\Update;
 
 use WP2\Update\Admin\Init as AdminInit;
-use WP2\Update\Core\API\Service as GitHubService;
-use WP2\Update\Core\Updates\PackageFinder;
 use WP2\Update\Utils\SharedUtils;
 use WP2\Update\Core\API\CredentialService;
 use WP2\Update\Core\API\GitHubClientFactory;
@@ -12,6 +10,9 @@ use WP2\Update\Core\API\ReleaseService;
 use WP2\Update\Core\API\RepositoryService;
 use WP2\Update\Core\Updates\PackageService;
 use WP2\Update\Core\API\ConnectionService;
+use WP2\Update\Core\Updates\PluginUpdater;
+use WP2\Update\Core\Updates\ThemeUpdater;
+use WP2\Update\Core\Updates\PackageFinder;
 
 // Prevent multiple inclusions of this file.
 if (class_exists(__NAMESPACE__ . '\\Init', false)) {
@@ -47,6 +48,7 @@ final class Init
 
         // Initialize core components.
         add_action('init', [$this, 'initialize_components']);
+        add_action('init', [$this, 'initialize_updaters']);
     }
 
     /**
@@ -71,12 +73,12 @@ final class Init
         $packageService = new PackageService($repositoryService, $releaseService, $sharedUtils, $clientFactory);
 
         // Instantiate controllers with their dependencies
-        $credentialsController = new \WP2\Update\Rest\Controllers\CredentialsController($credentialService);
-        $connectionController = new \WP2\Update\Rest\Controllers\ConnectionController($connectionService);
-        $packagesController = new \WP2\Update\Rest\Controllers\PackagesController($packageService);
+        $credentialsController = new \WP2\Update\REST\Controllers\CredentialsController($credentialService);
+        $connectionController = new \WP2\Update\REST\Controllers\ConnectionController($connectionService);
+        $packagesController = new \WP2\Update\REST\Controllers\PackagesController($packageService);
 
         // Pass the controller instances to the router
-        $router = new \WP2\Update\Rest\Router($credentialsController, $connectionController, $packagesController);
+        $router = new \WP2\Update\REST\Router($credentialsController, $connectionController, $packagesController);
         $router->register_routes();
 
         // Initialize admin functionality.
@@ -84,5 +86,23 @@ final class Init
             $adminInit = new AdminInit($connectionService, $packageService);
             $adminInit->register_hooks();
         }
+    }
+
+    /**
+     * Initialize updaters for plugins and themes.
+     */
+    public function initialize_updaters(): void
+    {
+        $credentialService = new CredentialService();
+        $clientFactory = new GitHubClientFactory($credentialService);
+        $releaseService = new ReleaseService($clientFactory);
+        $sharedUtils = new SharedUtils();
+        $packageFinder = new PackageFinder();
+
+        $pluginUpdater = new PluginUpdater($packageFinder, $releaseService, $sharedUtils, $clientFactory);
+        $themeUpdater = new ThemeUpdater($packageFinder, $releaseService, $sharedUtils, $clientFactory);
+
+        $pluginUpdater->register_hooks();
+        $themeUpdater->register_hooks();
     }
 }

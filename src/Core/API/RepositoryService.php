@@ -31,13 +31,13 @@ class RepositoryService
         $cache_key = Config::TRANSIENT_REPOSITORIES_CACHE;
         $cached_repositories = get_transient($cache_key);
         if ($cached_repositories !== false) {
+            Logger::log('INFO', 'Returning cached repositories.');
             return $cached_repositories;
         }
 
         // Fetch repositories from GitHub
         $client = $this->clientFactory->getInstallationClient();
         if (!$client) {
-            // Log error if needed.
             Logger::log('ERROR', 'GitHub client not initialized in get_repositories.');
             return null;
         }
@@ -58,31 +58,12 @@ class RepositoryService
 
             // Cache the result for 1 hour
             set_transient($cache_key, $repositories, HOUR_IN_SECONDS);
+            Logger::log('INFO', 'Repositories cached successfully.');
 
             return $repositories;
         } catch (ExceptionInterface $e) {
             Logger::log('ERROR', 'Failed to fetch repositories: ' . $e->getMessage());
             return null;
-        }
-    }
-
-    /**
-     * Get user repositories.
-     *
-     * @return array
-     */
-    public function getUserRepositories(): array
-    {
-        try {
-            $client = $this->clientFactory->getInstallationClient();
-            if (!$client) {
-                throw new \RuntimeException('GitHub client not initialized.');
-            }
-
-            return $client->currentUser()->repositories();
-        } catch (\Exception $e) {
-            // Log error if needed.
-            return [];
         }
     }
 

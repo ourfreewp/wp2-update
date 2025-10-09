@@ -13,7 +13,10 @@ const t = {
 	update: __('Update', 'wp2-update'),
 };
 
-const err_badge = (msg) => `<span class="error-message">${escape_html(msg || 'An error occurred.')}</span>`;
+const err_badge = (msg) => {
+    const message = msg || __('An error occurred.', 'wp2-update');
+    return `<span class="error-message">${escape_html(message)}</span>`;
+};
 
 /**
  * @param {any} pkg

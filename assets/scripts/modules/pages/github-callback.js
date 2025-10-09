@@ -5,6 +5,7 @@
 
     if (!code) {
         console.error('GitHub callback: Missing code parameter.');
+        alert('Error: Missing code parameter in the URL. Please try again.');
         return;
     }
 
@@ -32,5 +33,6 @@
         })
         .catch((error) => {
             console.error('Error during GitHub callback handling:', error);
+            alert('An error occurred while processing the GitHub callback. Please try again later.');
         });
 })();

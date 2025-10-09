@@ -1,10 +1,10 @@
 <?php
 
-namespace WP2\Update\Rest;
+namespace WP2\Update\REST;
 
-use WP2\Update\Rest\Controllers\CredentialsController;
-use WP2\Update\Rest\Controllers\ConnectionController;
-use WP2\Update\Rest\Controllers\PackagesController;
+use WP2\Update\REST\Controllers\CredentialsController;
+use WP2\Update\REST\Controllers\ConnectionController;
+use WP2\Update\REST\Controllers\PackagesController;
 
 final class Router {
     private CredentialsController $credentialsController;
@@ -41,7 +41,7 @@ final class Router {
         ]);
 
         register_rest_route('wp2-update/v1', '/sync-packages', [
-            'methods'             => 'POST',
+            'methods'             => 'GET',
             'callback'            => [$this->packagesController, 'sync_packages'],
             'permission_callback' => [$this->packagesController, 'check_permissions'],
         ]);
@@ -68,6 +68,18 @@ final class Router {
             'methods'             => 'GET',
             'callback'            => [$this->packagesController, 'rest_get_package_status'],
             'permission_callback' => [$this->packagesController, 'check_permissions'],
+        ]);
+
+        register_rest_route('wp2-update/v1', '/health-status', [
+            'methods'             => 'GET',
+            'callback'            => [$this->connectionController, 'get_health_status'],
+            'permission_callback' => [$this->connectionController, 'check_permissions'],
+        ]);
+
+        register_rest_route('wp2-update/v1', '/github/disconnect', [
+            'methods'             => 'POST',
+            'callback'            => [$this->credentialsController, 'rest_disconnect'],
+            'permission_callback' => [$this->credentialsController, 'check_permissions'],
         ]);
     }
 }

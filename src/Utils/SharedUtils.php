@@ -6,10 +6,6 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-use WP2\Update\Init;
-use WP2\Update\Core\API\Service;
-
-
 /**
  * Small collection of helpers used across the trimmed plugin.
  */
@@ -58,5 +54,15 @@ final class SharedUtils
         }
 
         return null;
+    }
+
+    /**
+     * Logs an error message.
+     *
+     * @param string $message The error message to log.
+     */
+    public function log_error(string $message): void
+    {
+        error_log('[WP2 Update] ' . $message);
     }
 }

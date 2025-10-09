@@ -4,8 +4,7 @@ namespace WP2\Update\Admin\Menu;
 
 use WP2\Update\Core\API\ConnectionService;
 use WP2\Update\Core\Updates\PackageService;
-use WP2\Update\Admin\Pages\Manager as ScreensManager;
-use WP2\Update\Admin\Screens\ScreensManager as GitHubScreensManager;
+use WP2\Update\Admin\Screens\Manager as GitHubScreensManager;
 
 final class Manager {
     private ConnectionService $connectionService;
@@ -22,7 +21,7 @@ final class Manager {
             esc_html__('WP2 Updates', 'wp2-update'),
             'manage_options',
             'wp2-update',
-            [ScreensManager::class, 'render'],
+            [GitHubScreensManager::class, 'render'],
             'dashicons-cloud'
         );
 
@@ -32,7 +31,7 @@ final class Manager {
             esc_html__('GitHub Callback', 'wp2-update'),
             'manage_options',
             'wp2-update-github-callback',
-            [ScreensManager::class, 'render_github_callback']
+            [GitHubScreensManager::class, 'render_github_callback']
         );
     }
 }

@@ -3,6 +3,7 @@
 namespace WP2\Update\Core\Updates;
 
 use WP2\Update\Core\API\ReleaseService;
+use WP2\Update\Core\API\GitHubClientFactory;
 use WP2\Update\Utils\SharedUtils;
 
 abstract class AbstractUpdater
@@ -10,12 +11,14 @@ abstract class AbstractUpdater
     protected PackageFinder $packages;
     protected ReleaseService $releaseService;
     protected SharedUtils $utils;
+    protected GitHubClientFactory $clientFactory;
 
-    public function __construct(PackageFinder $packages, ReleaseService $releaseService, SharedUtils $utils)
+    public function __construct(PackageFinder $packages, ReleaseService $releaseService, SharedUtils $utils, GitHubClientFactory $clientFactory)
     {
         $this->packages       = $packages;
         $this->releaseService = $releaseService;
         $this->utils          = $utils;
+        $this->clientFactory  = $clientFactory;
     }
 
     abstract protected function get_managed_items(): array;
@@ -41,7 +44,15 @@ abstract class AbstractUpdater
             }
 
             [$owner, $repo] = $repoParts;
-            // Logic for injecting updates goes here.
+
+            $latestRelease = $this->releaseService->get_latest_release($owner, $repo);
+            if ($latestRelease && version_compare($latestRelease['tag_name'], $transient->checked[$slug], '>')) {
+                $transient->response[$slug] = [
+                    'new_version' => $latestRelease['tag_name'],
+                    'package'     => $latestRelease['zipball_url'],
+                    'slug'        => $slug,
+                ];
+            }
         }
 
         return $transient;
@@ -49,7 +60,13 @@ abstract class AbstractUpdater
 
     public function maybe_provide_authenticated_package($reply, string $package, $upgrader, array $hookExtra)
     {
-        // Logic for authenticated package download goes here.
-        return $reply;
+        if (strpos($package, 'github.com') !== false) {
+            $token = $this->clientFactory->getInstallationToken();
+            if ($token) {
+                $package = add_query_arg('access_token', $token, $package);
+            }
+        }
+
+        return $package;
     }
 }

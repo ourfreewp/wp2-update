@@ -62,9 +62,21 @@ class PackageService
                 throw new \RuntimeException('Release not found.');
             }
 
-            $zipUrl = $this->releaseService->get_zip_url_from_release($release);
-            if (!$zipUrl) {
-                throw new \RuntimeException('Download URL not found.');
+            if ($action === 'rollback') {
+                $previousVersion = $this->releaseService->get_previous_version($package, $version);
+                if (!$previousVersion) {
+                    throw new \RuntimeException('Previous version not found for rollback.');
+                }
+
+                $zipUrl = $this->releaseService->get_zip_url_from_release($previousVersion);
+                if (!$zipUrl) {
+                    throw new \RuntimeException('Download URL for rollback not found.');
+                }
+            } else {
+                $zipUrl = $this->releaseService->get_zip_url_from_release($release);
+                if (!$zipUrl) {
+                    throw new \RuntimeException('Download URL not found.');
+                }
             }
 
             $token = $this->clientFactory->getInstallationToken();
@@ -72,9 +84,9 @@ class PackageService
                 throw new \RuntimeException('Failed to retrieve authentication token.');
             }
 
-            $tempFile = $this->releaseService->download_to_temp_file($zipUrl, $token);
+            $tempFile = $this->download_package($zipUrl);
             if (!$tempFile) {
-                throw new \RuntimeException('Failed to download the package.');
+                throw new \RuntimeException('Failed to download package.');
             }
 
             $this->install_from_zip($tempFile, $type);
@@ -115,25 +127,46 @@ class PackageService
     }
 
     /**
-     * Get the status of a specific package by its repository slug.
+     * Fetches all packages managed by the plugin.
      *
-     * @param string $repoSlug The repository slug (e.g., owner/repo).
-     * @return array|null The package status or null if not found.
+     * @return array List of packages.
      */
-    public function get_package_status(string $repoSlug): ?array
+    public function get_all_packages(): array
     {
-        $managedPackages = $this->repositoryService->get_managed_repositories();
+        $repositories = $this->repositoryService->get_managed_repositories();
+        $packages = [];
 
-        foreach ($managedPackages as $package) {
-            if ($package['slug'] === $repoSlug) {
-                return [
-                    'name' => $package['name'],
-                    'version' => $package['version'],
-                    'last_updated' => $package['last_updated'],
-                ];
-            }
+        foreach ($repositories as $repo) {
+            $latestRelease = $this->releaseService->get_latest_release($repo['owner']['login'], $repo['name']);
+            $packages[] = [
+                'name' => $repo['name'],
+                'owner' => $repo['owner']['login'],
+                'latest_release' => $latestRelease,
+            ];
         }
 
-        return null;
+        return $packages;
+    }
+
+    /**
+     * Downloads a package to a temporary file.
+     *
+     * @param string $url The package URL.
+     * @return string|null The path to the downloaded file, or null on failure.
+     */
+    public function download_package(string $url): ?string
+    {
+        if (!function_exists('download_url')) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+        }
+
+        $tempFile = download_url($url);
+
+        if (is_wp_error($tempFile)) {
+            $this->utils->log_error('Failed to download package: ' . $tempFile->get_error_message());
+            return null;
+        }
+
+        return $tempFile;
     }
 }

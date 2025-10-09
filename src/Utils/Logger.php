@@ -18,14 +18,4 @@ class Logger
         $timestamp = date('Y-m-d H:i:s');
         error_log("[WP2 Update] [{$timestamp}] [{$level}] {$message}");
     }
-
-    /**
-     * Logs error messages with timestamps.
-     *
-     * @param string $message The error message.
-     */
-    public static function log_error(string $message): void
-    {
-        self::log('ERROR', $message);
-    }
 }

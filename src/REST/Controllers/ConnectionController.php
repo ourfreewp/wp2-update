@@ -1,6 +1,6 @@
 <?php
 
-namespace WP2\Update\Rest\Controllers;
+namespace WP2\Update\REST\Controllers;
 
 use WP2\Update\Core\API\ConnectionService;
 use WP2\Update\Security\Permissions;
@@ -34,6 +34,13 @@ final class ConnectionController {
             'success' => (bool) ($result['success'] ?? false),
             'message' => (string) ($result['message'] ?? ''),
             'details' => $result['details'] ?? [],
+        ], 200);
+    }
+
+    public function get_health_status(WP_REST_Request $request): WP_REST_Response {
+        return new WP_REST_Response([
+            'status' => 'healthy',
+            'timestamp' => time(),
         ], 200);
     }
 }

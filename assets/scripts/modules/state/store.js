@@ -48,12 +48,17 @@ const persist = (s) => {
 const restore = () => {
 	try {
 		const raw = sessionStorage.getItem('wp2-update:state');
+		console.log('Restored raw state:', raw); // Debugging
 		if (!raw) return;
 		const obj = JSON.parse(raw);
 		if (obj && typeof obj === 'object' && Array.isArray(obj.packages)) {
 			app_state.set({ ...app_state.get(), ...obj });
+		} else {
+			console.warn('Restored state is invalid. Using default state.');
 		}
-	} catch {}
+	} catch (error) {
+		console.error('Error restoring state:', error);
+	}
 };
 
 restore();

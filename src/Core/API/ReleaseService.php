@@ -3,6 +3,7 @@
 namespace WP2\Update\Core\API;
 
 use WP2\Update\Utils\Logger;
+use WP2\Update\Utils\HttpClient;
 use WP2\Update\Config;
 
 /**
@@ -40,26 +41,20 @@ class ReleaseService
             }
 
             $url = "https://api.github.com/repos/{$owner}/{$repo}/releases/latest";
-            $response = wp_remote_get($url, [
+            $releaseData = HttpClient::get($url, [
                 'headers' => [
                     'Authorization' => "Bearer {$token}",
                     'Accept'        => 'application/vnd.github.v3+json',
                 ],
             ]);
 
-            if (is_wp_error($response)) {
-                throw new \RuntimeException('GitHub API request failed: ' . wp_remote_retrieve_response_message($response));
-            }
-
-            $releaseData = json_decode(wp_remote_retrieve_body($response), true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \RuntimeException('Failed to decode GitHub API response.');
+            if ($releaseData === null) {
+                throw new \RuntimeException('Failed to fetch release data.');
             }
 
             set_transient($transientKey, $releaseData, HOUR_IN_SECONDS);
             return $releaseData;
         } catch (\Exception $e) {
-            // Log the error for debugging purposes.
             Logger::log('ERROR', 'Error fetching latest release: ' . $e->getMessage());
             return null;
         }
@@ -80,20 +75,20 @@ class ReleaseService
         }
 
         try {
-            $response = wp_remote_get($url, [
+            $response = HttpClient::get($url, [
                 'timeout' => 300, // Increase timeout for large files
                 'headers' => [
                     'Authorization' => 'Bearer ' . $token,
                 ],
             ]);
 
-            if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            if ($response === null) {
                 @unlink($tempFile);
                 Logger::log('ERROR', 'Failed to download package from ' . $url);
                 return null;
             }
 
-            file_put_contents($tempFile, wp_remote_retrieve_body($response));
+            file_put_contents($tempFile, $response);
             return $tempFile;
         } catch (\Throwable $e) {
             @unlink($tempFile);
@@ -115,20 +110,15 @@ class ReleaseService
             [$owner, $repo] = explode('/', $repoSlug);
 
             $url = sprintf('https://api.github.com/repos/%s/%s/releases/tags/%s', $owner, $repo, $version);
-            $response = wp_remote_get($url, [
+            $releaseData = HttpClient::get($url, [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $this->getInstallationToken(),
                     'Accept'        => 'application/vnd.github.v3+json',
                 ],
             ]);
 
-            if (is_wp_error($response)) {
-                throw new \RuntimeException('GitHub API request failed: ' . wp_remote_retrieve_response_message($response));
-            }
-
-            $releaseData = json_decode(wp_remote_retrieve_body($response), true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \RuntimeException('Failed to decode GitHub API response.');
+            if ($releaseData === null) {
+                throw new \RuntimeException('Failed to fetch release data.');
             }
 
             return $releaseData;
@@ -171,5 +161,19 @@ class ReleaseService
     public function getInstallationToken(): ?string
     {
         return $this->clientFactory->getInstallationToken();
+    }
+
+    /**
+     * Retrieves the previous version of a package.
+     *
+     * @param string $package The package name.
+     * @param string $currentVersion The current version of the package.
+     * @return array|null The previous release data, or null if not found.
+     */
+    public function get_previous_version(string $package, string $currentVersion): ?array
+    {
+        // Logic to fetch the previous version from GitHub or other source
+        // Placeholder implementation
+        return null;
     }
 }
