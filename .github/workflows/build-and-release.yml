@@ -13,102 +13,70 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  #====================================================
-  # JOB: Build, Tag, and Release
-  # This job handles the packaging and GitHub Release creation.
-  #====================================================
   build_and_release:
     name: Build and Release Plugin
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Required to create tags and releases
+      contents: write
 
     env:
-      PLUGIN_SLUG: "${{ vars.PLUGIN_SLUG }}"
-      MAIN_BRANCH: "${{ vars.MAIN_BRANCH }}"
-      MAIN_PLUGIN_FILE: "${{ vars.MAIN_PLUGIN_FILE }}" # e.g., 'my-plugin.php'
-      PHP_VERSION: "${{ vars.PHP_VERSION }}"
+      PLUGIN_SLUG: "${{ vars.PLUGIN_SLUG || 'wp2-update' }}"
+      MAIN_BRANCH: "${{ vars.MAIN_BRANCH || 'main' }}"
+      MAIN_PLUGIN_FILE: "${{ vars.MAIN_PLUGIN_FILE || 'wp2-update.php' }}"
+      PHP_VERSION: "${{ vars.PHP_VERSION || '8.3' }}"
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: "Debug: Print Plugin File Content"
-        id: debug_plugin_file
-        run: |
-          if [ -f "${{ env.MAIN_PLUGIN_FILE }}" ]; then
-            echo "Contents of ${{ env.MAIN_PLUGIN_FILE }}:"
-            cat "${{ env.MAIN_PLUGIN_FILE }}"
-          else
-            echo "File ${{ env.MAIN_PLUGIN_FILE }} does not exist."
-          fi
-
-      - name: Get Version from Plugin File
+      - name: Harden Version Step (Fail Fast)
         id: version
-        shell: bash
         run: |
           set -euo pipefail
-
-          FILE="${{ env.MAIN_PLUGIN_FILE }}"
-
-          if [ ! -f "$FILE" ]; then
-            echo "Error: File not found at path $FILE."
+          v=$(grep -iE '^[[:space:]]*\*?[[:space:]]*Version:' "${{ env.MAIN_PLUGIN_FILE }}" | sed -E 's/.*Version:[[:space:]]*//' | tr -d '\r' | head -n1)
+          if [ -z "${v:-}" ]; then
+            echo "❌ Could not determine plugin version from ${{ env.MAIN_PLUGIN_FILE }}" >&2
             exit 1
           fi
+          echo "version=${v}" >> "$GITHUB_OUTPUT"
 
-          echo "Debug: Printing the content of $FILE"
-          cat "$FILE"
-
-          # Normalize line endings to Unix-style
-          sed -i 's/\r$//' "$FILE"
-
-          # Extract version from WP plugin header (handles leading "* " in docblock)
-          RAW_VERSION=$(grep -im1 -E '^[[:space:]]*\**[[:space:]]*Version:[[:space:]]*' "$FILE" || true)
-          echo "Debug: Raw grep output: '$RAW_VERSION'"
-
-          VERSION=$(echo "$RAW_VERSION" | sed -E 's/^[[:space:]]*\**[[:space:]]*Version:[[:space:]]*//I')
-          echo "Debug: Processed version output: '$VERSION'"
-
-          # Trim all whitespace
-          VERSION=$(echo "$VERSION" | tr -d '[:space:]')
-
-          if [ -z "${VERSION:-}" ]; then
-            echo "Error: Version could not be determined from $FILE."
-            echo "Ensure the file contains a 'Version:' field in the plugin header."
-            exit 1
-          fi
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          
-      - name: Prepare Release Variables
+      - name: Make Artifact Names Immutable
         id: prep
         run: |
+          set -euo pipefail
           BASE_VERSION="${{ steps.version.outputs.version }}"
           BRANCH_NAME="${{ github.ref_name }}"
-          
           if [[ "$BRANCH_NAME" == "${{ env.MAIN_BRANCH }}" ]]; then
             echo "IS_PRERELEASE=false" >> "$GITHUB_OUTPUT"
             echo "RELEASE_TAG=v${BASE_VERSION}" >> "$GITHUB_OUTPUT"
             echo "RELEASE_NAME=Release ${BASE_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "PKG_NAME=${{ env.PLUGIN_SLUG }}-${BASE_VERSION}.zip" >> "$GITHUB_OUTPUT"
           else
             SUFFIX=$(echo "$BRANCH_NAME" | tr ' /' '--')
             echo "IS_PRERELEASE=true" >> "$GITHUB_OUTPUT"
             echo "RELEASE_TAG=v${BASE_VERSION}-${SUFFIX}" >> "$GITHUB_OUTPUT"
             echo "RELEASE_NAME=Pre-release ${BASE_VERSION} (${BRANCH_NAME})" >> "$GITHUB_OUTPUT"
+            echo "PKG_NAME=${{ env.PLUGIN_SLUG }}-${BASE_VERSION}-${SUFFIX}.zip" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check if Release Already Exists
         id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view ${{ steps.prep.outputs.RELEASE_TAG }} >/dev/null 2>&1; then
+          if gh release view "${{ steps.prep.outputs.RELEASE_TAG }}" >/dev/null 2>&1; then
             echo "Release ${{ steps.prep.outputs.RELEASE_TAG }} already exists."
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "Release ${{ steps.prep.outputs.RELEASE_TAG }} does not exist. Proceeding."
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure gh and jq are Present
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          command -v gh >/dev/null || { sudo apt-get update && sudo apt-get install -y gh; }
+          command -v jq >/dev/null || { sudo apt-get update && sudo apt-get install -y jq; }
 
       - name: Set up PHP
         if: steps.check_release.outputs.exists == 'false'
@@ -116,57 +84,95 @@ jobs:
         with:
           php-version: ${{ env.PHP_VERSION }}
 
-      - name: Cache and Install Composer Dependencies
+      - name: Install Composer Dependencies (Guarded and Optimized)
+        if: steps.check_release.outputs.exists == 'false' && hashFiles('**/composer.json') != ''
+        run: |
+          composer install --no-dev --prefer-dist --no-progress --no-interaction --optimize-autoloader
+
+      - name: Quality Gate: PHP Syntax Check
         if: steps.check_release.outputs.exists == 'false'
         run: |
-          if [ -f composer.json ]; then
-            composer install --no-dev --prefer-dist --no-progress
-          else
-            echo "composer.json not found, skipping dependency installation."
+          set -euo pipefail
+          find . -type f -name '*.php' -print0 | xargs -0 -n1 -P4 php -l
+
+      - name: Quality Gate: WordPress Coding Standards (Optional)
+        if: steps.check_release.outputs.exists == 'false' && hashFiles('**/composer.json') != ''
+        run: |
+          if [ -x vendor/bin/phpcs ]; then
+            vendor/bin/phpcs --standard=WordPress --extensions=php -s src/ || true
           fi
 
-      - name: Install Node.js Dependencies
-        if: steps.check_release.outputs.exists == 'false'
-        run: |
-          npm install
+      - name: Setup Node.js (Guarded)
+        if: steps.check_release.outputs.exists == 'false' && hashFiles('**/package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            **/package-lock.json
+            **/npm-shrinkwrap.json
+      
+      - name: Install Node.js Dependencies (Guarded)
+        if: steps.check_release.outputs.exists == 'false' && hashFiles('**/package.json') != ''
+        run: npm ci
 
-      - name: Build Assets
-        if: steps.check_release.outputs.exists == 'false'
-        run: |
-          npx vite build
+      - name: Build Assets (Guarded)
+        if: steps.check_release.outputs.exists == 'false' && hashFiles('**/package.json') != ''
+        run: npm run build
 
-      - name: Build Plugin Package
+      - name: Build Plugin Package (Using .distignore)
         if: steps.check_release.outputs.exists == 'false'
         id: package
         run: |
-          PACKAGE_NAME="${{ env.PLUGIN_SLUG }}.zip"
-          STAGING_DIR="staging"
-          mkdir -p "${STAGING_DIR}"
-          rsync -av --checksum . "${STAGING_DIR}/" --exclude=".git" --exclude=".github" --exclude="node_modules" --exclude="${STAGING_DIR}" --exclude=".gitignore" --exclude="README.md" --exclude="*.zip"
-          cd "${STAGING_DIR}"
-          zip -r "../${PACKAGE_NAME}" .
-          cd ..
-          echo "PACKAGE_PATH=${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          STAGING_DIR="staging/${{ env.PLUGIN_SLUG }}"
+          mkdir -p "$STAGING_DIR"
 
-      - name: Compute ZIP checksum and size
-        if: steps.check_release.outputs.exists == 'false'
-        id: zipmeta
-        run: |
-          ZIP_PATH="${{ steps.package.outputs.PACKAGE_PATH }}"
-          CHECKSUM=$(sha256sum "$ZIP_PATH" | awk '{print $1}')
-          SIZE=$(stat -c %s "$ZIP_PATH")
-          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          # Use rsync with --exclude-from to read patterns from .distignore.
+          # This is much more maintainable than a hardcoded list.
+          rsync -av --delete --exclude-from='.distignore' ./ "$STAGING_DIR/"
 
-      - name: Create Update JSON
+          # Create the zip file from the clean staging directory.
+          pushd staging >/dev/null
+          zip -r "../${{ steps.prep.outputs.PKG_NAME }}" "${{ env.PLUGIN_SLUG }}/"
+          popd >/dev/null
+
+          echo "PACKAGE_PATH=${{ steps.prep.outputs.PKG_NAME }}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SHA256 Checksum
+        if: steps.check_release.outputs.exists == 'false'
+        id: shasum
+        run: |
+          shasum -a 256 "${{ steps.package.outputs.PACKAGE_PATH }}" | awk '{print $1}' > "${{ steps.package.outputs.PACKAGE_PATH }}.sha256"
+          echo "SHA256=$(cat "${{ steps.package.outputs.PACKAGE_PATH }}.sha256")" >> "$GITHUB_OUTPUT"
+
+      - name: Create Robust update.json
         if: steps.check_release.outputs.exists == 'false'
         run: |
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.prep.outputs.RELEASE_TAG }}/${{ steps.package.outputs.PACKAGE_PATH }}"
+          set -euo pipefail
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.prep.outputs.RELEASE_TAG }}/${{ steps.prep.outputs.PKG_NAME }}"
           jq -n \
-            --arg new_version "${{ steps.version.outputs.version }}" \
+            --arg version "${{ steps.version.outputs.version }}" \
             --arg slug "${{ env.PLUGIN_SLUG }}" \
             --arg package "$DOWNLOAD_URL" \
-            '{ "new_version": $new_version, "slug": $slug, "package": $package }' > update.json
+            --arg checksum "${{ steps.shasum.outputs.SHA256 }}" \
+            '{
+              "version": $version,
+              "new_version": $version,
+              "slug": $slug,
+              "package": $package,
+              "checksum": $checksum
+            }' > update.json
+
+      - name: Upload Package as Workflow Artifact for Debugging
+        if: steps.check_release.outputs.exists == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prep.outputs.PKG_NAME }}
+          path: |
+            ${{ steps.package.outputs.PACKAGE_PATH }}
+            ${{ steps.package.outputs.PACKAGE_PATH }}.sha256
+            update.json
 
       - name: Create GitHub Release
         if: steps.check_release.outputs.exists == 'false'
@@ -177,4 +183,6 @@ jobs:
           prerelease: ${{ steps.prep.outputs.IS_PRERELEASE }}
           files: |
             ${{ steps.package.outputs.PACKAGE_PATH }}
+            ${{ steps.package.outputs.PACKAGE_PATH }}.sha256
             update.json
+
