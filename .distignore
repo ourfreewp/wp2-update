@@ -7,7 +7,6 @@ tests/
 .git/
 composer.lock
 package-lock.json
-.vite/
 .env
 *.log
 
