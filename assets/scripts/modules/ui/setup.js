@@ -3,11 +3,11 @@ import { computePosition, offset, flip, shift } from '@floating-ui/dom';
 
 export const init_ui = () => {
 	// Tabs
-	if (document.querySelector('[data-tabs]')) new Tabby('[data-tabs]');
+	if (document.querySelector('[data-wp2-tabs]')) new Tabby('[data-wp2-tabs]');
 
 	// Tooltip
-	const trigger = document.getElementById('webhook-tooltip-trigger');
-	const tooltip = document.getElementById('webhook-tooltip');
+	const trigger = document.getElementById('wp2-webhook-tooltip-trigger');
+	const tooltip = document.getElementById('wp2-webhook-tooltip');
 	if (trigger && tooltip) {
 		const position = () => computePosition(trigger, tooltip, {
 			placement: 'top', middleware: [offset(8), flip(), shift({ padding: 5 })],

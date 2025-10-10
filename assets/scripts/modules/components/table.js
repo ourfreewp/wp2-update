@@ -1,4 +1,5 @@
 import { app_state } from '../state/store.js';
+import semver from 'semver';
 
 const { __ } = wp.i18n;
 
@@ -26,65 +27,75 @@ const normalize_version = (version) => {
 };
 
 const versionCompare = (v1, v2, operator) => {
-    const parse = (v) => v.split('.').map(Number);
-    const [a, b] = [parse(normalize_version(v1)), parse(normalize_version(v2))];
-
-    for (let i = 0; i < Math.max(a.length, b.length); i++) {
-        const [x, y] = [a[i] || 0, b[i] || 0];
-        if (x !== y) {
-            return operator === '>' ? x > y : x < y;
-        }
+    if (!semver.valid(v1) || !semver.valid(v2)) {
+        return false;
     }
-    return false;
+
+    switch (operator) {
+        case '>':
+            return semver.gt(v1, v2);
+        case '<':
+            return semver.lt(v1, v2);
+        case '==':
+            return semver.eq(v1, v2);
+        default:
+            return false;
+    }
 };
 
 /**
  * @param {any} pkg
  */
 const row_html = (pkg) => {
-	const isUpdating = pkg.status === 'updating';
-	const isError = pkg.status === 'error';
-	const releases = Array.isArray(pkg.releases) ? pkg.releases : [];
-	if (!releases.length && pkg.latest_release) {
-		releases.push(pkg.latest_release);
-	}
-	const hasReleases = releases.length > 0;
+    const isUpdating = pkg.status === 'updating';
+    const isError = pkg.status === 'error';
+    const releases = Array.isArray(pkg.releases) ? pkg.releases : [];
+    if (!releases.length && pkg.latest_release) {
+        releases.push(pkg.latest_release);
+    }
+    const hasReleases = releases.length > 0;
 
-	const installedVersion = pkg.installed || '';
-	const selectedVersion = releases[0]?.tag_name || '';
-	const actionLabel = versionCompare(installedVersion, selectedVersion, '>')
-		? __('Rollback', 'wp2-update')
-		: (pkg.installed ? __('Update', 'wp2-update') : __('Install', 'wp2-update'));
+    const installedVersion = pkg.installed || '';
+    const selectedVersion = releases[0]?.tag_name || '';
+    const actionLabel = versionCompare(installedVersion, selectedVersion, '>')
+        ? __('Rollback', 'wp2-update')
+        : (pkg.installed ? __('Update', 'wp2-update') : __('Install', 'wp2-update'));
 
-	return `
-<tr id="package-row-${escape_html(pkg.repo.replace('/', '-'))}" class="${isUpdating ? 'updating' : ''} ${isError ? 'error' : ''}">
-	<td class="package-name">
-		<strong>${escape_html(pkg.name)}</strong><br>
-		<a href="https://github.com/${escape_html(pkg.repo)}" target="_blank" rel="noopener noreferrer">${escape_html(pkg.repo)}</a>
-	</td>
-	<td class="package-version">
-		${pkg.installed ? `v${escape_html(pkg.installed)}` : `<span class="description">${t.notInstalled}</span>`}
-	</td>
-	<td class="package-releases">
-		${!hasReleases
-			? `<span class="description">${t.noReleasesFound}</span>`
-			: `<select class="release-dropdown" data-package-repo="${escape_html(pkg.repo)}" ${isUpdating ? 'disabled' : ''}>
-				${releases.map(rel => {
-					const rawTag = rel?.tag_name || '';
-					const tag = escape_html(rawTag);
-					const rawLabel = rel?.name || rawTag || '';
-					const label = rawLabel ? escape_html(rawLabel) : t.noReleasesFound;
-					const suffix = rel?.prerelease ? ` ${escape_html(__('(Pre-release)', 'wp2-update'))}` : '';
-					return `<option value="${tag}">${label}${suffix}</option>`;
-				}).join('')}
-			  </select>`}
-	</td>
-	<td class="package-actions">
-		${isError
-			? err_badge(pkg.errorMessage)
-			: `<button class="button button-primary" data-action="update-package" data-package-repo="${escape_html(pkg.repo)}" data-package-type="${escape_html(pkg.type || '')}" ${isUpdating ? 'disabled' : ''}>${actionLabel}</button>`}
-	</td>
-</tr>`;
+    const actionType = versionCompare(installedVersion, selectedVersion, '>')
+        ? 'rollbackPackage'
+        : (pkg.installed ? 'updatePackage' : 'installPackage');
+
+    return `
+        <tr class="wp2-table-row">
+            <td class="wp2-table-cell wp2-package-name" data-label="${__('Package', 'wp2-update')}">
+                <strong>${escape_html(pkg.name)}</strong><br>
+                <a href="https://github.com/${escape_html(pkg.repo)}" target="_blank" rel="noopener noreferrer">${escape_html(pkg.repo)}</a>
+            </td>
+            <td class="wp2-table-cell wp2-package-version" data-label="${__('Installed', 'wp2-update')}">
+                ${pkg.installed ? `v${escape_html(pkg.installed)}` : `<span class="wp2-text-subtle">${t.notInstalled}</span>`}
+            </td>
+            <td class="wp2-table-cell wp2-package-releases" data-label="${__('Available Version', 'wp2-update')}">
+                ${!hasReleases
+                    ? `<span class="wp2-text-subtle">${t.noReleasesFound}</span>`
+                    : `<select class="wp2-select wp2-release-dropdown" data-package-repo="${escape_html(pkg.repo)}" ${isUpdating ? 'disabled' : ''}>
+                        ${releases.map(rel => {
+                            const rawTag = rel?.tag_name || '';
+                            const tag = escape_html(rawTag);
+                            const rawLabel = rel?.name || rawTag || '';
+                            const label = rawLabel ? escape_html(rawLabel) : t.noReleasesFound;
+                            const suffix = rel?.prerelease ? ` ${escape_html(__('(Pre-release)', 'wp2-update'))}` : '';
+                            return `<option value="${tag}">${label}${suffix}</option>`;
+                        }).join('')}
+                      </select>`}
+            </td>
+            <td class="wp2-table-cell wp2-package-actions" data-label="${__('Actions', 'wp2-update')}">
+                <button class="wp2-button wp2-button-primary" data-wp2-action="${actionType}" data-package-repo="${escape_html(pkg.repo)}" ${isUpdating ? 'disabled' : ''}>
+                    ${isUpdating ? `<span class="wp2-spinner"></span>` : escape_html(actionLabel)}
+                </button>
+                ${isError ? err_badge(pkg.error) : ''}
+            </td>
+        </tr>
+    `;
 };
 
 /**
@@ -92,16 +103,16 @@ const row_html = (pkg) => {
  * @param {boolean} isLoading
  */
 export const render_package_table = (packages, isLoading) => {
-	const tbody = document.querySelector('#wp2-package-table tbody');
+	const tbody = document.querySelector('.wp2-table-body');
 	if (!tbody) return;
 	tbody.setAttribute('aria-live', 'polite');
 
 	if (isLoading) {
-		tbody.innerHTML = `<tr><td colspan="4" class="loading-message">${t.loadingPackages}</td></tr>`;
+		tbody.innerHTML = `<tr><td colspan="4" class="wp2-loading-message">${t.loadingPackages}</td></tr>`;
 		return;
 	}
 	if (!packages || packages.length === 0) {
-		tbody.innerHTML = `<tr><td colspan="4" class="empty-message">${t.noRepositories}</td></tr>`;
+		tbody.innerHTML = `<tr><td colspan="4" class="wp2-empty-message">${t.noRepositories}</td></tr>`;
 		return;
 	}
 
@@ -114,13 +125,13 @@ export const render_package_table = (packages, isLoading) => {
 		tr.innerHTML = `
 <td colspan="4" style="color:red;text-align:center;">
 	${escape_html(s.syncError)}
-	<button id="wp2-retry-sync" class="button" style="margin-left:10px">Retry</button>
+	<button id="wp2-retry-sync" class="wp2-button" style="margin-left:10px">Retry</button>
 </td>`;
 		tbody.appendChild(tr);
 		const retry = tr.querySelector('#wp2-retry-sync');
 		if (retry) retry.addEventListener('click', () => {
 			app_state.set({ ...app_state.get(), syncError: null });
-			document.querySelector('[data-action="sync-packages"]')?.click();
+			document.querySelector('[data-action="wp2-sync-packages"]')?.click();
 		});
 	}
 };

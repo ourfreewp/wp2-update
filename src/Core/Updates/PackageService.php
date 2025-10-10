@@ -94,6 +94,12 @@ class PackageService
                 throw new \Exception('Failed to download package from GitHub.');
             }
 
+            // Validate the downloaded package
+            if (!$this->is_valid_package_archive($tempFile, $repoSlug)) {
+                @unlink($tempFile);
+                throw new \Exception("The downloaded file for '{$repoSlug}' is not a valid package.");
+            }
+
             $type = $packageType ?: $this->get_package_type_by_repo($normalizedRepo);
             $this->install_from_zip($tempFile, $type);
 
@@ -140,18 +146,6 @@ class PackageService
     public function get_all_packages(): array
     {
         return $this->sync_packages();
-    }
-
-    /**
-     * Downloads a package to a temporary file.
-     *
-     * @param string $url   The package URL.
-     * @param string $token The GitHub installation token.
-     * @return string|null  The path to the downloaded file, or null on failure.
-     */
-    private function download_package(string $url, string $token): ?string
-    {
-        return $this->releaseService->download_package($url, $token);
     }
 
     public function get_package_status(string $repoSlug): ?array
@@ -227,5 +221,27 @@ class PackageService
             }
         }
         return null;
+    }
+
+    /**
+     * Verifies the contents of a downloaded package ZIP file.
+     *
+     * @param string $filePath Path to the temporary zip file.
+     * @param string $repoSlug The expected repository slug (e.g., 'owner/repo').
+     * @return bool True if the package is valid, false otherwise.
+     */
+    private function is_valid_package_archive(string $filePath, string $repoSlug): bool
+    {
+        $zip = new \ZipArchive();
+        if ($zip->open($filePath) !== true) {
+            return false;
+        }
+
+        // Example validation: Ensure the repo name exists as a directory in the archive
+        $repoName = basename($repoSlug);
+        $isValid = $zip->locateName($repoName . '/') !== false;
+
+        $zip->close();
+        return $isValid;
     }
 }

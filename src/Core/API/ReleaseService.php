@@ -77,18 +77,6 @@ class ReleaseService
      * @param string $token The GitHub installation token.
      * @return string|null  The path to the downloaded file, or null on failure.
      */
-    public function download_to_temp_file(string $url, string $token): ?string
-    {
-        return $this->download_package($url, $token);
-    }
-
-    /**
-     * Downloads a package to a temporary file.
-     *
-     * @param string $url   The package URL.
-     * @param string $token The GitHub installation token.
-     * @return string|null  The path to the downloaded file, or null on failure.
-     */
     public function download_package(string $url, string $token): ?string
     {
         if (!function_exists('wp_tempnam')) {
@@ -172,17 +160,22 @@ class ReleaseService
     {
         $assets = $release['assets'] ?? [];
 
+        // Prioritize assets based on naming convention
         foreach ($assets as $asset) {
             if (!is_array($asset)) {
                 continue;
             }
 
+            $name = $asset['name'] ?? '';
             $type = $asset['content_type'] ?? '';
+
+            // Fallback to any zip file
             if (in_array($type, ['application/zip', 'application/x-zip-compressed'], true) && !empty($asset['browser_download_url'])) {
                 return (string) $asset['browser_download_url'];
             }
         }
 
+        // Fallback to zipball_url
         if (!empty($release['zipball_url'])) {
             return (string) $release['zipball_url'];
         }

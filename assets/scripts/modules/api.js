@@ -30,7 +30,7 @@ const refresh_nonce = async () => {
     const data = await res.json();
     current_nonce = data.nonce;
     console.log('Nonce refreshed successfully');
-};update 
+};
 
 /**
  * Handles API requests with automatic nonce refresh.

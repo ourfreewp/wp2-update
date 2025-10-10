@@ -60,18 +60,25 @@ class ConnectionService
      */
     public function test_connection(): array
     {
-        $credentialValidation = $this->validate_credentials();
-        if (!$credentialValidation['success']) {
-            return $credentialValidation;
-        }
-
-        $client = $this->clientFactory->getInstallationClient(true);
-        if (!$client) {
-            return ['success' => false, 'message' => __('Unable to authenticate with GitHub.', 'wp2-update')];
-        }
-
         try {
+            $credentialValidation = $this->validate_credentials();
+            if (!$credentialValidation['success']) {
+                return $credentialValidation;
+            }
+
+            $client = $this->clientFactory->getInstallationClient(true);
+            if (!$client) {
+                return ['success' => false, 'message' => __('Unable to authenticate with GitHub.', 'wp2-update')];
+            }
+
+            // Test the connection by listing repositories.
             $client->apps()->listRepositories();
+
+        } catch (\RuntimeException $e) {
+            // FIX: This will now catch the fatal error from corrupted credentials.
+            \WP2\Update\Utils\Logger::log('ERROR', 'Credential data may be corrupted: ' . $e->getMessage());
+            return ['success' => false, 'message' => __('Your saved credentials appear to be corrupted. Please try disconnecting and connecting again.', 'wp2-update')];
+
         } catch (ExceptionInterface $e) {
             \WP2\Update\Utils\Logger::log('ERROR', 'GitHub connection test failed: ' . $e->getMessage());
             return ['success' => false, 'message' => __('An error occurred while testing the connection.', 'wp2-update')];

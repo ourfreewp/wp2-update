@@ -17,24 +17,25 @@ class CredentialService
      */
     public function store_app_credentials(array $credentials): void
     {
-        $optionKey = Config::OPTION_CREDENTIALS;
-        $encryptionKey = defined('AUTH_KEY') ? AUTH_KEY : throw new \RuntimeException('WordPress security keys not defined.');
-        $iv = openssl_random_pseudo_bytes(16); // Generate a unique, random IV
+        $encryptionKey = $credentials['encryption_key'] ?? $this->get_encryption_key();
+        if (!$encryptionKey) {
+            throw new \RuntimeException('Cannot store credentials without an encryption key.');
+        }
+
+        $iv = openssl_random_pseudo_bytes(16);
         $encryptedKey = base64_encode($iv . openssl_encrypt($credentials['private_key'], 'AES-256-CBC', $encryptionKey, 0, $iv));
 
-        $data = [
+        $iv_secret = openssl_random_pseudo_bytes(16);
+        $encryptedSecret = base64_encode($iv_secret . openssl_encrypt($credentials['webhook_secret'], 'AES-256-CBC', $encryptionKey, 0, $iv_secret));
+
+        update_option(Config::OPTION_CREDENTIALS, [
             'name'            => sanitize_text_field($credentials['name'] ?? ''),
             'app_id'          => absint($credentials['app_id'] ?? 0),
             'installation_id' => absint($credentials['installation_id'] ?? 0),
             'private_key'     => $encryptedKey,
-        ];
-
-        if (!empty($credentials['webhook_secret'])) {
-            $iv = openssl_random_pseudo_bytes(16); // Generate a new IV for the webhook secret
-            $data['webhook_secret'] = base64_encode($iv . openssl_encrypt($credentials['webhook_secret'], 'AES-256-CBC', $encryptionKey, 0, $iv));
-        }
-
-        update_option($optionKey, $data);
+            'webhook_secret'  => $encryptedSecret,
+            'encryption_key'  => $encryptionKey, // Store the key itself
+        ]);
     }
 
     /**
@@ -44,18 +45,23 @@ class CredentialService
      */
     public function get_stored_credentials(): array
     {
-        $optionKey = Config::OPTION_CREDENTIALS;
-        $record = get_option($optionKey, []);
-
-        $encryptionKey = defined('AUTH_KEY') ? AUTH_KEY : throw new \RuntimeException('WordPress security keys not defined.');
-        $decryptedKey = '';
-
-        if (isset($record['private_key'])) {
-            $decoded = base64_decode($record['private_key']);
-            $iv = substr($decoded, 0, 16);
-            $encryptedKey = substr($decoded, 16);
-            $decryptedKey = openssl_decrypt($encryptedKey, 'AES-256-CBC', $encryptionKey, 0, $iv) ?: '';
+        $record = get_option(Config::OPTION_CREDENTIALS, []);
+        if (empty($record['private_key'])) {
+            return []; // No credentials stored, return empty.
         }
+
+        $encryptionKey = $this->get_encryption_key();
+        if (!$encryptionKey) {
+            // This is the crucial part: we have credentials but no key to decrypt them.
+            // This is now the ONLY way a user can get stuck, and it's a valid error.
+            throw new \RuntimeException('Credentials are encrypted, but no encryption key is available.');
+        }
+
+        // Decrypt the private key
+        $decoded = base64_decode($record['private_key']);
+        $iv = substr($decoded, 0, 16);
+        $encryptedData = substr($decoded, 16);
+        $decryptedKey = openssl_decrypt($encryptedData, 'AES-256-CBC', $encryptionKey, 0, $iv) ?: '';
 
         return [
             'name'            => $record['name'] ?? '',
@@ -85,7 +91,11 @@ class CredentialService
             return '';
         }
 
-        $encryptionKey = defined('AUTH_KEY') ? AUTH_KEY : throw new \RuntimeException('WordPress security keys not defined.');
+        $encryptionKey = $this->get_encryption_key();
+        if (!$encryptionKey) {
+            return '';
+        }
+
         $decoded = base64_decode($record['webhook_secret']);
         $iv = substr($decoded, 0, 16);
         $encryptedSecret = substr($decoded, 16);
@@ -106,34 +116,30 @@ class CredentialService
     }
 
     /**
-     * Exchanges an authorization code for an access token.
+     * Retrieves the encryption key, prioritizing the one stored in the database.
+     * Falls back to wp-config.php constants for advanced users or backward compatibility.
      *
-     * @param string $code The authorization code.
-     * @return string|null The access token, or null on failure.
+     * @return string|null The encryption key or null if none is found.
      */
-    public function exchange_code_for_token(string $code): ?string
+    private function get_encryption_key(): ?string
     {
-        $url = 'https://github.com/login/oauth/access_token';
-        $clientId = get_option('wp2_update_github_client_id');
-        $clientSecret = get_option('wp2_update_github_client_secret');
+        $credentials = get_option(Config::OPTION_CREDENTIALS, []);
 
-        $response = wp_remote_post($url, [
-            'body' => [
-                'client_id' => $clientId,
-                'client_secret' => $clientSecret,
-                'code' => $code,
-            ],
-            'headers' => [
-                'Accept' => 'application/json',
-            ],
-        ]);
-
-        if (is_wp_error($response)) {
-            Logger::log('ERROR', 'Failed to exchange code for token: ' . $response->get_error_message());
-            return null;
+        // 1. Prioritize the key saved in the database.
+        if (!empty($credentials['encryption_key'])) {
+            return $credentials['encryption_key'];
         }
 
-        $body = json_decode(wp_remote_retrieve_body($response), true);
-        return $body['access_token'] ?? null;
+        // 2. Fallback to a custom constant in wp-config.php.
+        if (defined('WP2_UPDATE_ENCRYPTION_KEY') && !empty(WP2_UPDATE_ENCRYPTION_KEY)) {
+            return WP2_UPDATE_ENCRYPTION_KEY;
+        }
+
+        // 3. Fallback to the default WordPress AUTH_KEY.
+        if (defined('AUTH_KEY') && !empty(AUTH_KEY)) {
+            return AUTH_KEY;
+        }
+
+        return null;
     }
 }

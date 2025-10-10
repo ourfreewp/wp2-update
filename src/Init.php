@@ -73,8 +73,8 @@ final class Init {
         add_action('rest_api_init', [$webhookController, 'register_route']);
 
         // Updaters (Theme & Plugin)
-        $pluginUpdater = new PluginUpdater($packageFinder, $releaseService, $clientFactory);
-        $themeUpdater  = new ThemeUpdater($packageFinder, $releaseService, $clientFactory);
+        $pluginUpdater = new PluginUpdater($packageFinder, $releaseService, $clientFactory, $repositoryService);
+        $themeUpdater  = new ThemeUpdater($packageFinder, $releaseService, $clientFactory, $repositoryService);
         $pluginUpdater->register_hooks();
         $themeUpdater->register_hooks();
 

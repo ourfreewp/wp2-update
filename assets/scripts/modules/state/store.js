@@ -5,7 +5,7 @@ const parse_default_manifest = () => {
 		if (!window.wp2UpdateData || !window.wp2UpdateData.manifest) {
 			return {};
 		}
-		const raw = JSON.parse(window.wp2UpdateData.manifest);
+		const raw = window.wp2UpdateData.manifest; // Removed JSON.parse as the data is already an object
 		return typeof raw === 'object' && raw ? raw : {};
 	} catch (error) {
 		console.warn('WP2 Update: unable to parse default manifest.', error);
@@ -26,7 +26,6 @@ const default_manifest_draft = {
 	name: default_manifest?.name || (window.wp2UpdateData?.siteName ? `${window.wp2UpdateData.siteName} Updater` : ''),
 	accountType: 'user',
 	organization: '',
-	manifestJson: pretty_default_manifest,
 };
 
 /**
@@ -53,7 +52,7 @@ export const app_state = atom({
 	},
 	packages: [],
 	syncError: null,
-	manifestDraft: default_manifest_draft,
+	manifestDraft: default_manifest_draft, // Updated to reflect the simplified draft
 });
 
 export const is_any_pkg_updating = computed(app_state, (s) =>

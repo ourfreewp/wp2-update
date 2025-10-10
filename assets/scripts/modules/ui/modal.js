@@ -4,12 +4,12 @@
  * @param {() => void} [onCancel]
  */
 export const confirm_modal = (message, onConfirm, onCancel) => {
-	const modal = document.getElementById('disconnect-modal');
-	if (!modal) return console.error('Modal #disconnect-modal not found');
+	const modal = document.getElementById('wp2-disconnect-modal');
+	if (!modal) return console.error('Modal #wp2-disconnect-modal not found');
 
-	const msg = modal.querySelector('.modal-message');
-	const ok = modal.querySelector('.modal-confirm');
-	const cancel = modal.querySelector('.modal-cancel');
+	const msg = modal.querySelector('.wp2-modal-message');
+	const ok = modal.querySelector('[data-wp2-action="confirm-disconnect"]');
+	const cancel = modal.querySelector('[data-wp2-action="cancel-disconnect"]');
 
 	if (msg) msg.textContent = message;
 

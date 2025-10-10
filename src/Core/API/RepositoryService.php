@@ -104,4 +104,23 @@ class RepositoryService
 
         return $repositories;
     }
+
+    /**
+     * Retrieves cached release data for a specific repository slug.
+     *
+     * @param string $slug The repository slug (e.g., owner/repo).
+     * @return array|null The cached release data, or null if not available.
+     */
+    public function get_cached_release_data(string $slug): ?array
+    {
+        $cacheKey = sprintf(Config::TRANSIENT_LATEST_RELEASE, ...explode('/', $slug));
+        $cachedData = get_transient($cacheKey);
+
+        if ($cachedData !== false) {
+            return $cachedData;
+        }
+
+        Logger::log('INFO', "No cached release data found for slug: {$slug}");
+        return null;
+    }
 }

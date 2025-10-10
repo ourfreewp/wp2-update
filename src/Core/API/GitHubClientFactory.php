@@ -31,24 +31,20 @@ class GitHubClientFactory
      */
     public function getInstallationClient(bool $forceRefresh = false): ?GitHubClient
     {
-        if (!$forceRefresh && $this->installationClient && $this->installationClientExpires && $this->installationClientExpires > (time() + 60)) {
+        // Use the transient-based caching logic from getInstallationToken
+        $token = $this->getInstallationToken();
+
+        if (!$token) {
+            Logger::log('ERROR', 'Failed to retrieve GitHub installation token.');
+            return null;
+        }
+
+        if (!$forceRefresh && $this->installationClient) {
             return $this->installationClient;
         }
 
-        $credentials = $this->credentialService->get_stored_credentials();
-        if (!$credentials || empty($credentials['app_id']) || empty($credentials['installation_id']) || empty($credentials['private_key'])) {
-            return null;
-        }
-
-        $token = $this->createInstallationToken($credentials);
-
-        if (!$token) {
-            return null;
-        }
-
         $this->installationClient = new GitHubClient();
-        $this->installationClient->authenticate($token['token'], AuthMethod::ACCESS_TOKEN);
-        $this->installationClientExpires = time() + 3600; // Tokens are valid for 1 hour
+        $this->installationClient->authenticate($token, AuthMethod::ACCESS_TOKEN);
 
         return $this->installationClient;
     }
@@ -119,11 +115,11 @@ class GitHubClientFactory
      */
     public function getInstallationToken(): ?string
     {
-        static $cachedToken = null;
-        static $tokenExpiry = 0;
+        // Use WordPress transients to cache the token across requests
+        $transientKey = 'github_installation_token';
+        $cachedToken = get_transient($transientKey);
 
-        // Return cached token if still valid
-        if ($cachedToken && $tokenExpiry > time()) {
+        if ($cachedToken) {
             return $cachedToken;
         }
 
@@ -137,10 +133,43 @@ class GitHubClientFactory
             return null;
         }
 
-        // Cache the token and its expiry time
-        $cachedToken = $tokenData['token'];
-        $tokenExpiry = $tokenData['expires'];
+        // Cache the token in a transient with a slightly shorter expiry time
+        set_transient($transientKey, $tokenData['token'], $tokenData['expires'] - time() - 60);
 
-        return $cachedToken;
+        return $tokenData['token'];
+    }
+
+    /**
+     * Checks the rate limit status for the GitHub API.
+     *
+     * @return array|null Returns an array with rate limit information or null on failure.
+     */
+    public function checkRateLimit(): ?array
+    {
+        $client = $this->getInstallationClient();
+        if (!$client) {
+            Logger::log('ERROR', 'GitHub client not available for rate limit check.');
+            return null;
+        }
+
+        try {
+            $rateLimit = $client->getHttpClient()->get('/rate_limit');
+            $rateLimitData = json_decode($rateLimit->getBody()->getContents(), true);
+
+            $coreLimit = $rateLimitData['rate'] ?? null;
+
+            if ($coreLimit) {
+                return [
+                    'limit' => $coreLimit['limit'] ?? 0,
+                    'remaining' => $coreLimit['remaining'] ?? 0,
+                    'reset' => $coreLimit['reset'] ?? 0,
+                ];
+            }
+
+            return null;
+        } catch (ExceptionInterface $e) {
+            Logger::log('ERROR', 'Failed to fetch rate limit: ' . $e->getMessage());
+            return null;
+        }
     }
 }

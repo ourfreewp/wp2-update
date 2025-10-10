@@ -24,6 +24,7 @@ final class CredentialsController {
         $installation_id = absint($request->get_param('wp2_installation_id'));
         $private_key     = wp_unslash($request->get_param('wp2_private_key'));
         $webhook_secret  = sanitize_text_field($request->get_param('wp2_webhook_secret'));
+        $encryption_key  = sanitize_text_field($request->get_param('encryption_key'));
 
         // Validate private key format
         if (!$this->is_valid_private_key($private_key)) {
@@ -44,12 +45,18 @@ final class CredentialsController {
             return new WP_REST_Response(['message' => esc_html__('Invalid webhook secret. It must be at least 10 characters long.', 'wp2-update')], 400);
         }
 
+        // Validate the new encryption key
+        if (empty($encryption_key) || strlen($encryption_key) < 16) {
+            return new WP_REST_Response(['message' => esc_html__('Invalid Encryption Key. It must be at least 16 characters long.', 'wp2-update')], 400);
+        }
+
         $this->credentialService->store_app_credentials([
             'name'            => $app_name,
             'app_id'          => $app_id,
             'installation_id' => $installation_id,
             'private_key'     => $private_key,
-            'webhook_secret'  => $webhook_secret, // Pass it here
+            'webhook_secret'  => $webhook_secret,
+            'encryption_key'  => $encryption_key,
         ]);
 
         do_action('wp2_update_credentials_saved', $app_id, $installation_id);
@@ -79,87 +86,45 @@ final class CredentialsController {
     public function rest_get_connect_url(WP_REST_Request $request): WP_REST_Response {
         $account_type = $request->get_param('account_type') === 'organization' ? 'organization' : 'user';
         $org_name     = '';
-
         if ('organization' === $account_type) {
             $org_name = sanitize_title($request->get_param('organization'));
             if ('' === $org_name) {
-                return new WP_REST_Response([
-                    'message' => esc_html__('An organization slug is required for organization apps.', 'wp2-update'),
-                ], 400);
+                return new WP_REST_Response(['message' => esc_html__('An organization slug is required for organization apps.', 'wp2-update')], 400);
             }
         }
-
         $raw_manifest = $request->get_param('manifest');
-        $decoded_manifest = [];
-        if (is_string($raw_manifest) && $raw_manifest !== '') {
-            $decoded_manifest = json_decode($raw_manifest, true);
-            if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded_manifest)) {
-                return new WP_REST_Response([
-                    'message' => esc_html__('Invalid manifest payload.', 'wp2-update'),
-                ], 400);
-            }
+        if (!is_string($raw_manifest) || $raw_manifest === '') {
+            \WP2\Update\Utils\Logger::log('ERROR', 'Manifest parameter is missing or invalid.');
+            return new WP_REST_Response(['message' => esc_html__('Manifest payload is required.', 'wp2-update')], 400);
+        }
+        $encryption_key = sanitize_text_field($request->get_param('encryption_key'));
+        if (empty($encryption_key) || strlen($encryption_key) < 16) {
+            return new WP_REST_Response(['message' => esc_html__('A valid encryption key is required.', 'wp2-update')], 400);
         }
 
-        $site_name     = get_bloginfo('name');
-        $site_url      = esc_url_raw(home_url());
-        $callback_url  = esc_url_raw(admin_url('admin.php?page=wp2-update-github-callback'));
-        $setup_url     = esc_url_raw(admin_url('admin.php?page=wp2-update'));
-        $webhook_url   = esc_url_raw(rest_url('wp2-update/v1/webhook'));
-        $raw_name      = $request->get_param('name');
-        $app_name      = $raw_name ? sanitize_text_field($raw_name) : '';
+        // Create the security nonce (state).
+        $state = wp_create_nonce('wp2-manifest');
 
-        $manifest = is_array($decoded_manifest) ? $decoded_manifest : [];
-        $manifest['name'] = $app_name ?: ($manifest['name'] ?? $site_name . ' Updater');
-        $manifest['url'] = $site_url;
+        // Add the state nonce directly to the callback URL as a query parameter.
+        $callback_url = esc_url_raw(add_query_arg('state', $state, admin_url('admin.php?page=wp2-update-github-callback')));
+
+        // Temporarily store the encryption key, keyed by the state for security.
+        set_transient('wp2_ek_' . $state, $encryption_key, 10 * MINUTE_IN_SECONDS);
+
+        $manifest = json_decode($raw_manifest, true) ?: [];
+        $manifest['name'] = sanitize_text_field($request->get_param('name') ?: (get_bloginfo('name') . ' Updater'));
+        $manifest['url'] = esc_url_raw(home_url());
         $manifest['redirect_url'] = $callback_url;
-
-        $callback_urls = array_filter(array_map('esc_url_raw', (array) ($manifest['callback_urls'] ?? [])));
-        if (!in_array($site_url, $callback_urls, true)) {
-            $callback_urls[] = $site_url;
-        }
-        if (!in_array($callback_url, $callback_urls, true)) {
-            $callback_urls[] = $callback_url;
-        }
-        $manifest['callback_urls'] = array_values(array_unique($callback_urls));
-
-        $permissions = isset($manifest['default_permissions']) && is_array($manifest['default_permissions'])
-            ? $manifest['default_permissions']
-            : [];
-        $permissions['contents'] = sanitize_text_field($permissions['contents'] ?? 'read');
-        $permissions['metadata'] = sanitize_text_field($permissions['metadata'] ?? 'read');
-        $manifest['default_permissions'] = $permissions;
-
-        $events = isset($manifest['default_events']) && is_array($manifest['default_events'])
-            ? array_map('sanitize_text_field', $manifest['default_events'])
-            : [];
-        if (!in_array('release', $events, true)) {
-            $events[] = 'release';
-        }
-        $manifest['default_events'] = array_values(array_unique($events));
-
-        $manifest['public'] = (bool) ($manifest['public'] ?? false);
-        $manifest['setup_url'] = $setup_url;
-        $manifest['setup_on_update'] = (bool) ($manifest['setup_on_update'] ?? false);
         $manifest['hook_attributes'] = [
-            'url'    => $webhook_url,
+            'url'    => esc_url_raw(rest_url('wp2-update/v1/webhook')),
             'active' => true,
         ];
 
-        $manifest['description'] = isset($manifest['description'])
-            ? sanitize_textarea_field($manifest['description'])
-            : __('A GitHub App to manage updates for your WordPress site.', 'wp2-update');
-
         $manifest_json = wp_json_encode($manifest, JSON_UNESCAPED_SLASHES);
-        if (false === $manifest_json) {
-            return new WP_REST_Response([
-                'message' => esc_html__('Unable to encode manifest.', 'wp2-update'),
-            ], 500);
-        }
 
         return new WP_REST_Response(
             [
                 'manifest' => $manifest_json,
-                'state'    => wp_create_nonce('wp2-manifest'),
                 'account'  => $org_name ? "https://github.com/organizations/{$org_name}/settings/apps/new" : 'https://github.com/settings/apps/new',
             ],
             200
@@ -206,6 +171,15 @@ final class CredentialsController {
         if (!is_array($credentials) || empty($credentials['id']) || empty($credentials['pem'])) {
             \WP2\Update\Utils\Logger::log('ERROR', 'GitHub OAuth exchange failed: unexpected payload.');
             return new WP_REST_Response(['message' => esc_html__('Unexpected response from GitHub.', 'wp2-update')], 500);
+        }
+
+        // Retrieve the encryption key from the transient.
+        $transient_key = 'wp2_ek_' . $state;
+        $encryption_key = get_transient($transient_key);
+        delete_transient($transient_key); // Clean up the transient immediately.
+
+        if (empty($encryption_key)) {
+            return new WP_REST_Response(['message' => esc_html__('Your session has expired. Please try the connection process again.', 'wp2-update')], 400);
         }
 
         $this->credentialService->store_app_credentials([

@@ -6,6 +6,7 @@ use WP2\Update\Security\Permissions;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP2\Update\Core\Updates\PackageService;
+use WP2\Update\Utils\Logger;
 
 final class PackagesController {
     private PackageService $packageService;
@@ -43,6 +44,12 @@ final class PackagesController {
             return new WP_REST_Response(['message' => esc_html__('Missing required parameters.', 'wp2-update')], 400);
         }
 
+                // Validate the action parameter against an allowlist of expected values
+        $allowedActions = ['install', 'update', 'rollback'];
+        if (!in_array($action, $allowedActions, true)) {
+            return new WP_REST_Response(['message' => esc_html__('Invalid action parameter.', 'wp2-update')], 400);
+        }
+
         try {
             $success = $this->packageService->manage_packages($action, $repoSlug, $version, $type);
 
@@ -52,8 +59,12 @@ final class PackagesController {
 
             return new WP_REST_Response(['message' => esc_html__('Package managed successfully.', 'wp2-update')], 200);
         } catch (\Exception $e) {
+            // Log the detailed exception for debugging purposes
+            Logger::log('ERROR', 'Exception in manage_packages: ' . $e->getMessage());
+
+            // Return a generic error message to the client
             return new WP_REST_Response([
-                'message' => $e->getMessage(),
+                'message' => esc_html__('An error occurred while managing the package.', 'wp2-update')
             ], 400);
         }
     }
