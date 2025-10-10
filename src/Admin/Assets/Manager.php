@@ -158,11 +158,15 @@ final class Manager {
 		$callback_url = admin_url( 'admin.php?page=wp2-update-github-callback' );
 		$redirect_url = admin_url( 'admin.php?page=wp2-update' );
 
+		// Log the generated callback URL for debugging
+        do_action( 'qm/debug','Generated callback URL: ' . $callback_url);
+        do_action( 'qm/debug','Generated redirect URL: ' . $redirect_url);
+
 		$data = [
 			'apiRoot'     => esc_url_raw( rest_url( 'wp2-update/v1/' ) ),
 			'nonce'       => wp_create_nonce( 'wp_rest' ),
 			'siteName'    => get_bloginfo( 'name' ),
-			'redirectUrl' => esc_url_raw( $redirect_url ),
+			'redirectUrl' => esc_url_raw( $callback_url ),
 			'manifest'    => json_decode( wp_json_encode( [
 				'name'                => get_bloginfo( 'name' ) . ' Updater',
 				'url'                 => home_url(),
@@ -182,6 +186,9 @@ final class Manager {
 		// Debugging: Log the script handle and localized data.
 		do_action( 'qm/debug', 'Script handle: ' . $handle );
 		do_action( 'qm/debug', 'Localized Data: ' . print_r( $data, true ) );
+
+		// Log the manifest data for debugging with Query Monitor
+        do_action('qm/debug', 'Manifest Data:', $data['manifest']);
 
 		wp_localize_script( $handle, 'wp2UpdateData', $data );
 	}

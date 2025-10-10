@@ -29,8 +29,24 @@ final class PackagesController {
     }
 
     public function sync_packages(WP_REST_Request $request): WP_REST_Response {
-        $packages = $this->packageService->sync_packages();
-        return new WP_REST_Response(['packages' => $packages], 200);
+        $data = $this->packageService->sync_packages();
+
+        // Format the response to include additional metadata for the frontend
+        $formattedData = [
+            'packages' => array_map(function ($package) {
+                return [
+                    'name' => $package['Name'] ?? '',
+                    'installed' => $package['Version'] ?? '', // Changed key from 'version' to 'installed'
+                    'github_data' => $package['github_data'] ?? [],
+                    'last_updated' => $package['github_data']['last_updated'] ?? null,
+                    'stars' => $package['github_data']['stars'] ?? 0,
+                    'issues' => $package['github_data']['issues'] ?? 0,
+                ];
+            }, $data['packages']),
+            'unlinked_packages' => $data['unlinked_packages'],
+        ];
+
+        return new WP_REST_Response($formattedData, 200);
     }
 
     public function manage_packages(WP_REST_Request $request): WP_REST_Response {

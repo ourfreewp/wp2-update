@@ -45,17 +45,6 @@ class RepositoryService
         try {
             $repositories = $client->currentUser()->repositories();
 
-            // Fetch releases for each repository
-            foreach ($repositories as &$repo) {
-                try {
-                    $releasesApi = new Releases($client);
-                    $repo['releases'] = $releasesApi->all($repo['owner']['login'], $repo['name']);
-                } catch (ExceptionInterface $e) {
-                    Logger::log('ERROR', 'Failed to fetch releases for repository: ' . $e->getMessage());
-                    $repo['releases'] = [];
-                }
-            }
-
             // Cache the result for the specified duration
             set_transient($cache_key, $repositories, $cache_duration);
             Logger::log('INFO', 'Repositories cached successfully.');
@@ -74,15 +63,29 @@ class RepositoryService
      */
     public function get_managed_repositories(): array
     {
-        $repositories = $this->get_repositories();
-        if (!$repositories) {
+        $all_repos = $this->get_repositories();
+        if (empty($all_repos)) {
             return [];
         }
 
-        // Filter repositories based on plugin-specific criteria
-        return array_filter($repositories, function ($repo) {
-            return isset($repo['topics']) && in_array('wp2-managed', $repo['topics'], true);
+        $managed_repos = array_filter($all_repos, function ($repo) {
+            return !empty($repo['topics']) && in_array('wp2-managed', $repo['topics'], true);
         });
+
+        // Now, fetch releases *only* for the managed repos
+        foreach ($managed_repos as &$repo) {
+            if (empty($repo['releases'])) { // Avoid re-fetching if already cached
+                try {
+                    $releasesApi = new \Github\Api\Repository\Releases($this->clientFactory->getInstallationClient());
+                    $repo['releases'] = $releasesApi->all($repo['owner']['login'], $repo['name']);
+                } catch (\Github\Exception\ExceptionInterface $e) {
+                    Logger::log('ERROR', 'Failed to fetch releases for repository: ' . $e->getMessage());
+                    $repo['releases'] = [];
+                }
+            }
+        }
+
+        return $managed_repos;
     }
 
     /**

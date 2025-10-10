@@ -34,8 +34,14 @@ The WP2 Update Plugin is a WordPress plugin designed to streamline the managemen
 - **Webhooks**: Automatically clear update transients on GitHub push events.
 
 ## New Features
+- **State-Driven Dashboard**: A centralized dashboard that dynamically updates based on connection and package states.
+- **Installation Status Endpoint**: A dedicated endpoint to check the installation status of the GitHub App.
 - **Rollback Functionality**: Easily revert plugins and themes to previous versions.
 - **Enhanced Error Handling**: Improved user-facing error messages and detailed backend logging for better debugging.
+
+## Updated Usage
+- **State-Driven Dashboard**: Navigate through the dashboard to manage connections, sync packages, and handle updates.
+- **Installation Status Check**: The dashboard automatically polls the installation status endpoint to ensure the GitHub App is installed.
 
 ## Screenshots
 ### Admin Dashboard

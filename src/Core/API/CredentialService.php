@@ -36,6 +36,38 @@ class CredentialService
             'webhook_secret'  => $encryptedSecret,
             'encryption_key'  => $encryptionKey, // Store the key itself
         ]);
+
+        // New logic to update installation_id dynamically
+        if (empty($credentials['installation_id'])) {
+            $installationId = $this->fetchInstallationId();
+            if ($installationId) {
+                $credentials['installation_id'] = $installationId;
+                update_option(Config::OPTION_CREDENTIALS, $credentials);
+            }
+        }
+    }
+
+    /**
+     * Updates the stored installation ID once the GitHub App is installed.
+     */
+    public function update_installation_id(int $installationId): void
+    {
+        $installationId = absint($installationId);
+        if ($installationId <= 0) {
+            return;
+        }
+
+        $record = get_option(Config::OPTION_CREDENTIALS, []);
+        if (empty($record)) {
+            return;
+        }
+
+        if (isset($record['installation_id']) && (int) $record['installation_id'] === $installationId) {
+            return;
+        }
+
+        $record['installation_id'] = $installationId;
+        update_option(Config::OPTION_CREDENTIALS, $record);
     }
 
     /**
@@ -141,5 +173,89 @@ class CredentialService
         }
 
         return null;
+    }
+
+    /**
+     * Fetches the installation ID from GitHub API.
+     *
+     * @return int|null The installation ID, or null if not found.
+     */
+    private function fetchInstallationId(): ?int
+    {
+        // Logic to call GitHub API and retrieve installation ID
+        // This is a placeholder and should be implemented with actual API calls
+        return null;
+    }
+
+    /**
+     * Retrieves the installation token for a specific installation ID.
+     *
+     * @param int $installationId The installation ID.
+     * @return string|null The installation token, or null on failure.
+     */
+    public function get_installation_token(int $installationId): ?string
+    {
+        $credentials = $this->get_stored_credentials();
+        if (empty($credentials['private_key']) || empty($credentials['app_id'])) {
+            Logger::log('ERROR', 'Missing credentials for generating installation token.');
+            return null;
+        }
+
+        $jwt = $this->generate_jwt($credentials['app_id'], $credentials['private_key']);
+        if (!$jwt) {
+            Logger::log('ERROR', 'Failed to generate JWT for installation token.');
+            return null;
+        }
+
+        $response = \WP2\Update\Utils\HttpClient::post(
+            "https://api.github.com/app/installations/{$installationId}/access_tokens",
+            [],
+            [
+                'Authorization' => 'Bearer ' . $jwt,
+                'Accept'        => 'application/vnd.github+json',
+            ]
+        );
+
+        if (!$response) {
+            Logger::log('ERROR', 'Failed to retrieve installation token.');
+            return null;
+        }
+
+        return $response['token'] ?? null;
+    }
+
+    /**
+     * Generates a JWT for GitHub App authentication.
+     *
+     * @param string $appId The GitHub App ID.
+     * @param string $privateKey The private key for the GitHub App.
+     * @return string|null The generated JWT, or null on failure.
+     */
+    private function generate_jwt(string $appId, string $privateKey): ?string
+    {
+        $issuedAt = time();
+        $payload = [
+            'iat' => $issuedAt,
+            'exp' => $issuedAt + 540,
+            'iss' => $appId,
+        ];
+
+        try {
+            return \Firebase\JWT\JWT::encode($payload, $privateKey, 'RS256');
+        } catch (\Exception $e) {
+            Logger::log('ERROR', 'Failed to generate JWT: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Retrieves the stored installation ID.
+     *
+     * @return int|null The installation ID, or null if not set.
+     */
+    public function get_installation_id(): ?int
+    {
+        $credentials = get_option(Config::OPTION_CREDENTIALS, []);
+        return !empty($credentials['installation_id']) ? (int) $credentials['installation_id'] : null;
     }
 }

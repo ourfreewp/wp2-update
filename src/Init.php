@@ -17,6 +17,7 @@ use WP2\Update\REST\Controllers\CredentialsController;
 use WP2\Update\REST\Controllers\PackagesController;
 use WP2\Update\REST\Router;
 use WP2\Update\Webhook\Controller as WebhookController;
+use WP2\Update\Utils\Logger;
 
 /**
  * Main bootstrap class for the plugin.
@@ -34,7 +35,7 @@ final class Init {
      * Register WordPress hooks for the plugin.
      */
     private function register_hooks(): void {
-        add_action('plugins_loaded', [self::class, 'load_textdomain']);
+        add_action('plugins_loaded', [static::class, 'load_textdomain']);
         add_action('init', [$this, 'initialize_services']);
     }
 
@@ -61,12 +62,29 @@ final class Init {
 
         // REST API Controllers
         $credentialsController = new CredentialsController($credentialService);
-        $connectionController  = new ConnectionController($connectionService);
+        $connectionController  = new ConnectionController($connectionService, $credentialService, $packageFinder);
         $packagesController    = new PackagesController($packageService);
 
         // Routers
-        $router = new Router($credentialsController, $connectionController, $packagesController);
-        add_action('rest_api_init', [$router, 'register_routes']);
+        // Ensure the Router class is loaded properly
+        if (!class_exists(Router::class)) {
+            $router_file = WP2_UPDATE_PLUGIN_DIR . '/src/REST/Router.php';
+            if (file_exists($router_file)) {
+                require_once $router_file;
+            } else {
+                Logger::log('CRITICAL', 'REST Router class missing. Expected at: ' . $router_file);
+                return;
+            }
+        }
+
+        // Instantiate the Router
+        try {
+            $router = new Router($credentialsController, $connectionController, $packagesController);
+            add_action('rest_api_init', [$router, 'register_routes']);
+        } catch (\Exception $e) {
+            Logger::log('CRITICAL', 'Failed to initialize Router: ' . $e->getMessage());
+            return;
+        }
 
         // Webhook Controller
         $webhookController = new WebhookController($credentialService);

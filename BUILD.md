@@ -26,3 +26,9 @@ To create a valid plugin ZIP file for distribution, follow these steps:
 
 5. **Validate the ZIP File:**
    Test the ZIP file by installing it on a fresh WordPress installation to ensure everything works as expected.
+
+6. **State-Driven Dashboard Testing:**
+   Ensure the dashboard dynamically updates based on connection and package states. Test the installation status endpoint integration.
+
+7. **Documentation Update:**
+   Verify that the README and BUILD.md files are up-to-date with the latest features and instructions.

@@ -66,6 +66,24 @@ final class Controller {
 
         $event = (string) $request->get_header('X-GitHub-Event');
 
+        // Log the event type for debugging purposes
+        Logger::log('INFO', 'Webhook event received: ' . $event);
+
+        // Capture installation events to persist the installation ID once the app is installed.
+        if ($event === 'installation' && !empty($data['installation']['id'])) {
+            $installationId = (int) $data['installation']['id'];
+            $this->credentialService->update_installation_id($installationId);
+            Logger::log('INFO', 'Installation webhook received. Installation ID stored: ' . $installationId);
+
+            return new WP_REST_Response(['message' => 'Installation recorded.'], 200);
+        }
+
+        if ($event === 'installation_repositories' && !empty($data['installation']['id'])) {
+            $installationId = (int) $data['installation']['id'];
+            $this->credentialService->update_installation_id($installationId);
+            Logger::log('INFO', 'Installation repositories webhook received. Installation ID stored: ' . $installationId);
+        }
+
         // Only act on the 'published' action of a 'release' event.
         if ($event === 'release' && ($data['action'] ?? '') === 'published') {
             Logger::log('INFO', 'Valid release webhook received. Clearing update transients.');
@@ -74,6 +92,12 @@ final class Controller {
             do_action('wp2_update_release_published', $data);
         }
 
-        return new WP_REST_Response(['message' => 'Webhook processed successfully.'], 200);
+        // Log unexpected events for debugging purposes.
+        Logger::log('WARNING', 'Unexpected webhook event received: ' . json_encode([
+            'event' => $event,
+            'payload' => $data,
+        ]));
+
+        return new WP_REST_Response(['message' => 'Event not handled.'], 200);
     }
 }

@@ -11,15 +11,13 @@ final class Manager {
     public static function render(): void {
         ?>
         <div id="wp2-update-app" class="wp2-container">
-            <h1 class="wp2-main-title"><?php esc_html_e('GitHub Package Updater Wizard', 'wp2-update'); ?></h1>
-            
-            <!-- App Shell: JavaScript will render the correct view into these empty containers -->
-            <div id="wp2-app-body">
-                <div id="configure-manifest" class="wp2-workflow-step" hidden></div>
-                <div id="connecting-to-github" class="wp2-workflow-step" hidden></div>
-                <div id="managing" class="wp2-workflow-step" hidden></div>
-                <div id="disconnected" class="wp2-workflow-step" hidden></div>
-            </div>
+            <h1 class="wp2-main-title"><?php esc_html_e('GitHub Package Updater', 'wp2-update'); ?></h1>
+
+            <!-- Dashboard container. JavaScript renders all views within this element. -->
+            <div id="wp2-dashboard-root" class="wp2-dashboard-root"></div>
+
+            <!-- Manual Credentials container -->
+            <div id="wp2-manual-credentials" class="wp2-container" hidden></div>
 
             <?php self::render_modal(); ?>
         </div>

@@ -69,6 +69,7 @@
    ========================================================================== */
 .wp2-wrap,
 #wp2-update-github-callback {
+	position: relative;
 	font-family: var(--wp2-font-family);
 	color: var(--wp2-color-text);
 	font-size: var(--wp2-font-size-base);
@@ -271,7 +272,6 @@
 }
 
 #connecting-to-github {
-	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
@@ -514,6 +514,135 @@
 	color: #842029;
 }
 
+/* ==========================================================================
+   10. Dashboard Layout
+   ========================================================================== */
+.wp2-dashboard-root {
+	display: block;
+	margin-top: calc(var(--wp2-spacing-unit) * 3);
+}
+
+.wp2-dashboard-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	gap: calc(var(--wp2-spacing-unit) * 3);
+}
+
+.wp2-dashboard-card {
+	background-color: var(--wp2-color-bg-card);
+	box-shadow: var(--wp2-box-shadow-sm);
+	border-radius: var(--wp2-border-radius);
+	padding: calc(var(--wp2-spacing-unit) * 4);
+	animation: fadeIn 0.25s ease-out;
+}
+
+.wp2-dashboard-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+	margin-bottom: calc(var(--wp2-spacing-unit) * 3);
+}
+
+.wp2-muted {
+	color: var(--wp2-color-text-subtle);
+	font-size: var(--wp2-font-size-sm);
+}
+
+.wp2-button-group {
+	display: flex;
+	flex-wrap: wrap;
+	gap: calc(var(--wp2-spacing-unit) * 1.5);
+}
+
+.wp2-card-centered {
+	text-align: center;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+}
+
+.wp2-dashboard-loading {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+	justify-content: center;
+	min-height: 220px;
+}
+
+.wp2-dashboard-spinner {
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	border: 3px solid var(--wp2-color-primary);
+	border-right-color: transparent;
+	animation: spin 0.8s linear infinite;
+}
+
+.wp2-dashboard-spinner-lg {
+	width: 48px;
+	height: 48px;
+	border-width: 4px;
+}
+
+.wp2-illustration-connect,
+.wp2-illustration-install,
+.wp2-illustration-error {
+	width: 80px;
+	height: 80px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: var(--wp2-color-bg-info);
+	color: var(--wp2-color-primary);
+	font-size: var(--wp2-font-size-lg);
+}
+
+.wp2-illustration-install {
+	background-color: var(--wp2-color-bg-updating);
+	color: var(--wp2-color-warning);
+}
+
+.wp2-illustration-error {
+	background-color: rgba(214, 54, 56, 0.15);
+	color: var(--wp2-color-error);
+}
+
+.wp2-form {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+}
+
+.wp2-org-field {
+	transition: opacity 0.2s ease;
+}
+
+.wp2-code {
+	font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.wp2-table-wrapper {
+	overflow-x: auto;
+}
+
+.wp2-empty-state {
+	text-align: center;
+	padding: calc(var(--wp2-spacing-unit) * 5) calc(var(--wp2-spacing-unit) * 2);
+	background-color: var(--wp2-color-bg-alt);
+	border-radius: var(--wp2-border-radius);
+	border: 1px dashed var(--wp2-color-border);
+}
+
+.wp2-table tbody tr .wp2-button {
+	padding: calc(var(--wp2-spacing-unit) * 0.75) calc(var(--wp2-spacing-unit) * 2);
+	font-size: var(--wp2-font-size-sm);
+}
+
 
 /* ==========================================================================
    11. Utility Classes
@@ -601,5 +730,115 @@
 		.wp2-button {
 			width: 100%;
 		}
+	}
+}
+
+@media (max-width: 768px) {
+	.wp2-dashboard-grid {
+		grid-template-columns: 1fr;
+		gap: calc(var(--wp2-spacing-unit) * 2);
+	}
+
+	.wp2-dashboard-card {
+		padding: calc(var(--wp2-spacing-unit) * 3);
+	}
+
+	.wp2-button {
+		width: 100%;
+		padding: calc(var(--wp2-spacing-unit) * 1);
+	}
+
+	.wp2-form-actions {
+		flex-direction: column;
+		gap: calc(var(--wp2-spacing-unit) * 2);
+	}
+}
+
+
+/*!
+ * Toastify js 1.12.0
+ * https://github.com/apvarun/toastify-js
+ * @license MIT licensed
+ *
+ * Copyright (C) 2018 Varun A P
+ */
+
+.toastify {
+	padding: 12px 20px;
+	color: #ffffff;
+	display: inline-block;
+	box-shadow: 0 3px 6px -1px rgba(0, 0, 0, 0.12), 0 10px 36px -4px rgba(77, 96, 232, 0.3);
+	background: -webkit-linear-gradient(315deg, #73a5ff, #5477f5);
+	background: linear-gradient(135deg, #73a5ff, #5477f5);
+	position: fixed;
+	opacity: 0;
+	transition: all 0.4s cubic-bezier(0.215, 0.61, 0.355, 1);
+	border-radius: 2px;
+	cursor: pointer;
+	text-decoration: none;
+	max-width: calc(50% - 20px);
+	z-index: 2147483647;
+}
+
+.toastify.on {
+	opacity: 1;
+}
+
+.toast-close {
+	background: transparent;
+	border: 0;
+	color: white;
+	cursor: pointer;
+	font-family: inherit;
+	font-size: 1em;
+	opacity: 0.4;
+	padding: 0 5px;
+}
+
+.toastify-right {
+	right: 15px;
+}
+
+.toastify-left {
+	left: 15px;
+}
+
+.toastify-top {
+	top: -150px;
+}
+
+.toastify-bottom {
+	bottom: -150px;
+}
+
+.toastify-rounded {
+	border-radius: 25px;
+}
+
+.toastify-avatar {
+	width: 1.5em;
+	height: 1.5em;
+	margin: -7px 5px;
+	border-radius: 2px;
+}
+
+.toastify-center {
+	margin-left: auto;
+	margin-right: auto;
+	left: 0;
+	right: 0;
+	max-width: fit-content;
+	max-width: -moz-fit-content;
+}
+
+@media only screen and (max-width: 360px) {
+
+	.toastify-right,
+	.toastify-left {
+		margin-left: auto;
+		margin-right: auto;
+		left: 0;
+		right: 0;
+		max-width: fit-content;
 	}
 }

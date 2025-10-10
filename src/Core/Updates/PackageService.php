@@ -38,24 +38,36 @@ class PackageService
 
         $repoIndex = [];
         foreach ($githubRepos as $repo) {
-            $repoSlug = Formatting::normalize_repo($repo['repo'] ?? '');
-            if ($repoSlug) {
-                $repoIndex[$repoSlug] = $repo;
-            }
+            // Use 'full_name' as the key, which is the "owner/repo" slug.
+            $repoIndex[$repo['full_name']] = $repo;
         }
 
         $packages = [];
+        $unlinkedPackages = [];
         foreach ($localPackages as $localPackage) {
-            $repoSlug = Formatting::normalize_repo($localPackage['UpdateURI'] ?? '');
+            // The 'repo' key from PackageFinder holds the "owner/repo" slug.
+            $repoSlug = $localPackage['repo'];
             $githubData = $repoIndex[$repoSlug] ?? null;
 
-            $packages[] = array_merge($localPackage, [
-                'releases' => $githubData['releases'] ?? [],
-                'latest_release' => $githubData['latest_release'] ?? null,
-            ]);
+            if ($githubData) {
+                $packages[] = array_merge(
+                    $localPackage,
+                    [
+                        'github_data' => $githubData,
+                        'last_updated' => $githubData['updated_at'] ?? null,
+                        'stars' => $githubData['stargazers_count'] ?? 0,
+                        'issues' => $githubData['open_issues_count'] ?? 0,
+                    ]
+                );
+            } else {
+                $unlinkedPackages[] = $localPackage;
+            }
         }
 
-        return $packages;
+        return [
+            'packages' => $packages,
+            'unlinked_packages' => $unlinkedPackages,
+        ];
     }
 
     /**

@@ -5,6 +5,7 @@ namespace WP2\Update\Core\API;
 use WP2\Update\Core\API\GitHubClientFactory;
 use WP2\Update\Core\API\CredentialService;
 use Github\Exception\ExceptionInterface;
+use WP2\Update\Utils\Logger;
 
 /**
  * Handles connection-related operations.
@@ -32,7 +33,7 @@ class ConnectionService
             return ['success' => false, 'message' => __('GitHub credentials are not configured.', 'wp2-update')];
         }
 
-        if (empty($credentials['app_id']) || empty($credentials['installation_id']) || empty($credentials['private_key'])) {
+        if (empty($credentials['app_id']) || empty($credentials['private_key'])) {
             return ['success' => false, 'message' => __('Required credentials are missing.', 'wp2-update')];
         }
 
@@ -64,6 +65,16 @@ class ConnectionService
             $credentialValidation = $this->validate_credentials();
             if (!$credentialValidation['success']) {
                 return $credentialValidation;
+            }
+
+            $credentials = $this->credentialService->get_stored_credentials();
+
+            if (empty($credentials['installation_id'])) {
+                return [
+                    'success' => false,
+                    'message' => __('GitHub App created, but no installation was detected yet. Install the app on your account, then refresh this page.', 'wp2-update'),
+                    'code'    => 'missing-installation',
+                ];
             }
 
             $client = $this->clientFactory->getInstallationClient(true);
@@ -110,6 +121,16 @@ class ConnectionService
 
             $credentials = $this->credentialService->get_stored_credentials();
 
+            if (empty($credentials['installation_id'])) {
+                $steps[2]['status'] = 'error';
+                return [
+                    'success' => false,
+                    'steps'   => $steps,
+                    'error'   => __('No GitHub App installation was found. Install the app on your account, then retry.', 'wp2-update'),
+                    'code'    => 'missing-installation',
+                ];
+            }
+
             // Step 1: Mint JWT
             $jwt = $this->clientFactory->createJwt($credentials['app_id'], $credentials['private_key']);
             if (!$jwt) {
@@ -136,6 +157,82 @@ class ConnectionService
             return ['success' => false, 'steps' => $steps, 'error' => $e->getMessage()];
         }
 
+        Logger::log('INFO', 'GitHub connection validated successfully.');
         return ['success' => true, 'steps' => $steps];
+    }
+
+    /**
+     * Check if credentials are saved.
+     *
+     * @return bool
+     */
+    public function has_credentials(): bool
+    {
+        $credentials = $this->credentialService->get_stored_credentials();
+        return !empty($credentials['app_id']) && !empty($credentials['private_key']);
+    }
+
+    /**
+     * Provides the current connection status for the dashboard.
+     *
+     * @return array{status:string,message?:string,details?:array}
+     */
+    public function get_connection_status(): array
+    {
+        try {
+            $credentials = $this->credentialService->get_stored_credentials();
+        } catch (\RuntimeException $e) {
+            Logger::log('ERROR', 'Unable to read stored credentials: ' . $e->getMessage());
+            return [
+                'status'  => 'connection_error',
+                'message' => __('Stored credentials are inaccessible. Try disconnecting and reconnecting.', 'wp2-update'),
+            ];
+        }
+
+        if (empty($credentials)) {
+            return ['status' => 'not_configured'];
+        }
+
+        if (empty($credentials['installation_id'])) {
+            return [
+                'status'  => 'app_created',
+                'message' => __('Your GitHub App is ready. Install it on your GitHub account to finish connecting.', 'wp2-update'),
+                'details' => [
+                    'app_name' => $credentials['name'] ?? '',
+                    'app_id'   => $credentials['app_id'] ?? '',
+                ],
+            ];
+        }
+
+        $connectionTest = $this->test_connection();
+        if (!$connectionTest['success']) {
+            $status = $connectionTest['code'] ?? 'connection_error';
+
+            if ($status === 'missing-installation') {
+                return [
+                    'status'  => 'app_created',
+                    'message' => $connectionTest['message'],
+                    'details' => [
+                        'app_name'        => $credentials['name'] ?? '',
+                        'app_id'          => $credentials['app_id'] ?? '',
+                    ],
+                ];
+            }
+
+            return [
+                'status'  => 'connection_error',
+                'message' => $connectionTest['message'] ?? __('An error occurred while testing the connection.', 'wp2-update'),
+            ];
+        }
+
+        return [
+            'status'  => 'installed',
+            'message' => $connectionTest['message'] ?? __('Connection to GitHub succeeded.', 'wp2-update'),
+            'details' => [
+                'app_name'        => $credentials['name'] ?? '',
+                'app_id'          => $credentials['app_id'] ?? '',
+                'installation_id' => $credentials['installation_id'] ?? '',
+            ],
+        ];
     }
 }

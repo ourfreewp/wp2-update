@@ -12,13 +12,18 @@ final class Permissions {
             return false;
         }
 
-        $nonce = $request instanceof WP_REST_Request
-            ? $request->get_header('X-WP-Nonce')
-            : ($_REQUEST['_wpnonce'] ?? '');
-
-        if (!$nonce || !wp_verify_nonce($nonce, 'wp_rest')) {
-            Logger::log('ERROR', 'Permission denied: invalid nonce.');
-            return false;
+        if ($request instanceof WP_REST_Request) {
+            $nonce = $request->get_header('X-WP-Nonce');
+            if (!$nonce || !wp_verify_nonce($nonce, 'wp_rest')) {
+                Logger::log('ERROR', 'Permission denied: invalid nonce from header.');
+                return false;
+            }
+        } else {
+            $nonce = $_REQUEST['_wpnonce'] ?? '';
+            if (!$nonce || !wp_verify_nonce($nonce, 'wp_rest')) {
+                Logger::log('ERROR', 'Permission denied: invalid nonce from request parameter.');
+                return false;
+            }
         }
 
         return true;

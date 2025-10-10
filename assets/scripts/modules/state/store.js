@@ -1,95 +1,66 @@
-import { atom, computed } from 'nanostores';
+import { atom } from 'nanostores';
 
-const parse_default_manifest = () => {
+const parseDefaultManifest = () => {
 	try {
-		if (!window.wp2UpdateData || !window.wp2UpdateData.manifest) {
-			return {};
-		}
-		const raw = window.wp2UpdateData.manifest; // Removed JSON.parse as the data is already an object
-		return typeof raw === 'object' && raw ? raw : {};
+		const manifest = window.wp2UpdateData?.manifest;
+		return typeof manifest === 'object' && manifest ? manifest : {};
 	} catch (error) {
 		console.warn('WP2 Update: unable to parse default manifest.', error);
 		return {};
 	}
 };
 
-const default_manifest = parse_default_manifest();
-const pretty_default_manifest = (() => {
-	try {
-		return JSON.stringify(default_manifest, null, 2);
-	} catch {
-		return '{}';
-	}
-})();
+const defaultManifest = parseDefaultManifest();
 
-const default_manifest_draft = {
-	name: default_manifest?.name || (window.wp2UpdateData?.siteName ? `${window.wp2UpdateData.siteName} Updater` : ''),
-	accountType: 'user',
-	organization: '',
+const buildDefaultManifestDraft = () => {
+	const siteName = window.wp2UpdateData?.siteName;
+
+	return {
+		name: defaultManifest?.name || (siteName ? `${siteName} Updater` : ''),
+		accountType: 'user',
+		organization: '',
+		manifestJson: (() => {
+			try {
+				return JSON.stringify(
+					defaultManifest && Object.keys(defaultManifest).length ? defaultManifest : {},
+					null,
+					2
+				);
+			} catch {
+				return '{}';
+			}
+		})(),
+	};
 };
 
 /**
- * @typedef {'pre-connection'|'credentials'|'syncing'|'managing'|'configure-manifest'|'post-configuration'} AppStage
- * @typedef {'idle'|'updating'|'rollback'|'error'} PackageStatus
+ * @typedef {'loading'|'not_configured'|'not_configured_with_packages'|'configuring'|'app_created'|'connecting'|'installed'|'error'} ConnectionStatus
  */
 
 /** @type {import('nanostores').WritableAtom<{
- * currentStage: AppStage;
- * isLoading: boolean;
- * connection: {
- *  health: { lastSync: string; apiRemaining: string; webhookOk: boolean; };
- *  validation: { steps: Array<{text:string,status:'pending'|'success'|'error',detail:string}> };
+ * status: ConnectionStatus;
+ * isProcessing: boolean;
+ * message: string;
+ * details: Record<string, any>;
+ * manifestDraft: {
+ *   name: string;
+ *   accountType: 'user'|'organization';
+ *   organization: string;
+ *   manifestJson: string;
  * };
- * packages: Array<{name:string,repo:string,installed?:string,releases?:any[],selectedVersion?:string,status:PackageStatus,errorMessage?:string}>;
- * syncError: string|null;
+ * packages: Array<any>;
+ * unlinkedPackages: Array<any>;
+ * error: string|null;
+ * polling: { active: boolean };
  * }>} */
-export const app_state = atom({
-	currentStage: 'configure-manifest',
-	isLoading: false,
-	connection: {
-		health: { lastSync: 'N/A', apiRemaining: 'N/A', webhookOk: false },
-		validation: { steps: [] },
-	},
+export const dashboard_state = atom({
+	status: 'loading',
+	isProcessing: false,
+	message: '',
+	details: {},
+	manifestDraft: buildDefaultManifestDraft(),
 	packages: [],
-	syncError: null,
-	manifestDraft: default_manifest_draft, // Updated to reflect the simplified draft
+	unlinkedPackages: [],
+	error: null,
+	polling: { active: false },
 });
-
-export const is_any_pkg_updating = computed(app_state, (s) =>
-	s.packages.some((p) => p.status === 'updating')
-);
-
-export const is_action_disabled = computed(app_state, (s) =>
-	s.isLoading || s.packages.some((p) => p.status === 'updating')
-);
-
-// Persist / restore
-const persist = (s) => {
-	try {
-		sessionStorage.setItem('wp2-update:state', JSON.stringify({
-			currentStage: s.currentStage,
-			connection: s.connection,
-			packages: s.packages,
-			manifestDraft: s.manifestDraft,
-		})); // Removed syncError from the persisted payload
-	} catch {}
-};
-
-const restore = () => {
-	try {
-		const raw = sessionStorage.getItem('wp2-update:state');
-		console.log('Restored raw state:', raw); // Debugging
-		if (!raw) return;
-		const obj = JSON.parse(raw);
-		if (obj && typeof obj === 'object' && Array.isArray(obj.packages)) {
-			app_state.set({ ...app_state.get(), ...obj, manifestDraft: obj.manifestDraft || default_manifest_draft });
-		} else {
-			console.warn('Restored state is invalid. Using default state.');
-		}
-	} catch (error) {
-		console.error('Error restoring state:', error);
-	}
-};
-
-restore();
-app_state.subscribe(persist);

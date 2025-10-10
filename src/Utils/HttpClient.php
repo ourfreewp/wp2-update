@@ -7,25 +7,29 @@ namespace WP2\Update\Utils;
  */
 final class HttpClient {
     /**
-     * Perform a GET request and decode the JSON response.
+     * Sends a GET request using the WordPress HTTP API.
      *
-     * @param string $url  The URL to request.
-     * @param array  $args Optional. Additional arguments for the request.
-     * @return array|null The response body as an associative array, or null on failure.
+     * @param string $url The URL to request.
+     * @param array $headers Optional headers to include in the request.
+     * @return array|null The decoded JSON response or null on failure.
      */
-    public static function get(string $url, array $args = []): ?array {
-        return self::request('GET', $url, $args);
+    public static function get(string $url, array $headers = []): ?array {
+        return self::request('GET', $url, ['headers' => $headers]);
     }
 
     /**
-     * Perform a POST request and decode the JSON response.
+     * Sends a POST request using the WordPress HTTP API.
      *
-     * @param string $url  The URL to request.
-     * @param array  $args Optional. Additional arguments for the request.
-     * @return array|null The response body as an associative array, or null on failure.
+     * @param string $url The URL to request.
+     * @param array $body The body of the POST request.
+     * @param array $headers Optional headers to include in the request.
+     * @return array|null The decoded JSON response or null on failure.
      */
-    public static function post(string $url, array $args = []): ?array {
-        return self::request('POST', $url, $args);
+    public static function post(string $url, array $body, array $headers = []): ?array {
+        return self::request('POST', $url, [
+            'headers' => $headers,
+            'body'    => wp_json_encode($body),
+        ]);
     }
 
     /**

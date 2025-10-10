@@ -25,37 +25,49 @@ final class Router {
         register_rest_route('wp2-update/v1', '/save-credentials', [
             'methods'             => 'POST',
             'callback'            => [$this->credentialsController, 'rest_save_credentials'],
-            'permission_callback' => [$this->credentialsController, 'check_permissions'],
+            'permission_callback' => function($request) {
+                return $this->credentialsController->check_permissions($request);
+            },
         ]);
 
         register_rest_route('wp2-update/v1', '/connection-status', [
             'methods'             => 'GET',
             'callback'            => [$this->connectionController, 'get_connection_status'],
-            'permission_callback' => [$this->connectionController, 'check_permissions'],
+            'permission_callback' => function($request) {
+                return $this->connectionController->check_permissions($request);
+            },
         ]);
 
         register_rest_route('wp2-update/v1', '/run-update-check', [
             'methods'             => 'POST',
             'callback'            => [$this->packagesController, 'rest_run_update_check'],
-            'permission_callback' => [$this->packagesController, 'check_permissions'],
+            'permission_callback' => function($request) {
+                return $this->packagesController->check_permissions($request);
+            },
         ]);
 
         register_rest_route('wp2-update/v1', '/sync-packages', [
             'methods'             => 'GET',
             'callback'            => [$this->packagesController, 'sync_packages'],
-            'permission_callback' => [$this->packagesController, 'check_permissions'],
+            'permission_callback' => function($request) {
+                return $this->packagesController->check_permissions($request);
+            },
         ]);
 
         register_rest_route('wp2-update/v1', '/manage-packages', [
             'methods'             => 'POST',
             'callback'            => [$this->packagesController, 'manage_packages'],
-            'permission_callback' => [$this->packagesController, 'check_permissions'],
+            'permission_callback' => function($request) {
+                return $this->packagesController->check_permissions($request);
+            },
         ]);
 
         register_rest_route('wp2-update/v1', '/github/connect-url', [
             'methods'             => ['GET', 'POST'],
             'callback'            => [$this->credentialsController, 'rest_get_connect_url'],
-            'permission_callback' => [$this->credentialsController, 'check_permissions'],
+            'permission_callback' => function($request) {
+                return $this->credentialsController->check_permissions($request);
+            },
             'args'                => [
                 'account_type' => [
                     'required' => true,
@@ -79,25 +91,33 @@ final class Router {
         register_rest_route('wp2-update/v1', '/github/exchange-code', [
             'methods'             => 'POST',
             'callback'            => [$this->credentialsController, 'rest_exchange_code'],
-            'permission_callback' => [$this->credentialsController, 'check_permissions'],
+            'permission_callback' => function($request) {
+                return $this->credentialsController->check_permissions($request);
+            },
         ]);
 
         register_rest_route('wp2-update/v1', '/package/(?P<repo_slug>[\w-]+/[\w-]+)', [
             'methods'             => 'GET',
             'callback'            => [$this->packagesController, 'rest_get_package_status'],
-            'permission_callback' => [$this->packagesController, 'check_permissions'],
+            'permission_callback' => function($request) {
+                return $this->packagesController->check_permissions($request);
+            },
         ]);
 
         register_rest_route('wp2-update/v1', '/health-status', [
             'methods'             => 'GET',
             'callback'            => [$this->connectionController, 'get_health_status'],
-            'permission_callback' => [$this->connectionController, 'check_permissions'],
+            'permission_callback' => function($request) {
+                return $this->connectionController->check_permissions($request);
+            },
         ]);
 
         register_rest_route('wp2-update/v1', '/github/disconnect', [
             'methods'             => 'POST',
             'callback'            => [$this->credentialsController, 'rest_disconnect'],
-            'permission_callback' => [$this->credentialsController, 'check_permissions'],
+            'permission_callback' => function($request) {
+                return $this->credentialsController->check_permissions($request);
+            },
         ]);
 
         register_rest_route('wp2-update/v1', '/refresh-nonce', [

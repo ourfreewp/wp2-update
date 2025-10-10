@@ -88,26 +88,21 @@ class ReleaseService
             return null;
         }
 
-        $response = wp_remote_get(
+        $response = \WP2\Update\Utils\HttpClient::get(
             $url,
             [
-                'timeout' => 300,
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $token,
-                    'Accept'        => 'application/octet-stream',
-                ],
-                'stream'   => true,
-                'filename' => $tempFile,
+                'Authorization' => 'Bearer ' . $token,
+                'Accept'        => 'application/octet-stream',
             ]
         );
 
-        if (is_wp_error($response)) {
+        if (!$response) {
             @unlink($tempFile);
-            Logger::log('ERROR', 'Exception during file download: ' . $response->get_error_message());
+            Logger::log('ERROR', 'Failed to download package from ' . $url);
             return null;
         }
 
-        $statusCode = wp_remote_retrieve_response_code($response);
+        $statusCode = $response['status_code'] ?? 0;
         if ($statusCode < 200 || $statusCode >= 300) {
             @unlink($tempFile);
             Logger::log('ERROR', 'Failed to download package from ' . $url . ' (HTTP ' . $statusCode . ').');

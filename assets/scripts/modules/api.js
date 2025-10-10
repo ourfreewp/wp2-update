@@ -64,7 +64,11 @@ export const api_request = async (endpoint, options = {}, retries = 3) => {
 			const init = {
 				method: 'POST',
 				...restOptions,
-				headers: { ...json_headers(), ...(headerOverrides || {}) },
+				headers: {
+					'Content-Type': 'application/json',
+					'X-WP-Nonce': current_nonce,
+					...(headerOverrides || {})
+				},
 			};
 			if (init.body && typeof init.body !== 'string') init.body = JSON.stringify(init.body);
 
