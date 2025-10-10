@@ -1,8 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.0] - 2025-10-10
 ### Added
-- Enhanced error handling for package updates.
+- Finalized error handling for package updates.
 - Disabled global actions during updates.
 - Added post-action feedback with a "Last Synced" timestamp.
 - Improved accessibility for dynamic content.
@@ -19,3 +19,7 @@
 
 ### Removed
 - Deprecated `enqueue_vite_assets` method.
+
+---
+
+## [Unreleased]

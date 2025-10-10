@@ -126,4 +126,23 @@ class RepositoryService
         Logger::log('INFO', "No cached release data found for slug: {$slug}");
         return null;
     }
+
+    /**
+     * Retrieves the checksum for a given repository slug.
+     *
+     * @param string $repoSlug The repository slug (e.g., 'owner/repo').
+     * @return string|null The checksum or null if not available.
+     */
+    public function get_package_checksum(string $repoSlug): ?string
+    {
+        $repositories = $this->get_managed_repositories();
+        foreach ($repositories as $repo) {
+            if ($repo['full_name'] === $repoSlug && !empty($repo['checksum'])) {
+                return $repo['checksum'];
+            }
+        }
+
+        Logger::log('WARNING', 'Checksum not found for repository: ' . $repoSlug);
+        return null;
+    }
 }

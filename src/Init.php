@@ -18,6 +18,7 @@ use WP2\Update\REST\Controllers\PackagesController;
 use WP2\Update\REST\Router;
 use WP2\Update\Webhook\Controller as WebhookController;
 use WP2\Update\Utils\Logger;
+use WP2\Update\Utils\HttpClient;
 
 /**
  * Main bootstrap class for the plugin.
@@ -61,7 +62,8 @@ final class Init {
         $packageService    = new PackageService($repositoryService, $releaseService, $clientFactory, $packageFinder);
 
         // REST API Controllers
-        $credentialsController = new CredentialsController($credentialService);
+        $httpClient = new HttpClient();
+        $credentialsController = new CredentialsController($credentialService, $httpClient);
         $connectionController  = new ConnectionController($connectionService, $credentialService, $packageFinder);
         $packagesController    = new PackagesController($packageService);
 

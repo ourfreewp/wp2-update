@@ -13,12 +13,19 @@ use WP_REST_Response;
 final class Controller {
     private CredentialService $credentialService;
 
+    /**
+     * Constructor for the Controller class.
+     *
+     * @param CredentialService $credentialService Service for managing GitHub credentials.
+     */
     public function __construct(CredentialService $credentialService) {
         $this->credentialService = $credentialService;
     }
 
     /**
      * Registers the REST API route for the webhook endpoint.
+     *
+     * This route listens for POST requests to the `/webhook` endpoint.
      */
     public function register_route(): void {
         register_rest_route('wp2-update/v1', '/webhook', [
@@ -35,7 +42,7 @@ final class Controller {
      * to force WordPress to check for new plugin/theme versions.
      *
      * @param WP_REST_Request $request The incoming REST request.
-     * @return WP_REST_Response
+     * @return WP_REST_Response Response indicating the result of the webhook handling.
      */
     public function handle(WP_REST_Request $request): WP_REST_Response {
         $payload   = $request->get_body();

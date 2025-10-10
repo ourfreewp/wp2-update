@@ -6,13 +6,15 @@ use WP2\Update\Core\API\CredentialService;
 use WP2\Update\Security\Permissions;
 use WP_REST_Request;
 use WP_REST_Response;
-use Firebase\JWT\JWT;
+use WP2\Update\Utils\HttpClient;
 
 final class CredentialsController {
     private CredentialService $credentialService;
+    private HttpClient $httpClient;
 
-    public function __construct(CredentialService $credentialService) {
+    public function __construct(CredentialService $credentialService, HttpClient $httpClient) {
         $this->credentialService = $credentialService;
+        $this->httpClient = $httpClient;
     }
 
     public static function check_permissions(WP_REST_Request $request): bool {
@@ -66,7 +68,7 @@ final class CredentialsController {
     }
 
     public function rest_disconnect(WP_REST_Request $request): WP_REST_Response {
-        $this->credentialService->clear_credentials();
+        $this->credentialService->clear_stored_credentials();
 
         do_action('wp2_update_credentials_disconnected');
 
@@ -103,31 +105,36 @@ final class CredentialsController {
             return new WP_REST_Response(['message' => esc_html__('A valid encryption key is required.', 'wp2-update')], 400);
         }
 
+        // Start a session and store the encryption key securely
+        if (!session_id()) {
+            session_start();
+        }
+        $_SESSION['encryption_key'] = $encryption_key;
+
         // Create the security nonce (state).
         $state = wp_create_nonce('wp2-manifest');
 
-        // Generate a signed JWT containing the encryption key.
-        $jwt_payload = [
-            'state' => $state,
-            'encryption_key' => $encryption_key,
-            'exp' => time() + (10 * MINUTE_IN_SECONDS),
-        ];
-        $jwt_secret = defined('JWT_SECRET') ? JWT_SECRET : 'default_secure_key';
-        $signed_jwt = JWT::encode($jwt_payload, $jwt_secret, 'HS256');
-
         $callback_url = esc_url_raw(admin_url('admin.php?page=wp2-update-github-callback'));
+
+        // Validate the generated callback URL
+        if (!filter_var($callback_url, FILTER_VALIDATE_URL)) {
+            \WP2\Update\Utils\Logger::log('ERROR', 'Invalid callback URL: ' . $callback_url);
+            return new WP_REST_Response(['message' => esc_html__('Invalid callback URL.', 'wp2-update')], 400);
+        }
 
         $manifest = json_decode($raw_manifest, true) ?: [];
         $manifest['name'] = sanitize_text_field($request->get_param('name') ?: (get_bloginfo('name') . ' Updater'));
         $manifest['url'] = esc_url_raw(home_url());
-        $manifest['redirect_url'] = $callback_url;
         $manifest['hook_attributes'] = [
             'url'    => esc_url_raw(rest_url('wp2-update/v1/webhook')),
             'active' => true,
         ];
 
-        // Add polling URL for installation detection
-        $manifest['polling_url'] = esc_url_raw(rest_url('wp2-update/v1/installation-status'));
+        // Ensure the setup_url is correctly set for the GitHub App manifest
+        $manifest['setup_url'] = esc_url_raw(admin_url('admin.php?page=wp2-update'));
+
+        // Remove polling URL as it is not a permitted key in the GitHub App manifest
+        unset($manifest['polling_url']);
 
         $manifest_json = wp_json_encode($manifest, JSON_UNESCAPED_SLASHES);
 
@@ -135,8 +142,7 @@ final class CredentialsController {
             [
                 'manifest' => $manifest_json,
                 'account'  => $org_name ? "https://github.com/organizations/{$org_name}/settings/apps/new" : 'https://github.com/settings/apps/new',
-                'state'    => $signed_jwt,
-                'polling_url' => esc_url_raw(rest_url('wp2-update/v1/installation-status')),
+                'state'    => $state,
             ],
             200
         );
@@ -163,28 +169,24 @@ final class CredentialsController {
             return new WP_REST_Response(['message' => esc_html__('Authorization code is missing.', 'wp2-update')], 400);
         }
 
-        // Decode the JWT to get the encryption key
-        $jwt_secret = defined('JWT_SECRET') ? JWT_SECRET : 'default_secure_key';
-        try {
-            
-            $algorithms = ['HS256'];
-            $decoded = JWT::decode($state, $jwt_secret, $algorithms);
-            $encryption_key = $decoded->encryption_key;
+        // Retrieve the encryption key from the session
+        if (!session_id()) {
+            session_start();
+        }
+        $encryption_key = $_SESSION['encryption_key'] ?? null;
+        unset($_SESSION['encryption_key']); // Clear the session key after use
 
-        } catch (\Exception $e) {
-            return new WP_REST_Response(['message' => esc_html__('Invalid or expired state parameter.', 'wp2-update')], 400);
+        if (empty($encryption_key)) {
+            return new WP_REST_Response(['message' => esc_html__('Encryption key not found in session.', 'wp2-update')], 400);
         }
 
-        $response = wp_remote_post(
-            "https://api.github.com/app-manifests/{$code}/conversions",
-            [
-                'headers' => [
-                    'Accept' => 'application/vnd.github+json',
-                    'User-Agent' => 'WP2-Update-Plugin',
-                ],
-                'timeout' => 20,
-            ]
-        );
+        $url = "https://api.github.com/app-manifests/{$code}/conversions";
+        $headers = [
+            'Accept' => 'application/vnd.github+json',
+            'User-Agent' => 'WP2-Update-Plugin',
+        ];
+
+        $response = $this->httpClient->post($url, ['headers' => $headers, 'timeout' => 20]);
 
         if (is_wp_error($response)) {
             \WP2\Update\Utils\Logger::log('ERROR', 'GitHub OAuth exchange failed: ' . $response->get_error_message());
@@ -206,6 +208,7 @@ final class CredentialsController {
              return new WP_REST_Response(['message' => __('Could not find the app installation ID. Please try connecting again.', 'wp2-update')], 400);
         }
 
+        // Pass sensitive data directly to store_app_credentials for encryption
         $this->credentialService->store_app_credentials([
             'name'            => $credentials['name'] ?? '',
             'app_id'          => absint($credentials['id']),
@@ -267,5 +270,12 @@ final class CredentialsController {
         $body = wp_remote_retrieve_body($response);
         \WP2\Update\Utils\Logger::log('ERROR', 'GitHub API error: ' . $body);
         return new WP_REST_Response(['message' => __('Failed to assign repository.', 'wp2-update')], $status);
+    }
+
+    private function format_response(array $data, int $status = 200): WP_REST_Response {
+        return new WP_REST_Response([
+            'success' => $status >= 200 && $status < 300,
+            'data'    => $data,
+        ], $status);
     }
 }

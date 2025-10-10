@@ -264,5 +264,44 @@ class ReleaseService
         }
     }
 
-   
+    /**
+     * Fetches all releases for a repository using direct GitHub REST API calls.
+     *
+     * @param string $repoSlug The repository slug in the format "owner/repo".
+     * @return array The list of releases, or an empty array on failure.
+     */
+    public function get_releases(string $repoSlug): array
+    {
+        $transientKey = sprintf('wp2_releases_cache_%s', md5($repoSlug));
+        $cachedReleases = get_transient($transientKey);
+
+        if ($cachedReleases !== false) {
+            return $cachedReleases;
+        }
+
+        try {
+            $token = $this->clientFactory->getInstallationToken();
+            if (!$token) {
+                throw new \RuntimeException('Failed to generate GitHub installation token.');
+            }
+
+            $url = "https://api.github.com/repos/{$repoSlug}/releases";
+            $releases = HttpClient::get($url, [
+                'headers' => [
+                    'Authorization' => "Bearer {$token}",
+                    'Accept'        => 'application/vnd.github.v3+json',
+                ],
+            ]);
+
+            if ($releases === null) {
+                throw new \RuntimeException('Failed to fetch releases.');
+            }
+
+            set_transient($transientKey, $releases, HOUR_IN_SECONDS);
+            return $releases;
+        } catch (\Exception $e) {
+            Logger::log('ERROR', 'Error fetching releases: ' . $e->getMessage());
+            return [];
+        }
+    }
 }

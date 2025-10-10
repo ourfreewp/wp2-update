@@ -6,9 +6,6 @@ use WP2\Update\Core\API\ReleaseService;
 use WP2\Update\Core\API\GitHubClientFactory;
 use WP2\Update\Core\API\RepositoryService;
 
-require_once ABSPATH . 'wp-admin/includes/file.php';
-require_once ABSPATH . 'wp-admin/includes/plugin.php';
-
 /**
  * Hooks WordPress' plugin update API into GitHub releases.
  */

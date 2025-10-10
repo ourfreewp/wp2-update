@@ -20,6 +20,3 @@ class ThemeUpdater extends AbstractUpdater
         parent::__construct($packages, $releaseService, $clientFactory, $repositoryService, 'theme');
     }
 }
-
-require_once ABSPATH . 'wp-admin/includes/file.php';
-require_once ABSPATH . 'wp-admin/includes/plugin.php';

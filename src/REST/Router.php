@@ -6,11 +6,22 @@ use WP2\Update\REST\Controllers\CredentialsController;
 use WP2\Update\REST\Controllers\ConnectionController;
 use WP2\Update\REST\Controllers\PackagesController;
 
+/**
+ * Class Router
+ * Handles the registration of REST API routes for the WP2 Update plugin.
+ */
 final class Router {
     private CredentialsController $credentialsController;
     private ConnectionController $connectionController;
     private PackagesController $packagesController;
 
+    /**
+     * Constructor for the Router class.
+     *
+     * @param CredentialsController $credentialsController Controller for handling credential-related endpoints.
+     * @param ConnectionController $connectionController Controller for managing connection status endpoints.
+     * @param PackagesController $packagesController Controller for managing package-related endpoints.
+     */
     public function __construct(
         CredentialsController $credentialsController,
         ConnectionController $connectionController,
@@ -21,6 +32,11 @@ final class Router {
         $this->packagesController = $packagesController;
     }
 
+    /**
+     * Registers all REST API routes for the plugin.
+     *
+     * This method defines the routes and their corresponding callbacks and permissions.
+     */
     public function register_routes(): void {
         register_rest_route('wp2-update/v1', '/save-credentials', [
             'methods'             => 'POST',

@@ -50,6 +50,7 @@ class PackageService
             $githubData = $repoIndex[$repoSlug] ?? null;
 
             if ($githubData) {
+                $releases = $this->releaseService->get_releases($repoSlug);
                 $packages[] = array_merge(
                     $localPackage,
                     [
@@ -57,6 +58,13 @@ class PackageService
                         'last_updated' => $githubData['updated_at'] ?? null,
                         'stars' => $githubData['stargazers_count'] ?? 0,
                         'issues' => $githubData['open_issues_count'] ?? 0,
+                        'releases' => array_map(function ($release) {
+                            return [
+                                'tag' => $release['tag_name'] ?? '',
+                                'label' => $release['name'] ?? '',
+                                'download_url' => $release['zipball_url'] ?? '',
+                            ];
+                        }, $releases),
                     ]
                 );
             } else {
@@ -244,16 +252,112 @@ class PackageService
      */
     private function is_valid_package_archive(string $filePath, string $repoSlug): bool
     {
-        $zip = new \ZipArchive();
-        if ($zip->open($filePath) !== true) {
+        $tempDir = wp_tempnam('wp2_package_validation');
+        if (!$tempDir) {
+            Logger::log('ERROR', 'Failed to create temporary directory for package validation.');
             return false;
         }
 
-        // Example validation: Ensure the repo name exists as a directory in the archive
-        $repoName = basename($repoSlug);
-        $isValid = $zip->locateName($repoName . '/') !== false;
+        // Remove the temp file and create a directory instead
+        unlink($tempDir);
+        if (!wp_mkdir_p($tempDir)) {
+            Logger::log('ERROR', 'Failed to create directory for package validation: ' . $tempDir);
+            return false;
+        }
 
+        $zip = new \ZipArchive();
+        if ($zip->open($filePath) !== true) {
+            Logger::log('ERROR', 'Failed to open ZIP file: ' . $filePath);
+            $this->delete_directory($tempDir);
+            return false;
+        }
+
+        // Extract the archive to the temporary directory
+        if (!$zip->extractTo($tempDir)) {
+            Logger::log('ERROR', 'Failed to extract ZIP file: ' . $filePath);
+            $zip->close();
+            $this->delete_directory($tempDir);
+            return false;
+        }
         $zip->close();
+
+        $isValid = false;
+
+        // Check for key files based on package type
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($tempDir));
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $filePath = $file->getPathname();
+
+                // Check for `style.css` for themes
+                if (basename($filePath) === 'style.css') {
+                    $isValid = true;
+                    break;
+                }
+
+                // Check for PHP files with `Plugin Name:` header for plugins
+                if (pathinfo($filePath, PATHINFO_EXTENSION) === 'php') {
+                    $contents = file_get_contents($filePath);
+                    if (strpos($contents, 'Plugin Name:') !== false) {
+                        $isValid = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Validate the integrity of the archive using a checksum (if available)
+        $expectedChecksum = $this->repositoryService->get_package_checksum($repoSlug);
+        if ($expectedChecksum && hash_file('sha256', $filePath) !== $expectedChecksum) {
+            Logger::log('ERROR', 'Checksum validation failed for package: ' . $repoSlug);
+            $this->delete_directory($tempDir);
+            return false;
+        }
+
+        // Validate file types and extensions
+        $allowedExtensions = ['php', 'css', 'js', 'json', 'txt'];
+        foreach ($iterator as $file) {
+            if ($file->isFile() && !in_array($file->getExtension(), $allowedExtensions, true)) {
+                Logger::log('ERROR', 'Invalid file type found in package: ' . $file->getFilename());
+                $this->delete_directory($tempDir);
+                return false;
+            }
+
+            // Prevent directory traversal
+            if (strpos(realpath($file->getPathname()), realpath($tempDir)) !== 0) {
+                Logger::log('ERROR', 'Directory traversal attempt detected in package: ' . $file->getFilename());
+                $this->delete_directory($tempDir);
+                return false;
+            }
+        }
+
+        // Clean up the temporary directory
+        $this->delete_directory($tempDir);
+
         return $isValid;
+    }
+
+    /**
+     * Recursively delete a directory and its contents.
+     *
+     * @param string $dirPath Path to the directory to delete.
+     */
+    private function delete_directory(string $dirPath): void
+    {
+        if (!is_dir($dirPath)) {
+            return;
+        }
+
+        $files = array_diff(scandir($dirPath), ['.', '..']);
+        foreach ($files as $file) {
+            $filePath = $dirPath . DIRECTORY_SEPARATOR . $file;
+            if (is_dir($filePath)) {
+                $this->delete_directory($filePath);
+            } else {
+                unlink($filePath);
+            }
+        }
+
+        rmdir($dirPath);
     }
 }

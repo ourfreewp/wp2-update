@@ -6,15 +6,31 @@ use WP2\Update\Core\API\ConnectionService;
 use WP2\Update\Core\Updates\PackageService;
 use WP2\Update\Admin\Screens\Manager as GitHubScreensManager;
 
+/**
+ * Class Manager
+ * Handles the registration of admin menus for the WP2 Update plugin.
+ */
 final class Manager {
     private ConnectionService $connectionService;
     private PackageService $packageService;
 
+    /**
+     * Constructor for the Manager class.
+     *
+     * @param ConnectionService $connectionService Service for managing GitHub connections.
+     * @param PackageService $packageService Service for managing package updates.
+     */
     public function __construct(ConnectionService $connectionService, PackageService $packageService) {
         $this->connectionService = $connectionService;
         $this->packageService = $packageService;
     }
 
+    /**
+     * Registers the admin menu and submenu for the plugin.
+     *
+     * This method hooks into WordPress to add the main menu and a hidden submenu
+     * for handling GitHub callbacks.
+     */
     public function register_menu(): void {
         do_action('wp2_update_before_register_menu');
 

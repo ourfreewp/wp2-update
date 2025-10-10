@@ -1,80 +1,68 @@
 # WP2 Update Plugin
 
-## Overview
-The WP2 Update Plugin is a WordPress plugin designed to streamline the management of plugin and theme updates via GitHub. It provides a user-friendly interface for validating connections, syncing packages, and managing updates.
+WP2 Update is a WordPress plugin designed to simplify the management of GitHub repositories and packages directly from your WordPress dashboard. With this plugin, you can connect your GitHub account, manage repositories, and install packages seamlessly.
 
 ## Features
-- **Validation Flow**: Validate GitHub App credentials and connection.
-- **Sync Packages**: Fetch and display available packages and their releases.
-- **Update Management**: Update or rollback plugins and themes to specific versions.
-- **Webhook Integration**: Automatically clear update transients on GitHub push events.
-- **UI Enhancements**: Loading skeletons, empty states, and confirmation modals for better user experience.
+- Connect your WordPress site to GitHub using a GitHub App.
+- Manage private and public repositories.
+- Install and update packages directly from the WordPress dashboard.
+- Secure and user-friendly interface.
 
-## Installation
-1. Download the plugin ZIP file from the [releases page](https://github.com/ourfreewp/wp2-update/releases).
-2. Log in to your WordPress admin dashboard.
-3. Navigate to `Plugins > Add New`.
-4. Click `Upload Plugin` and select the downloaded ZIP file.
-5. Click `Install Now` and activate the plugin.
+---
 
-## Setup
-1. Navigate to `WP2 Updates` in the WordPress admin menu.
-2. Enter your GitHub App credentials:
-   - App Name
-   - App ID
-   - Installation ID
-   - Private Key
-3. Save the credentials and validate the connection.
-4. Sync packages to fetch available plugins and themes.
+## Installation and Setup Guide
 
-## Usage
-- **Validate Connection**: Ensure your GitHub App credentials are correct.
-- **Sync Packages**: Fetch the latest packages and their releases.
-- **Manage Updates**: Select a version and update or rollback packages.
-- **Webhooks**: Automatically clear update transients on GitHub push events.
+### Prerequisites
+1. A GitHub account.
+2. Administrator access to your WordPress site.
 
-## New Features
-- **State-Driven Dashboard**: A centralized dashboard that dynamically updates based on connection and package states.
-- **Installation Status Endpoint**: A dedicated endpoint to check the installation status of the GitHub App.
-- **Rollback Functionality**: Easily revert plugins and themes to previous versions.
-- **Enhanced Error Handling**: Improved user-facing error messages and detailed backend logging for better debugging.
+### Step 1: Create a GitHub App
+1. Log in to your GitHub account.
+2. Navigate to **Settings > Developer Settings > GitHub Apps**.
+3. Click **New GitHub App**.
+4. Fill in the required fields:
+   - **GitHub App Name**: Choose a name for your app.
+   - **Homepage URL**: Enter your WordPress site URL.
+   - **Callback URL**: Use the URL provided in the plugin settings.
+   - **Permissions**: Grant the necessary permissions for repositories, metadata, and webhooks.
+5. Save the app and generate a private key.
+6. Copy the App ID, Client ID, and Client Secret.
 
-## Updated Usage
-- **State-Driven Dashboard**: Navigate through the dashboard to manage connections, sync packages, and handle updates.
-- **Installation Status Check**: The dashboard automatically polls the installation status endpoint to ensure the GitHub App is installed.
+### Step 2: Configure the Plugin
+1. Install and activate the WP2 Update plugin.
+2. Navigate to **Settings > WP2 Update** in your WordPress dashboard.
+3. Enter the GitHub App credentials (App ID, Client ID, Client Secret, and Private Key).
+4. Save the settings and follow the on-screen instructions to complete the setup.
 
-## Screenshots
-### Admin Dashboard
-![Admin Dashboard](https://example.com/screenshot1.png)
+---
 
-### Package Management
-![Package Management](https://example.com/screenshot2.png)
+## Usage Instructions
+
+### Managing Repositories
+1. Navigate to **WP2 Update > Repositories**.
+2. View and manage your connected repositories.
+3. Install or update packages directly from the dashboard.
+
+### Updating Packages
+1. Go to **WP2 Update > Updates**.
+2. Select the packages you want to update.
+3. Click **Update Selected** to apply updates.
+
+---
 
 ## FAQ
-### What permissions are required for the GitHub App?
-The GitHub App requires the following permissions:
-- **Contents**: Read-only
-- **Metadata**: Read-only
 
-### How do I generate a private key for the GitHub App?
-1. Go to your GitHub App settings.
-2. Click `Generate a private key`.
-3. Download the key and upload it in the plugin settings.
+### What permissions does the GitHub App require?
+The app requires permissions for repositories, metadata, and webhooks to function correctly.
 
-### What happens if validation fails?
-Ensure your App ID, Installation ID, and Private Key are correct. Revalidate after correcting any errors.
+### How do I troubleshoot connection issues?
+1. Verify your GitHub App credentials.
+2. Check your server's connectivity to GitHub.
+3. Review the plugin logs for detailed error messages.
 
-### How do I rollback a package?
-Navigate to the `WP2 Updates` menu, select the package, and choose the rollback option. The plugin will automatically fetch and install the previous version.
+### Can I use this plugin with multiple GitHub accounts?
+Currently, the plugin supports one GitHub account per WordPress site.
 
-### What happens if an update fails?
-The plugin provides detailed error messages and logs to help you identify and resolve the issue. Check the WordPress debug log for more information.
+---
 
-## Contributing
-We welcome contributions! Please see the [Contributing Guide](docs/wiki/Contributing.md) for details.
-
-## License
-This plugin is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Changelog
-See [CHANGELOG.md](CHANGELOG.md) for version history.
+For more information, visit the [official documentation](https://github.com/ourfreewp/wp2-update).

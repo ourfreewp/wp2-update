@@ -1,5 +1,17 @@
 import { atom } from 'nanostores';
 
+export const STATUS = {
+	LOADING: 'loading',
+	NOT_CONFIGURED: 'not_configured',
+	NOT_CONFIGURED_WITH_PACKAGES: 'not_configured_with_packages',
+	CONFIGURING: 'configuring',
+	MANUAL_CONFIGURING: 'manual_configuring',
+	APP_CREATED: 'app_created',
+	CONNECTING: 'connecting',
+	INSTALLED: 'installed',
+	ERROR: 'error',
+};
+
 const parseDefaultManifest = () => {
 	try {
 		const manifest = window.wp2UpdateData?.manifest;
@@ -14,47 +26,21 @@ const defaultManifest = parseDefaultManifest();
 
 const buildDefaultManifestDraft = () => {
 	const siteName = window.wp2UpdateData?.siteName;
-
 	return {
 		name: defaultManifest?.name || (siteName ? `${siteName} Updater` : ''),
 		accountType: 'user',
 		organization: '',
-		manifestJson: (() => {
-			try {
-				return JSON.stringify(
-					defaultManifest && Object.keys(defaultManifest).length ? defaultManifest : {},
-					null,
-					2
-				);
-			} catch {
-				return '{}';
-			}
-		})(),
+		manifestJson: JSON.stringify(
+			defaultManifest && Object.keys(defaultManifest).length ? defaultManifest : {},
+			null,
+			2
+		),
+		encryptionKey: '', // Ensure this is tracked in the state
 	};
 };
 
-/**
- * @typedef {'loading'|'not_configured'|'not_configured_with_packages'|'configuring'|'app_created'|'connecting'|'installed'|'error'} ConnectionStatus
- */
-
-/** @type {import('nanostores').WritableAtom<{
- * status: ConnectionStatus;
- * isProcessing: boolean;
- * message: string;
- * details: Record<string, any>;
- * manifestDraft: {
- *   name: string;
- *   accountType: 'user'|'organization';
- *   organization: string;
- *   manifestJson: string;
- * };
- * packages: Array<any>;
- * unlinkedPackages: Array<any>;
- * error: string|null;
- * polling: { active: boolean };
- * }>} */
 export const dashboard_state = atom({
-	status: 'loading',
+	status: STATUS.LOADING,
 	isProcessing: false,
 	message: '',
 	details: {},
@@ -64,3 +50,11 @@ export const dashboard_state = atom({
 	error: null,
 	polling: { active: false },
 });
+
+export const updateDashboardState = (updates) => {
+	const currentState = dashboard_state.get();
+	dashboard_state.set({
+		...currentState,
+		...updates,
+	});
+};

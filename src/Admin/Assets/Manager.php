@@ -22,8 +22,8 @@ final class Manager {
 	public static function enqueue_assets(): void {
 		// Abort if we're not on a screen belonging to our plugin.
 		if ( ! self::is_plugin_screen() ) {
-			do_action('qm/debug', 'is_plugin_screen returned false. Forcing script load for debugging.');
-        }
+			return;
+		}
 
 		$manifest = self::load_manifest();
 		if ( ! $manifest ) {
@@ -37,9 +37,6 @@ final class Manager {
 		self::enqueue_styles_from_manifest( $manifest );
 		self::enqueue_scripts_from_manifest( $manifest, $main_script_handle );
 		self::localize_script_data( $main_script_handle );
-
-		// Debugging: Log script enqueuing.
-		do_action('qm/debug', 'Enqueuing admin-main.js script.');
 	}
 
 	/**
@@ -61,6 +58,41 @@ final class Manager {
 		];
 
 		return in_array( $screen->id, $allowed_screens, true );
+	}
+
+	/**
+	 * Localizes the main script with data from PHP.
+	 */
+	private static function localize_script_data( string $handle ): void {
+		$callback_url = admin_url( 'admin.php?page=wp2-update-github-callback' );
+		$redirect_url = admin_url( 'admin.php?page=wp2-update' );
+
+		$data = [
+			'apiRoot'  => esc_url_raw( rest_url( 'wp2-update/v1/' ) ),
+			'nonce'    => wp_create_nonce( 'wp_rest' ),
+			'siteName' => get_bloginfo( 'name' ),
+			'redirectUrl' => esc_url_raw( $callback_url ),
+			'manifest' => json_decode( wp_json_encode( [
+				'name'                => get_bloginfo( 'name' ) . ' Updater',
+				'url'                 => home_url(),
+				'public'              => false,
+				'callback_urls'       => [ $callback_url ],
+				'setup_url'           => esc_url_raw( $redirect_url ),
+				'setup_on_update'     => false,
+				'default_permissions' => [
+					'contents' => 'read',
+					'metadata' => 'read',
+				],
+				'default_events'      => [ 'release' ],
+			] ), true ),
+		];
+
+		if (self::is_plugin_screen() && ($_GET['page'] ?? '') === 'wp2-update-github-callback') {
+			$data['githubCode'] = isset($_GET['code']) ? sanitize_text_field($_GET['code']) : null;
+			$data['githubState'] = isset($_GET['state']) ? sanitize_text_field($_GET['state']) : null;
+		}
+
+		wp_localize_script( $handle, 'wp2UpdateData', $data );
 	}
 
 	/**
@@ -149,48 +181,6 @@ final class Manager {
 			$tag = '<script type="module" src="' . esc_url( $src ) . '"></script>';
 		}
 		return $tag;
-	}
-
-	/**
-	 * Localizes the main script with data from PHP.
-	 */
-	private static function localize_script_data( string $handle ): void {
-		$callback_url = admin_url( 'admin.php?page=wp2-update-github-callback' );
-		$redirect_url = admin_url( 'admin.php?page=wp2-update' );
-
-		// Log the generated callback URL for debugging
-        do_action( 'qm/debug','Generated callback URL: ' . $callback_url);
-        do_action( 'qm/debug','Generated redirect URL: ' . $redirect_url);
-
-		$data = [
-			'apiRoot'     => esc_url_raw( rest_url( 'wp2-update/v1/' ) ),
-			'nonce'       => wp_create_nonce( 'wp_rest' ),
-			'siteName'    => get_bloginfo( 'name' ),
-			'redirectUrl' => esc_url_raw( $callback_url ),
-			'manifest'    => json_decode( wp_json_encode( [
-				'name'                => get_bloginfo( 'name' ) . ' Updater',
-				'url'                 => home_url(),
-				'public'              => false,
-				'callback_urls'       => [ home_url() ],
-				'redirect_url'        => $callback_url,
-				'setup_url'           => $redirect_url,
-				'setup_on_update'     => false,
-				'default_permissions' => [
-					'contents' => 'read',
-					'metadata' => 'read',
-				],
-				'default_events'      => [ 'release' ],
-			] ), true ),
-		];
-
-		// Debugging: Log the script handle and localized data.
-		do_action( 'qm/debug', 'Script handle: ' . $handle );
-		do_action( 'qm/debug', 'Localized Data: ' . print_r( $data, true ) );
-
-		// Log the manifest data for debugging with Query Monitor
-        do_action('qm/debug', 'Manifest Data:', $data['manifest']);
-
-		wp_localize_script( $handle, 'wp2UpdateData', $data );
 	}
 
 	/**

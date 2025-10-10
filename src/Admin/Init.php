@@ -14,6 +14,12 @@ final class Init {
     private ConnectionService $connectionService;
     private PackageService $packageService;
 
+    /**
+     * Constructor for the Init class.
+     *
+     * @param ConnectionService $connectionService Service for managing GitHub connections.
+     * @param PackageService $packageService Service for managing package updates.
+     */
     public function __construct(ConnectionService $connectionService, PackageService $packageService) {
         $this->connectionService = $connectionService;
         $this->packageService = $packageService;
@@ -21,6 +27,9 @@ final class Init {
 
     /**
      * Registers all necessary hooks for the admin area.
+     *
+     * This method initializes the menu manager and asset manager, and hooks them
+     * into the appropriate WordPress actions.
      */
     public function register_hooks(): void {
         try {

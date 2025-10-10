@@ -39,11 +39,8 @@ class CredentialService
 
         // New logic to update installation_id dynamically
         if (empty($credentials['installation_id'])) {
-            $installationId = $this->fetchInstallationId();
-            if ($installationId) {
-                $credentials['installation_id'] = $installationId;
-                update_option(Config::OPTION_CREDENTIALS, $credentials);
-            }
+            // Removed call to fetchInstallationId as the method is no longer implemented
+            Logger::log('WARNING', 'Installation ID is missing and cannot be fetched automatically.');
         }
     }
 
@@ -136,18 +133,6 @@ class CredentialService
     }
 
     /**
-     * Clears stored credentials.
-     *
-     * @return bool True on success, false on failure.
-     */
-    public function clear_credentials(): bool
-    {
-        // Consolidated to ensure only the correct option key is deleted.
-        $this->clear_stored_credentials();
-        return true;
-    }
-
-    /**
      * Retrieves the encryption key, prioritizing the one stored in the database.
      * Falls back to wp-config.php constants for advanced users or backward compatibility.
      *
@@ -172,18 +157,6 @@ class CredentialService
             return AUTH_KEY;
         }
 
-        return null;
-    }
-
-    /**
-     * Fetches the installation ID from GitHub API.
-     *
-     * @return int|null The installation ID, or null if not found.
-     */
-    private function fetchInstallationId(): ?int
-    {
-        // Logic to call GitHub API and retrieve installation ID
-        // This is a placeholder and should be implemented with actual API calls
         return null;
     }
 

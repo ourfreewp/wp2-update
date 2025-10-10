@@ -36,11 +36,12 @@ final class PackagesController {
             'packages' => array_map(function ($package) {
                 return [
                     'name' => $package['Name'] ?? '',
-                    'installed' => $package['Version'] ?? '', // Changed key from 'version' to 'installed'
+                    'installed' => $package['Version'] ?? '',
                     'github_data' => $package['github_data'] ?? [],
-                    'last_updated' => $package['github_data']['last_updated'] ?? null,
-                    'stars' => $package['github_data']['stars'] ?? 0,
-                    'issues' => $package['github_data']['issues'] ?? 0,
+                    'last_updated' => $package['last_updated'] ?? null,
+                    'stars' => $package['stars'] ?? 0,
+                    'issues' => $package['issues'] ?? 0,
+                    'releases' => $package['releases'] ?? [], // Include enriched release data
                 ];
             }, $data['packages']),
             'unlinked_packages' => $data['unlinked_packages'],
@@ -109,5 +110,12 @@ final class PackagesController {
         }
 
         return new WP_REST_Response(['packages' => $packages], 200);
+    }
+
+    private function format_response(array $data, int $status = 200): WP_REST_Response {
+        return new WP_REST_Response([
+            'success' => $status >= 200 && $status < 300,
+            'data'    => $data,
+        ], $status);
     }
 }

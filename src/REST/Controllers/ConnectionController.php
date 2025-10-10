@@ -101,16 +101,16 @@ final class ConnectionController {
 		$installationId = $this->credentialService->get_installation_id();
 
 		if ( ! $installationId ) {
-			return new WP_REST_Response( [
+			return $this->format_response([
 				'installed' => false,
 				'message' => __( 'The GitHub App is not installed.', 'wp2-update' ),
-			], 200 );
+			], 200);
 		}
 
-		return new WP_REST_Response( [
+		return $this->format_response([
 			'installed' => true,
 			'installation_id' => $installationId,
 			'message' => __( 'The GitHub App is installed.', 'wp2-update' ),
-		], 200 );
+		], 200);
 	}
 }
