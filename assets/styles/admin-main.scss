@@ -712,7 +712,7 @@
 			}
 
 			&::before {
-				content: attr(data-label);
+				content: attr(data-wp2-label);
 				position: absolute;
 				left: var(--wp2-spacing-unit);
 				width: 45%;

@@ -12,13 +12,16 @@ use WP2\Update\Core\API\ConnectionService;
 use WP2\Update\Core\Updates\PluginUpdater;
 use WP2\Update\Core\Updates\ThemeUpdater;
 use WP2\Update\Core\Updates\PackageFinder;
-use WP2\Update\REST\Controllers\ConnectionController;
+use WP2\Update\Core\AppRepository;
 use WP2\Update\REST\Controllers\CredentialsController;
 use WP2\Update\REST\Controllers\PackagesController;
+use WP2\Update\REST\Controllers\AppsController;
+use WP2\Update\REST\Controllers\ConnectionStatusController;
+use WP2\Update\REST\Controllers\GitHubAuthController;
+use WP2\Update\REST\Controllers\NonceController;
 use WP2\Update\REST\Router;
 use WP2\Update\Webhook\Controller as WebhookController;
 use WP2\Update\Utils\Logger;
-use WP2\Update\Utils\HttpClient;
 
 /**
  * Main bootstrap class for the plugin.
@@ -52,23 +55,38 @@ final class Init {
      * This acts as a simple dependency injection container.
      */
     public function initialize_services(): void {
-        // Core Services (no dependencies or only other core services)
-        $credentialService = new CredentialService();
-        $clientFactory     = new GitHubClientFactory($credentialService);
+
+        $appRepository     = new AppRepository();
+        $credentialService = new CredentialService($appRepository);
+        $clientFactory     = new GitHubClientFactory();
+        $repositoryService = new RepositoryService();
+
+        $credentialService->setRepositoryService($repositoryService);
+        $clientFactory->setCredentialService($credentialService);
+        $repositoryService->setClientFactory($clientFactory);
+
         $releaseService    = new ReleaseService($clientFactory);
-        $repositoryService = new RepositoryService($clientFactory);
-        $connectionService = new ConnectionService($clientFactory, $credentialService);
-        $packageFinder     = new PackageFinder();
+        $packageFinder     = new PackageFinder(
+            $repositoryService,
+        );
+        $connectionService = new ConnectionService($clientFactory, $credentialService, $packageFinder);
         $packageService    = new PackageService($repositoryService, $releaseService, $clientFactory, $packageFinder);
 
         // REST API Controllers
-        $httpClient = new HttpClient();
-        $credentialsController = new CredentialsController($credentialService, $httpClient);
-        $connectionController  = new ConnectionController($connectionService, $credentialService, $packageFinder);
-        $packagesController    = new PackagesController($packageService);
+        $credentialsController      = new CredentialsController($credentialService);
+        $packagesController         = new PackagesController($packageService);
+        $appsController             = new AppsController($credentialService, $connectionService);
+        $connectionStatusController = new ConnectionStatusController($connectionService, $credentialService, $packageFinder);
+        $gitHubAuthController       = new GitHubAuthController($credentialsController);
+        $nonceController            = new NonceController();
+        $modularControllers         = [
+            $appsController,
+            $connectionStatusController,
+            $gitHubAuthController,
+            $nonceController,
+        ];
 
         // Routers
-        // Ensure the Router class is loaded properly
         if (!class_exists(Router::class)) {
             $router_file = WP2_UPDATE_PLUGIN_DIR . '/src/REST/Router.php';
             if (file_exists($router_file)) {
@@ -81,7 +99,7 @@ final class Init {
 
         // Instantiate the Router
         try {
-            $router = new Router($credentialsController, $connectionController, $packagesController);
+            $router = new Router($credentialsController, $packagesController, $modularControllers);
             add_action('rest_api_init', [$router, 'register_routes']);
         } catch (\Exception $e) {
             Logger::log('CRITICAL', 'Failed to initialize Router: ' . $e->getMessage());
@@ -103,5 +121,6 @@ final class Init {
             $adminInit = new AdminInit($connectionService, $packageService);
             $adminInit->register_hooks();
         }
+
     }
 }

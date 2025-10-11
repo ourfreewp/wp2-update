@@ -2,150 +2,133 @@
 
 namespace WP2\Update\REST;
 
+use WP_REST_Request;
 use WP2\Update\REST\Controllers\CredentialsController;
-use WP2\Update\REST\Controllers\ConnectionController;
 use WP2\Update\REST\Controllers\PackagesController;
+use WP2\Update\REST\Controllers\RestControllerInterface;
+use WP2\Update\Security\Permissions;
+use function __;
+use function current_user_can;
 
 /**
- * Class Router
- * Handles the registration of REST API routes for the WP2 Update plugin.
+ * Coordinates registration of REST routes across modular controllers.
  */
 final class Router {
-    private CredentialsController $credentialsController;
-    private ConnectionController $connectionController;
-    private PackagesController $packagesController;
+	private CredentialsController $credentialsController;
+	private PackagesController $packagesController;
 
-    /**
-     * Constructor for the Router class.
-     *
-     * @param CredentialsController $credentialsController Controller for handling credential-related endpoints.
-     * @param ConnectionController $connectionController Controller for managing connection status endpoints.
-     * @param PackagesController $packagesController Controller for managing package-related endpoints.
-     */
-    public function __construct(
-        CredentialsController $credentialsController,
-        ConnectionController $connectionController,
-        PackagesController $packagesController
-    ) {
-        $this->credentialsController = $credentialsController;
-        $this->connectionController = $connectionController;
-        $this->packagesController = $packagesController;
-    }
+	/**
+	 * @var RestControllerInterface[]
+	 */
+	private array $modularControllers;
 
-    /**
-     * Registers all REST API routes for the plugin.
-     *
-     * This method defines the routes and their corresponding callbacks and permissions.
-     */
-    public function register_routes(): void {
-        register_rest_route('wp2-update/v1', '/save-credentials', [
-            'methods'             => 'POST',
-            'callback'            => [$this->credentialsController, 'rest_save_credentials'],
-            'permission_callback' => function($request) {
-                return $this->credentialsController->check_permissions($request);
-            },
-        ]);
+	/**
+	 * @param RestControllerInterface[] $modularControllers
+	 */
+	public function __construct(
+		CredentialsController $credentialsController,
+		PackagesController $packagesController,
+		array $modularControllers = []
+	) {
+		$this->credentialsController = $credentialsController;
+		$this->packagesController    = $packagesController;
+		$this->modularControllers    = $modularControllers;
+	}
 
-        register_rest_route('wp2-update/v1', '/connection-status', [
-            'methods'             => 'GET',
-            'callback'            => [$this->connectionController, 'get_connection_status'],
-            'permission_callback' => function($request) {
-                return $this->connectionController->check_permissions($request);
-            },
-        ]);
+	/**
+	 * Register all REST routes for the plugin.
+	 */
+	public function register_routes(): void {
+		foreach ( $this->modularControllers as $controller ) {
+			if ( $controller instanceof RestControllerInterface ) {
+				$controller->register_routes();
+			}
+		}
 
-        register_rest_route('wp2-update/v1', '/run-update-check', [
-            'methods'             => 'POST',
-            'callback'            => [$this->packagesController, 'rest_run_update_check'],
-            'permission_callback' => function($request) {
-                return $this->packagesController->check_permissions($request);
-            },
-        ]);
+		// TODO: migrate remaining endpoints into dedicated controllers.
+		$this->register_credentials_routes();
+		$this->register_package_routes();
+	}
 
-        register_rest_route('wp2-update/v1', '/sync-packages', [
-            'methods'             => 'GET',
-            'callback'            => [$this->packagesController, 'sync_packages'],
-            'permission_callback' => function($request) {
-                return $this->packagesController->check_permissions($request);
-            },
-        ]);
+	private function register_credentials_routes(): void {
+		register_rest_route(
+			'wp2-update/v1',
+			'/save-credentials',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this->credentialsController, 'rest_save_credentials' ],
+				'permission_callback' => [ Permissions::class, 'current_user_can_manage' ],
+			]
+		);
+	}
 
-        register_rest_route('wp2-update/v1', '/manage-packages', [
-            'methods'             => 'POST',
-            'callback'            => [$this->packagesController, 'manage_packages'],
-            'permission_callback' => function($request) {
-                return $this->packagesController->check_permissions($request);
-            },
-        ]);
+	private function register_package_routes(): void {
+		register_rest_route(
+			'wp2-update/v1',
+			'/run-update-check',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this->packagesController, 'rest_run_update_check' ],
+				'permission_callback' => [ Permissions::class, 'current_user_can_manage' ],
+			]
+		);
 
-        register_rest_route('wp2-update/v1', '/github/connect-url', [
-            'methods'             => ['GET', 'POST'],
-            'callback'            => [$this->credentialsController, 'rest_get_connect_url'],
-            'permission_callback' => function($request) {
-                return $this->credentialsController->check_permissions($request);
-            },
-            'args'                => [
-                'account_type' => [
-                    'required' => true,
-                    'type'     => 'string',
-                    'enum'     => ['user', 'organization'],
-                    'description' => 'The type of GitHub account (user or organization).',
-                ],
-                'organization' => [
-                    'required' => false,
-                    'type'     => 'string',
-                    'description' => 'The slug of the organization (required if account_type is organization).',
-                ],
-                'manifest' => [
-                    'required' => true,
-                    'type'     => 'string',
-                    'description' => 'The GitHub App manifest JSON.',
-                ],
-            ],
-        ]);
+		register_rest_route(
+			'wp2-update/v1',
+			'/sync-packages',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this->packagesController, 'sync_packages' ],
+				'permission_callback' => [ Permissions::class, 'current_user_can_manage' ],
+			]
+		);
 
-        register_rest_route('wp2-update/v1', '/github/exchange-code', [
-            'methods'             => 'POST',
-            'callback'            => [$this->credentialsController, 'rest_exchange_code'],
-            'permission_callback' => function($request) {
-                return $this->credentialsController->check_permissions($request);
-            },
-        ]);
+		register_rest_route(
+			'wp2-update/v1',
+			'/manage-packages',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this->packagesController, 'manage_packages' ],
+				'permission_callback' => [ Permissions::class, 'current_user_can_manage' ],
+			]
+		);
 
-        register_rest_route('wp2-update/v1', '/package/(?P<repo_slug>[\w-]+/[\w-]+)', [
-            'methods'             => 'GET',
-            'callback'            => [$this->packagesController, 'rest_get_package_status'],
-            'permission_callback' => function($request) {
-                return $this->packagesController->check_permissions($request);
-            },
-        ]);
+		register_rest_route(
+			'wp2-update/v1',
+			'/package/(?P<repo_slug>[\w-]+/[\w-]+)',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this->packagesController, 'rest_get_package_status' ],
+				'permission_callback' => static function ( WP_REST_Request $request ): bool {
+					return current_user_can( 'manage_options' )
+						&& PackagesController::check_permissions( $request );
+				},
+			]
+		);
 
-        register_rest_route('wp2-update/v1', '/health-status', [
-            'methods'             => 'GET',
-            'callback'            => [$this->connectionController, 'get_health_status'],
-            'permission_callback' => function($request) {
-                return $this->connectionController->check_permissions($request);
-            },
-        ]);
-
-        register_rest_route('wp2-update/v1', '/github/disconnect', [
-            'methods'             => 'POST',
-            'callback'            => [$this->credentialsController, 'rest_disconnect'],
-            'permission_callback' => function($request) {
-                return $this->credentialsController->check_permissions($request);
-            },
-        ]);
-
-        register_rest_route('wp2-update/v1', '/refresh-nonce', [
-            'methods'             => 'GET',
-            'callback'            => static function () {
-                return rest_ensure_response([
-                    'nonce' => wp_create_nonce('wp_rest'),
-                ]);
-            },
-            'permission_callback' => static function () {
-                return current_user_can('manage_options');
-            },
-        ]);
-    }
+		register_rest_route(
+			'wp2-update/v1',
+			'/packages/assign',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this->packagesController, 'assign_package' ],
+				'permission_callback' => static function ( WP_REST_Request $request ): bool {
+					return current_user_can( 'manage_options' )
+						&& PackagesController::check_permissions( $request );
+				},
+				'args'                => [
+					'app_id' => [
+						'required'    => true,
+						'type'        => 'string',
+						'description' => __( 'The app UID that should manage the package.', 'wp2-update' ),
+					],
+					'repo_id' => [
+						'required'    => true,
+						'type'        => 'string',
+						'description' => __( 'The repository identifier to assign.', 'wp2-update' ),
+					],
+				],
+			]
+		);
+	}
 }

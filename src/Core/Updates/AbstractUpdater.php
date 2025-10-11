@@ -79,7 +79,7 @@ abstract class AbstractUpdater
 
         foreach ($managedItems as $slug => $item) {
             $installedVersion = $transient->checked[$slug] ?? null;
-            $latestRelease = $item['releases'][0] ?? null; // Assuming releases are sorted by version descending
+            $latestRelease = $item['releases'][0] ?? null;
 
             if ($latestRelease && version_compare($latestRelease['version'], $installedVersion, '>')) {
                 $transient->response[$slug] = [

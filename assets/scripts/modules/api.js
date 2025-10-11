@@ -1,5 +1,5 @@
-// Centralized REST helpers with nonce refresh + JSON handling
 const { nonce: initial_nonce, apiRoot } = window.wp2UpdateData || {};
+
 let current_nonce = initial_nonce;
 
 if (!current_nonce || !apiRoot) {
@@ -24,35 +24,19 @@ const refresh_nonce = async () => {
     current_nonce = data.nonce;
 };
 
-/**
- * Handles API requests with automatic nonce refresh.
- *
- * This function attempts to make an API request to the specified endpoint. If the request fails due to an invalid nonce,
- * it will automatically refresh the nonce and retry the request up to three times.
- *
- * @param {string} endpoint - The API endpoint to call.
- * @param {RequestInit & {body?: any}} [options] - Additional options for the fetch request, such as method, headers, and body.
- * @param {number} [retries=3] - The number of retry attempts in case of a nonce-related failure.
- *
- * @returns {Promise<any>} - The JSON-parsed response from the API.
- *
- * @throws {Error} - Throws an error if all retry attempts fail or if the API returns an error.
- *
- * @example
- * ```js
- * try {
- *   const data = await api_request('example-endpoint', { method: 'POST', body: { key: 'value' } });
- *   console.log('API response:', data);
- * } catch (error) {
- *   console.error('API request failed:', error);
- * }
- * ```
- */
+const addAppIdToParams = (params = {}) => {
+    const appId = window.wp2UpdateData?.app_id;
+    if (!appId) {
+        return params;
+    }
+    return { ...params, app_id: appId };
+};
+
 export const api_request = async (endpoint, options = {}, retries = 3) => {
     for (let attempt = 0; attempt < retries; attempt++) {
         try {
             const { params, headers: headerOverrides, ...restOptions } = options;
-            const url = build_url(endpoint, params);
+            const url = build_url(endpoint, addAppIdToParams(params));
             const init = {
                 method: 'POST',
                 ...restOptions,
@@ -62,9 +46,13 @@ export const api_request = async (endpoint, options = {}, retries = 3) => {
                     ...(headerOverrides || {}),
                 },
             };
-            if (init.body && typeof init.body !== 'string') {
+
+            if (init.body instanceof FormData) {
+                delete init.headers['Content-Type'];
+            } else if (init.body && typeof init.body !== 'string') {
                 init.body = JSON.stringify(init.body);
             }
+
             if ((init.method || 'POST').toUpperCase() === 'GET') {
                 delete init.body;
             }
@@ -76,14 +64,46 @@ export const api_request = async (endpoint, options = {}, retries = 3) => {
                 throw new Error(data.message || `HTTP ${res.status} ${res.statusText}`);
             }
             return res.json();
-        } catch (err) {
-            if (String(err?.message || '').toLowerCase().includes('nonce') && attempt < retries - 1) {
-                try {
-                    await refresh_nonce();
-                    continue;
-                } catch {}
+        } catch (error) {
+            if (attempt === retries - 1) {
+                throw error;
             }
-            if (attempt === retries - 1) throw err;
+            await refresh_nonce();
         }
     }
+};
+
+export const fetchConnectionStatus = async () => {
+    return api_request('connection-status', { method: 'GET' });
+};
+
+export const syncPackages = async () => {
+    return api_request('sync-packages', { method: 'GET' });
+};
+
+export const createApp = async (appData) => {
+    return api_request('apps', {
+        method: 'POST',
+        body: appData,
+    });
+};
+
+export const updateApp = async (appId, appData) => {
+    return api_request(`apps/${appId}`, {
+        method: 'PUT',
+        body: appData,
+    });
+};
+
+export const deleteApp = async (appId) => {
+    return api_request(`apps/${appId}`, {
+        method: 'DELETE',
+    });
+};
+
+export const assignPackageToApp = async (packageData) => {
+    return api_request('packages/assign', {
+        method: 'POST',
+        body: packageData,
+    });
 };

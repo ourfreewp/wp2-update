@@ -1,6 +1,5 @@
-import { dashboard_state, updateDashboardState, STATUS } from '../state/store.js';
+import { dashboard_state, app_state, updateDashboardState, updateAppState, STATUS } from '../state/store.js';
 import { api_request } from '../api.js';
-import { confirm_modal } from './modal.js';
 import { ensureToast } from './toast.js';
 import { show_global_spinner, hide_global_spinner } from './spinner.js';
 import { onSubmitManualForm, renderManualCredentialsForm } from './views/manualCredentialsView.js';
@@ -12,12 +11,51 @@ import { notConfiguredView } from './views/notConfiguredView.js';
 import { configuringView } from './views/configuringView.js';
 import { appCreatedView } from './views/appCreatedView.js';
 import { connectingView } from './views/connectingView.js';
-import { dashboardView } from './views/dashboardView.js';
+import { DashboardView } from './views/DashboardView.js';
 import { errorView } from './views/errorView.js';
+import { WaitingView } from './views/WaitingView.js';
 
 const { __, sprintf } = window.wp?.i18n ?? { __: (text) => text, sprintf: (...parts) => parts.join(' ') };
 
+let activeControllers = {};
+
+// Debounce state updates to reduce render frequency
+const debouncedUpdate = debounce((updates) => {
+    updateDashboardState(updates);
+}, 200);
+
 // --- Event Handlers ---
+
+const onAppSelectionChange = (event) => {
+    const selectedAppId = event.target.value;
+    updateAppState({ selectedAppId });
+    updateDashboardState((state) => ({ packages: state.allPackages }));
+};
+
+const onFormFieldInput = (event) => {
+    const { id, value } = event.target;
+    const currentState = dashboard_state.get();
+    const draft = { ...currentState.manifestDraft };
+
+    switch (id) {
+        case 'wp2-encryption-key':
+            draft.encryptionKey = value;
+            break;
+        case 'wp2-app-name':
+            draft.name = value;
+            break;
+        case 'wp2-organization':
+            draft.organization = value;
+            break;
+        case 'wp2-manifest-json':
+            draft.manifestJson = value;
+            break;
+        default:
+            return;
+    }
+
+    debouncedUpdate({ manifestDraft: draft });
+};
 
 const onAccountTypeChange = (event) => {
     const currentState = dashboard_state.get();
@@ -48,113 +86,87 @@ const onSubmitManifestForm = async (event) => {
     show_global_spinner();
 
     try {
-        const payload = await api_request('github/connect-url', {
+        const selectedAppId = app_state.get().selectedAppId;
+        if (!selectedAppId) {
+            throw new Error('No app selected. Please choose an app before submitting the manifest.');
+        }
+        const response = await api_request(`/apps/${selectedAppId}/manifest`, {
             method: 'POST',
-            body: {
-                name: formData.get('app-name'),
-                account_type: formData.get('app-type'),
-                organization: formData.get('organization'),
-                encryption_key: encryptionKey,
-                manifest: formData.get('manifest'),
-            },
+            body: formData,
         });
 
-        // Open GitHub in a new tab
-        let actionUrl = payload.account;
-        if (payload?.state && typeof payload.account === 'string') {
-            try {
-                const url = new URL(payload.account);
-                url.searchParams.set('state', payload.state);
-                actionUrl = url.toString();
-            } catch {
-                const separator = payload.account.includes('?') ? '&' : '?';
-                actionUrl = `${payload.account}${separator}state=${encodeURIComponent(payload.state)}`;
-            }
+        if (response.success) {
+            toast(__('Manifest submitted successfully.', 'wp2-update'), 'success');
+            updateDashboardState({ isProcessing: false });
+        } else {
+            throw new Error(response.message || __('An error occurred.', 'wp2-update'));
         }
-
-        const formElement = document.createElement('form');
-        formElement.method = 'POST';
-        formElement.action = actionUrl;
-        formElement.target = '_blank';
-        const manifestInput = document.createElement('input');
-        manifestInput.type = 'hidden';
-        manifestInput.name = 'manifest';
-        manifestInput.value = payload.manifest;
-        formElement.appendChild(manifestInput);
-        document.body.appendChild(formElement);
-        formElement.submit();
-        formElement.remove();
-
-        updateDashboardState({ status: STATUS.APP_CREATED });
     } catch (error) {
-        console.error('Failed to generate connect URL', error);
-        toast(__('Failed to connect to GitHub. Please try again.', 'wp2-update'), 'error', error.message);
+        toast(error.message, 'error');
     } finally {
-        hide_global_spinner();
         submitButton.disabled = false;
-        updateDashboardState({ isProcessing: false });
+        hide_global_spinner();
     }
 };
 
-const onPackageAction = async (event, syncPackages) => {
-    event.preventDefault();
-    const toast = await ensureToast();
-    const button = event.currentTarget;
-    const row = button.closest('tr');
-    const repo = row?.dataset.repo;
-    const version = row?.querySelector('.wp2-release-select')?.value;
-
-    if (!repo || !version) {
-        toast(__('Unable to determine the selected release.', 'wp2-update'), 'error');
+// Subscribe to state updates
+const renderAppSelection = () => {
+    const { apps = [], selectedAppId = null } = app_state.get();
+    const dropdown = document.querySelector('#wp2-app-selection');
+    if (!dropdown) {
         return;
     }
-
-    confirm_modal(
-        sprintf(__('Install %1$s from %2$s?', 'wp2-update'), version, repo),
-        async () => {
-            show_global_spinner();
-            try {
-                await api_request('manage-packages', {
-                    method: 'POST',
-                    body: { action: 'install', repo_slug: repo, version },
-                });
-                toast(__('Package action successful.', 'wp2-update'), 'success');
-                await syncPackages(); // Re-sync after action
-            } catch (error) {
-                console.error('Failed to manage package', error);
-                toast(__('Failed to perform the action on the selected release.', 'wp2-update'), 'error', error.message);
-            } finally {
-                hide_global_spinner();
-            }
-        }
-    );
+    dropdown.innerHTML = apps.map(app => `<option value="${app.id}"${app.id === selectedAppId ? ' selected' : ''}>${app.name}</option>`).join('');
+    dropdown.value = selectedAppId ?? '';
+    dropdown.removeEventListener('change', onAppSelectionChange);
+    dropdown.addEventListener('change', onAppSelectionChange);
 };
 
-const confirmResetConnection = async (stopPolling) => {
-    const toast = await ensureToast();
-    confirm_modal(
-        __('Are you sure you want to disconnect? All settings will be removed.', 'wp2-update'),
-        async () => {
-            show_global_spinner();
-            try {
-                await api_request('github/disconnect', { method: 'POST' });
-                stopPolling();
-                updateDashboardState({
-                    status: STATUS.NOT_CONFIGURED,
-                    message: '',
-                    details: {},
-                    packages: [],
-                    unlinkedPackages: [],
-                });
-                toast(__('Disconnected successfully.', 'wp2-update'), 'success');
-            } catch (error) {
-                console.error('Failed to disconnect', error);
-                toast(__('Failed to disconnect. Please try again.', 'wp2-update'), 'error', error.message);
-            } finally {
-                hide_global_spinner();
-            }
-        }
-    );
+app_state.subscribe(renderAppSelection);
+
+// Initial render
+renderAppSelection();
+
+// Absorbed confirm_modal logic
+
+/**
+ * Show a confirmation modal.
+ * @param {string} message - The message to display.
+ * @param {() => void} onConfirm - Callback for confirm action.
+ * @param {() => void} [onCancel] - Callback for cancel action.
+ */
+export const showConfirmationModal = (message, onConfirm, onCancel) => {
+    const modal = document.getElementById('wp2-disconnect-modal');
+    if (!modal) return console.error('Modal #wp2-disconnect-modal not found');
+
+    const msg = modal.querySelector('.wp2-modal-message');
+    const ok = modal.querySelector('[data-wp2-action="confirm-disconnect"]');
+    const cancel = modal.querySelector('[data-wp2-action="cancel-disconnect"]');
+
+    if (msg) msg.textContent = message;
+
+    const close = () => {
+        modal.classList.remove('is-visible');
+        modal.hidden = true;
+        ok.removeEventListener('click', on_ok);
+        cancel.removeEventListener('click', on_cancel);
+    };
+
+    const on_ok = () => {
+        close();
+        onConfirm();
+    };
+
+    const on_cancel = () => {
+        close();
+        if (onCancel) onCancel();
+    };
+
+    ok.addEventListener('click', on_ok);
+    cancel.addEventListener('click', on_cancel);
+
+    modal.hidden = false;
+    modal.classList.add('is-visible');
 };
 
 // --- View and Event Binding ---
@@ -168,13 +180,18 @@ const buildViewForState = (state) => {
         case STATUS.MANUAL_CONFIGURING: return renderManualCredentialsForm();
         case STATUS.APP_CREATED: return appCreatedView(state);
         case STATUS.CONNECTING: return connectingView();
-        case STATUS.INSTALLED: return dashboardView(state);
+        case STATUS.INSTALLED: return DashboardView(state);
         case STATUS.ERROR: return errorView(state);
         default: return loadingView();
     }
 };
 
-const bindViewEvents = (state, { fetchConnectionStatus, syncPackages, stopPolling }) => {
+const bindViewEvents = (state, controllers = {}) => {
+    const {
+        fetchConnectionStatus = () => {},
+        syncPackages = () => {},
+        stopPolling = () => {},
+    } = controllers;
     const { status } = state;
 
     if (status === STATUS.NOT_CONFIGURED || status === STATUS.NOT_CONFIGURED_WITH_PACKAGES) {
@@ -208,32 +225,57 @@ const bindViewEvents = (state, { fetchConnectionStatus, syncPackages, stopPollin
     }
 };
 
-// Debounce state updates to reduce render frequency
-const debouncedUpdate = debounce((updates) => {
-    updateDashboardState(updates);
-}, 200);
+// Centralized App Initialization
+const App = {
+    init() {
+        // Initialize state and controllers
+        this.state = { ...dashboard_state.get(), ...app_state.get() };
+        this.controllers = {};
 
-export const render = (state, controllers) => {
-    const root = document.getElementById('wp2-dashboard-root');
-    if (!root) return;
+        // Bind global event listeners
+        this.bindGlobalEvents();
 
-    // Optimize rendering by selectively updating parts of the DOM
-    const currentView = root.getAttribute('data-view');
-    const newView = state.status;
+        // Initial render
+        this.render();
 
-    if (currentView !== newView) {
-        root.setAttribute('data-view', newView);
-        root.innerHTML = buildViewForState(state);
-        bindViewEvents(state, controllers);
-    } else {
-        // Update only specific fields if the view remains the same
-        const draft = state.manifestDraft;
-        document.getElementById('wp2-encryption-key')?.setAttribute('value', draft.encryptionKey ?? '');
-        document.getElementById('wp2-app-name')?.setAttribute('value', draft.name ?? '');
-        document.getElementById('wp2-organization')?.setAttribute('value', draft.organization ?? '');
-        const manifestJsonElement = document.getElementById('wp2-manifest-json');
-        if (manifestJsonElement) {
-            manifestJsonElement.value = draft.manifestJson;
+        // Subscribe to state changes
+        dashboard_state.subscribe(this.render.bind(this));
+        app_state.subscribe(this.render.bind(this));
+    },
+
+    bindGlobalEvents() {
+        // Example: Global event listeners
+        document.addEventListener('click', (event) => {
+            if (event.target.matches('[data-action="refresh"]')) {
+                this.refresh();
+            }
+        });
+    },
+
+    render() {
+        const root = document.getElementById('wp2-dashboard-root');
+        if (!root) return;
+
+        // Render dashboard content based on state
+        const content = buildViewForState(this.state);
+        root.innerHTML = '';
+        if (content && typeof content === 'object' && 'nodeType' in content) {
+            root.appendChild(content);
+        } else {
+            root.innerHTML = content || '';
         }
-    }
+
+        // Bind view-specific events
+        bindViewEvents(this.state, this.controllers);
+    },
+
+    refresh() {
+        console.log('Refreshing application state...');
+        // Logic to refresh state or re-fetch data
+    },
 };
+
+// Initialize the application
+App.init();
+
+export { App };

@@ -41,7 +41,7 @@ final class PackagesController {
                     'last_updated' => $package['last_updated'] ?? null,
                     'stars' => $package['stars'] ?? 0,
                     'issues' => $package['issues'] ?? 0,
-                    'releases' => $package['releases'] ?? [], // Include enriched release data
+                    'releases' => $package['releases'] ?? [],
                 ];
             }, $data['packages']),
             'unlinked_packages' => $data['unlinked_packages'],
@@ -110,6 +110,26 @@ final class PackagesController {
         }
 
         return new WP_REST_Response(['packages' => $packages], 200);
+    }
+
+    public function assign_package( WP_REST_Request $request ): WP_REST_Response {
+        $appId = $request->get_param('app_id');
+        $repoId = $request->get_param('repo_id');
+
+        try {
+            $this->packageService->assign_package_to_app($appId, $repoId);
+
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => esc_html__('Package assigned successfully.', 'wp2-update'),
+            ], 200);
+        } catch ( \Exception $e ) {
+            Logger::log('ERROR', 'Failed to assign package: ' . $e->getMessage());
+            return new WP_REST_Response([
+                'success' => false,
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
     }
 
     private function format_response(array $data, int $status = 200): WP_REST_Response {

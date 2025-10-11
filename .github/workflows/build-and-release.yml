@@ -185,3 +185,9 @@ jobs:
             ${{ steps.package.outputs.PACKAGE_PATH }}.sha256
             update.json
 
+      - name: Cleanup Staging Folder
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          rm -rf staging
+

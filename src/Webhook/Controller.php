@@ -53,14 +53,22 @@ final class Controller {
             return new WP_REST_Response(['message' => 'Missing payload or signature.'], 400);
         }
 
-        $secret = $this->credentialService->get_decrypted_webhook_secret();
-        if (empty($secret)) {
+        $secretMap = $this->credentialService->get_all_webhook_secrets();
+        if (empty($secretMap)) {
             Logger::log('SECURITY', 'Webhook validation failed: Webhook secret not configured in WordPress.');
             return new WP_REST_Response(['message' => 'Webhook secret not configured.'], 401);
         }
 
-        $expected_hash = 'sha256=' . hash_hmac('sha256', $payload, $secret);
-        if (!hash_equals($expected_hash, $signature)) {
+        $matchedApp = null;
+        foreach ($secretMap as $appId => $secret) {
+            $expected_hash = 'sha256=' . hash_hmac('sha256', $payload, $secret);
+            if (hash_equals($expected_hash, $signature)) {
+                $matchedApp = $appId;
+                break;
+            }
+        }
+
+        if (null === $matchedApp) {
             Logger::log('SECURITY', 'Webhook validation failed: Invalid signature.');
             return new WP_REST_Response(['message' => 'Signature validation failed.'], 401);
         }
@@ -79,7 +87,7 @@ final class Controller {
         // Capture installation events to persist the installation ID once the app is installed.
         if ($event === 'installation' && !empty($data['installation']['id'])) {
             $installationId = (int) $data['installation']['id'];
-            $this->credentialService->update_installation_id($installationId);
+            $this->credentialService->update_installation_id($matchedApp, $installationId);
             Logger::log('INFO', 'Installation webhook received. Installation ID stored: ' . $installationId);
 
             return new WP_REST_Response(['message' => 'Installation recorded.'], 200);
@@ -87,16 +95,33 @@ final class Controller {
 
         if ($event === 'installation_repositories' && !empty($data['installation']['id'])) {
             $installationId = (int) $data['installation']['id'];
-            $this->credentialService->update_installation_id($installationId);
+            $this->credentialService->update_installation_id($matchedApp, $installationId);
             Logger::log('INFO', 'Installation repositories webhook received. Installation ID stored: ' . $installationId);
         }
 
         // Only act on the 'published' action of a 'release' event.
         if ($event === 'release' && ($data['action'] ?? '') === 'published') {
             Logger::log('INFO', 'Valid release webhook received. Clearing update transients.');
-            delete_site_transient('update_plugins');
-            delete_site_transient('update_themes');
-            do_action('wp2_update_release_published', $data);
+
+            // Fetch managed repositories for the matched app
+            $managedRepositories = $this->credentialService->get_managed_repositories($matchedApp);
+
+            if (empty($managedRepositories)) {
+                Logger::log('WARNING', 'No managed repositories found for app: ' . $matchedApp);
+                return new WP_REST_Response(['message' => 'No managed repositories found.'], 200);
+            }
+
+            // Clear update transients only for managed repositories
+            foreach ($managedRepositories as $repo) {
+                $pluginTransientKey = 'update_plugins_' . md5($repo['slug']);
+                $themeTransientKey = 'update_themes_' . md5($repo['slug']);
+
+                delete_site_transient($pluginTransientKey);
+                delete_site_transient($themeTransientKey);
+            }
+
+            Logger::log('INFO', 'Cleared update transients for managed repositories.');
+            do_action('wp2_update_release_published', $data, $matchedApp['id']);
         }
 
         // Log unexpected events for debugging purposes.

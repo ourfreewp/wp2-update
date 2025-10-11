@@ -1,8 +1,13 @@
-const { __ } = window.wp?.i18n ?? { __: (text) => text }; // Corrected from i1n to i18n
-
-export const loadingView = () => `
-    <div class="wp2-dashboard-card wp2-dashboard-loading">
-        <div class="wp2-dashboard-spinner"></div>
-        <p>${__('Loading connection status…', 'wp2-update')}</p>
-    </div>
-`;
+/**
+ * Renders the LoadingView component.
+ * Displays a loading spinner or message.
+ * @returns {string} - HTML string for the LoadingView.
+ */
+export const loadingView = () => {
+    return `
+        <div class="wp2-loading-view">
+            <div class="wp2-spinner"></div>
+            <p>Loading, please wait...</p>
+        </div>
+    `;
+};

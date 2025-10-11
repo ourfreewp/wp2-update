@@ -2,6 +2,7 @@
 
 namespace WP2\Update\Admin\Assets;
 
+use WP2\Update\Utils\Logger;
 /**
  * Manages the enqueuing of admin-facing scripts and styles.
  * Designed to work with a Vite manifest for modern asset handling.
@@ -65,7 +66,7 @@ final class Manager {
 	 */
 	private static function localize_script_data( string $handle ): void {
 		$callback_url = admin_url( 'admin.php?page=wp2-update-github-callback' );
-		$redirect_url = admin_url( 'admin.php?page=wp2-update' );
+		$redirect_url = admin_url( 'admin.php?page=wp2-update-github-callback' );
 
 		$data = [
 			'apiRoot'  => esc_url_raw( rest_url( 'wp2-update/v1/' ) ),
@@ -92,6 +93,8 @@ final class Manager {
 			$data['githubState'] = isset($_GET['state']) ? sanitize_text_field($_GET['state']) : null;
 		}
 
+		$data['app_id'] = get_option('wp2_update_app_id', null) ?: null; // Ensure app_id is optional and defaults to null
+
 		wp_localize_script( $handle, 'wp2UpdateData', $data );
 	}
 
@@ -100,7 +103,7 @@ final class Manager {
 	 */
 	private static function log_manifest_error( string $message ): void {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( '[WP2-Update] Manifest Error: ' . $message );
+			Logger::log('ERROR', 'Manifest Error: ' . $message);
 		}
 	}
 
@@ -111,23 +114,23 @@ final class Manager {
 	 */
 	private static function load_manifest(): ?array {
 		$manifest_path = trailingslashit( WP2_UPDATE_PLUGIN_DIR ) . 'dist/.vite/manifest.json';
-		error_log( 'Attempting to load manifest from: ' . $manifest_path );
+		Logger::log('INFO', 'Attempting to load manifest from: ' . $manifest_path);
 		if ( ! file_exists( $manifest_path ) ) {
-			error_log( 'Manifest file not found at: ' . $manifest_path );
+			Logger::log('ERROR', 'Manifest file not found at: ' . $manifest_path);
 			self::log_manifest_error( 'Manifest file not found at ' . $manifest_path );
 			return null;
 		}
 
 		$manifest_contents = file_get_contents( $manifest_path );
 		if ( false === $manifest_contents ) {
-			error_log( 'Failed to read manifest file at: ' . $manifest_path );
+			Logger::log('ERROR', 'Failed to read manifest file at: ' . $manifest_path);
 			self::log_manifest_error( 'Failed to read manifest file at ' . $manifest_path );
 			return null;
 		}
 
 		$manifest = json_decode( $manifest_contents, true );
 		if ( json_last_error() !== JSON_ERROR_NONE ) {
-			error_log( 'Failed to decode manifest JSON: ' . json_last_error_msg() );
+			Logger::log('ERROR', 'Failed to decode manifest JSON: ' . json_last_error_msg());
 			self::log_manifest_error( 'Failed to decode manifest JSON: ' . json_last_error_msg() );
 			return null;
 		}

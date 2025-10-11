@@ -2,7 +2,8 @@
 
 namespace WP2\Update\Core\API;
 
-use WP2\Update\Config;
+use WP2\Update\Core\AppRepository;
+use WP2\Update\Utils\Cache;
 use WP2\Update\Utils\Logger;
 
 /**
@@ -10,165 +11,249 @@ use WP2\Update\Utils\Logger;
  */
 class CredentialService
 {
-    /**
-     * Encrypts and stores GitHub App credentials using OpenSSL.
-     *
-     * @param array{name:string,app_id:string,installation_id:string,private_key:string} $credentials
-     */
-    public function store_app_credentials(array $credentials): void
+    private AppRepository $repository;
+    private ?RepositoryService $repositoryService;
+
+    public function __construct(AppRepository $repository, ?RepositoryService $repositoryService = null)
     {
-        $encryptionKey = $credentials['encryption_key'] ?? $this->get_encryption_key();
+        $this->repository = $repository;
+        $this->repositoryService = $repositoryService;
+    }
+
+    /**
+     * Persist credentials for a GitHub App.
+     *
+     * @param array $credentials App data including secrets.
+     * @return array Sanitised app payload for API responses.
+     */
+    public function store_app_credentials(array $credentials): array
+    {
+        $appUid   = isset($credentials['app_uid']) ? sanitize_text_field($credentials['app_uid']) : '';
+        $existing = $appUid ? $this->repository->find($appUid) : null;
+
+        $encryptionKey = $credentials['encryption_key'] ?? ($existing['encryption_key'] ?? $this->fallback_encryption_key());
         if (!$encryptionKey) {
             throw new \RuntimeException('Cannot store credentials without an encryption key.');
         }
 
-        $iv = openssl_random_pseudo_bytes(16);
-        $encryptedKey = base64_encode($iv . openssl_encrypt($credentials['private_key'], 'AES-256-CBC', $encryptionKey, 0, $iv));
+        $name = sanitize_text_field($credentials['name'] ?? ($existing['name'] ?? ''));
+        $slug = sanitize_title($credentials['slug'] ?? ($existing['slug'] ?? $name));
 
-        $iv_secret = openssl_random_pseudo_bytes(16);
-        $encryptedSecret = base64_encode($iv_secret . openssl_encrypt($credentials['webhook_secret'], 'AES-256-CBC', $encryptionKey, 0, $iv_secret));
+        $privateKeyPlain = isset($credentials['private_key']) ? (string) $credentials['private_key'] : '';
+        $webhookPlain    = isset($credentials['webhook_secret']) ? (string) $credentials['webhook_secret'] : '';
 
-        update_option(Config::OPTION_CREDENTIALS, [
-            'name'            => sanitize_text_field($credentials['name'] ?? ''),
-            'app_id'          => absint($credentials['app_id'] ?? 0),
-            'installation_id' => absint($credentials['installation_id'] ?? 0),
-            'private_key'     => $encryptedKey,
-            'webhook_secret'  => $encryptedSecret,
-            'encryption_key'  => $encryptionKey, // Store the key itself
-        ]);
+        $record = [
+            'id'                    => $existing['id'] ?? ($appUid !== '' ? $appUid : wp_generate_uuid4()),
+            'name'                  => $name,
+            'slug'                  => $slug,
+            'html_url'              => esc_url_raw($credentials['html_url'] ?? ($existing['html_url'] ?? '')),
+            'account_type'          => in_array($credentials['account_type'] ?? '', ['user', 'organization'], true) ? $credentials['account_type'] : ($existing['account_type'] ?? 'user'),
+            'org_slug'              => sanitize_title($credentials['org_slug'] ?? $credentials['organization'] ?? ($existing['org_slug'] ?? '')),
+            'app_id'                => absint($credentials['app_id'] ?? ($existing['app_id'] ?? 0)),
+            'installation_id'       => absint($credentials['installation_id'] ?? ($existing['installation_id'] ?? 0)),
+            'encryption_key'        => $encryptionKey,
+            'private_key'           => $privateKeyPlain !== '' ? $this->encrypt_secret($privateKeyPlain, $encryptionKey) : ($existing['private_key'] ?? ''),
+            'webhook_secret'        => $webhookPlain !== '' ? $this->encrypt_secret($webhookPlain, $encryptionKey) : ($existing['webhook_secret'] ?? ''),
+            'managed_repositories'  => $existing['managed_repositories'] ?? [],
+            'status'                => $existing['status'] ?? ($credentials['installation_id'] ? 'installed' : 'pending'),
+        ];
 
-        // New logic to update installation_id dynamically
-        if (empty($credentials['installation_id'])) {
-            // Removed call to fetchInstallationId as the method is no longer implemented
-            Logger::log('WARNING', 'Installation ID is missing and cannot be fetched automatically.');
+        // Handle requires_installation flag
+        if (!empty($credentials['requires_installation'])) {
+            $record['status'] = 'requires_installation';
+            $record['installation_url'] = esc_url_raw($credentials['installation_url'] ?? '');
         }
+
+        // Update managed_repositories if installed
+        if ($record['status'] === 'installed' && !empty($record['installation_id'])) {
+            $record['managed_repositories'] = $this->fetch_managed_repositories($record['installation_id']);
+
+            // Log the update for debugging purposes
+            Logger::log('INFO', sprintf('Updated managed repositories for app %s (%s).', $record['name'], $record['id']));
+        }
+
+        $saved = $this->repository->save($record);
+
+        // Invalidate token cache for the app
+        $cacheKey = 'github_installation_token_' . $record['id'];
+        delete_transient($cacheKey);
+
+        // Log token invalidation
+        Logger::log('INFO', sprintf('Invalidated GitHub token cache for app %s (%s).', $record['name'], $record['id']));
+
+        if (empty($saved['installation_id'])) {
+            Logger::log('WARNING', sprintf('Installation ID missing for app %s (%s).', $saved['name'], $saved['id']));
+        }
+
+        return $this->prepare_app_response($saved);
     }
 
     /**
-     * Updates the stored installation ID once the GitHub App is installed.
+     * Update the installation id for a given app.
      */
-    public function update_installation_id(int $installationId): void
+    public function update_installation_id(string $appUid, int $installationId): void
     {
         $installationId = absint($installationId);
         if ($installationId <= 0) {
             return;
         }
 
-        $record = get_option(Config::OPTION_CREDENTIALS, []);
-        if (empty($record)) {
+        $app = $this->repository->find($appUid);
+        if (!$app) {
             return;
         }
 
-        if (isset($record['installation_id']) && (int) $record['installation_id'] === $installationId) {
+        if (!empty($app['installation_id']) && (int) $app['installation_id'] === $installationId) {
             return;
         }
 
-        $record['installation_id'] = $installationId;
-        update_option(Config::OPTION_CREDENTIALS, $record);
+        $app['installation_id'] = $installationId;
+        $app['status']          = 'installed';
+
+        $this->repository->save($app);
     }
 
     /**
-     * Retrieves GitHub App credentials from WordPress options.
+     * Update app credentials.
      *
-     * @return array{name:string,app_id:string,installation_id:string,private_key:string}
+     * @param string $appUid The ID of the app to update.
+     * @param array $updates The fields to update.
+     * @return array The updated app data.
      */
-    public function get_stored_credentials(): array
+    public function update_app_credentials(string $appUid, array $updates): array
     {
-        $record = get_option(Config::OPTION_CREDENTIALS, []);
-        if (empty($record['private_key'])) {
-            return []; // No credentials stored, return empty.
+        $app = $this->repository->find($appUid);
+
+        if (!$app) {
+            throw new \RuntimeException("App with ID {$appUid} not found.");
         }
 
-        $encryptionKey = $this->get_encryption_key();
-        if (!$encryptionKey) {
-            // This is the crucial part: we have credentials but no key to decrypt them.
-            // This is now the ONLY way a user can get stuck, and it's a valid error.
+        $updatedApp = array_merge($app, $updates);
+        $updatedApp['updated_at'] = current_time('mysql');
+
+        $this->repository->save($updatedApp);
+
+        return $updatedApp;
+    }
+
+    /**
+     * Retrieve decrypted credentials for an app.
+     *
+     * @return array{name:string,app_id:string,installation_id:string,private_key:string,slug:string,html_url:string,id:string}
+     */
+    public function get_stored_credentials(?string $appUid = null): array
+    {
+        $app = $this->resolve_app($appUid);
+        if (!$app || empty($app['private_key'])) {
+            return [];
+        }
+
+        $encryptionKey = $app['encryption_key'] ?? '';
+        if ('' === $encryptionKey) {
             throw new \RuntimeException('Credentials are encrypted, but no encryption key is available.');
         }
 
-        // Decrypt the private key
-        $decoded = base64_decode($record['private_key']);
-        $iv = substr($decoded, 0, 16);
-        $encryptedData = substr($decoded, 16);
-        $decryptedKey = openssl_decrypt($encryptedData, 'AES-256-CBC', $encryptionKey, 0, $iv) ?: '';
-
         return [
-            'name'            => $record['name'] ?? '',
-            'app_id'          => $record['app_id'] ?? '',
-            'installation_id' => $record['installation_id'] ?? '',
-            'private_key'     => $decryptedKey,
+            'id'              => $app['id'],
+            'name'            => $app['name'] ?? '',
+            'app_id'          => $app['app_id'] ?? '',
+            'installation_id' => $app['installation_id'] ?? '',
+            'slug'            => $app['slug'] ?? '',
+            'html_url'        => $app['html_url'] ?? '',
+            'private_key'     => $this->decrypt_secret($app['private_key'] ?? '', $encryptionKey),
+            'managed_repositories' => $app['managed_repositories'] ?? [],
         ];
     }
 
     /**
-     * Clears stored GitHub App credentials from the options table.
+     * Remove stored credentials.
      */
-    public function clear_stored_credentials(): void
+    public function clear_stored_credentials(?string $appUid = null): void
     {
-        delete_option(Config::OPTION_CREDENTIALS);
+        if ($appUid) {
+            $this->repository->delete($appUid);
+            Cache::delete('github_installation_token_' . $appUid);
+            return;
+        }
+
+        foreach ($this->repository->all() as $app) {
+            if (!empty($app['id'])) {
+                Cache::delete('github_installation_token_' . $app['id']);
+            }
+        }
+
+        $this->repository->delete_all();
+        Cache::delete('github_installation_token_default');
     }
 
     /**
-     * Retrieves and decrypts the webhook secret from the stored credentials.
-     *
-     * @return string The raw webhook secret, or an empty string if not found.
+     * Get and decrypt the webhook secret for a given app.
      */
-    public function get_decrypted_webhook_secret(): string
+    public function get_decrypted_webhook_secret(?string $appUid = null): string
     {
-        $record = get_option(Config::OPTION_CREDENTIALS, []);
-        if (empty($record['webhook_secret'])) {
+        $app = $this->resolve_app($appUid);
+        if (!$app || empty($app['webhook_secret'])) {
             return '';
         }
 
-        $encryptionKey = $this->get_encryption_key();
-        if (!$encryptionKey) {
+        $encryptionKey = $app['encryption_key'] ?? '';
+        if ('' === $encryptionKey) {
             return '';
         }
 
-        $decoded = base64_decode($record['webhook_secret']);
-        $iv = substr($decoded, 0, 16);
-        $encryptedSecret = substr($decoded, 16);
-
-        return openssl_decrypt($encryptedSecret, 'AES-256-CBC', $encryptionKey, 0, $iv) ?: '';
+        return $this->decrypt_secret($app['webhook_secret'], $encryptionKey);
     }
 
     /**
-     * Retrieves the encryption key, prioritizing the one stored in the database.
-     * Falls back to wp-config.php constants for advanced users or backward compatibility.
+     * Return a map of app ids to webhook secrets.
      *
-     * @return string|null The encryption key or null if none is found.
+     * @return array<string,string>
      */
-    private function get_encryption_key(): ?string
+    public function get_all_webhook_secrets(): array
     {
-        $credentials = get_option(Config::OPTION_CREDENTIALS, []);
+        $map = [];
 
-        // 1. Prioritize the key saved in the database.
-        if (!empty($credentials['encryption_key'])) {
-            return $credentials['encryption_key'];
+        foreach ($this->repository->all() as $app) {
+            $encryptionKey = $app['encryption_key'] ?? '';
+            if ('' === $encryptionKey || empty($app['webhook_secret'])) {
+                continue;
+            }
+
+            $secret = $this->decrypt_secret($app['webhook_secret'], $encryptionKey);
+            if ($secret !== '') {
+                $map[$app['id']] = $secret;
+            }
         }
 
-        // 2. Fallback to a custom constant in wp-config.php.
-        if (defined('WP2_UPDATE_ENCRYPTION_KEY') && !empty(WP2_UPDATE_ENCRYPTION_KEY)) {
-            return WP2_UPDATE_ENCRYPTION_KEY;
-        }
-
-        // 3. Fallback to the default WordPress AUTH_KEY.
-        if (defined('AUTH_KEY') && !empty(AUTH_KEY)) {
-            return AUTH_KEY;
-        }
-
-        return null;
+        return $map;
     }
 
     /**
-     * Retrieves the installation token for a specific installation ID.
+     * Retrieve summaries for all stored apps (no secrets).
      *
-     * @param int $installationId The installation ID.
-     * @return string|null The installation token, or null on failure.
+     * @return array<int,array<string,mixed>>
      */
-    public function get_installation_token(int $installationId): ?string
+    public function get_app_summaries(): array
     {
-        $credentials = $this->get_stored_credentials();
+        return array_map([$this, 'prepare_app_response'], $this->repository->all());
+    }
+
+    /**
+     * Retrieve installation id for an app.
+     */
+    public function get_installation_id(?string $appUid = null): ?int
+    {
+        $app = $this->resolve_app($appUid);
+
+        return $app && !empty($app['installation_id']) ? (int) $app['installation_id'] : null;
+    }
+
+    /**
+     * Generate an installation token for the provided app.
+     */
+    public function get_installation_token(int $installationId, ?string $appUid = null): ?string
+    {
+        $credentials = $this->get_stored_credentials($appUid);
         if (empty($credentials['private_key']) || empty($credentials['app_id'])) {
             Logger::log('ERROR', 'Missing credentials for generating installation token.');
             return null;
@@ -182,10 +267,11 @@ class CredentialService
 
         $response = \WP2\Update\Utils\HttpClient::post(
             "https://api.github.com/app/installations/{$installationId}/access_tokens",
-            [],
             [
-                'Authorization' => 'Bearer ' . $jwt,
-                'Accept'        => 'application/vnd.github+json',
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $jwt,
+                    'Accept'        => 'application/vnd.github+json',
+                ],
             ]
         );
 
@@ -198,16 +284,114 @@ class CredentialService
     }
 
     /**
-     * Generates a JWT for GitHub App authentication.
+     * Helper: ensure an app is available, falling back to the first stored entry.
+     */
+    private function resolve_app(?string $appUid): ?array
+    {
+        if ($appUid) {
+            $app = $this->repository->find($appUid);
+            if ($app) {
+                return $app;
+            }
+        }
+
+        $apps = $this->repository->all();
+        return $apps[0] ?? null;
+    }
+
+    private function encrypt_secret(string $value, string $key): string
+    {
+        if ($value === '') {
+            return '';
+        }
+
+        $iv = openssl_random_pseudo_bytes(16);
+        return base64_encode($iv . openssl_encrypt($value, 'AES-256-CBC', $key, 0, $iv));
+    }
+
+    private function decrypt_secret(string $value, string $key): string
+    {
+        if ($value === '') {
+            return '';
+        }
+
+        $decoded = base64_decode($value);
+        if ($decoded === false || strlen($decoded) < 17) {
+            return '';
+        }
+
+        $iv            = substr($decoded, 0, 16);
+        $encryptedData = substr($decoded, 16);
+
+        return openssl_decrypt($encryptedData, 'AES-256-CBC', $key, 0, $iv) ?: '';
+    }
+
+    /**
+     * Prepare an app record for JSON responses.
+     */
+    private function prepare_app_response(array $app): array
+    {
+        $status = $app['status'] ?? ($app['installation_id'] ? 'installed' : 'pending');
+
+        return [
+            'id'                   => $app['id'],
+            'name'                 => $app['name'] ?? '',
+            'slug'                 => $app['slug'] ?? '',
+            'html_url'             => $app['html_url'] ?? '',
+            'account_type'         => $app['account_type'] ?? 'user',
+            'org_slug'             => $app['org_slug'] ?? '',
+            'app_id'               => (int) ($app['app_id'] ?? 0),
+            'installation_id'      => (int) ($app['installation_id'] ?? 0),
+            'managed_repositories' => array_values($app['managed_repositories'] ?? []),
+            'status'               => $status,
+            'created_at'           => $app['created_at'] ?? '',
+            'updated_at'           => $app['updated_at'] ?? '',
+            'install_url'          => $this->build_install_url_from_app($app),
+        ];
+    }
+
+    /**
+     * Prepare app response for summaries.
      *
-     * @param string $appId The GitHub App ID.
-     * @param string $privateKey The private key for the GitHub App.
-     * @return string|null The generated JWT, or null on failure.
+     * @param array $app The app data.
+     * @return array The prepared app response.
+     */
+    private function prepare_summary_response(array $app): array
+    {
+        return [
+            'id' => $app['id'],
+            'name' => $app['name'],
+            'slug' => $app['slug'],
+            'webhookStatus' => !empty($app['webhook_secret']) ? 'active' : 'inactive',
+            'managedRepoCount' => count($app['managed_repositories'] ?? []),
+            'createdAt' => $app['created_at'] ?? null,
+            'updatedAt' => $app['updated_at'] ?? null,
+        ];
+    }
+
+    /**
+     * Determine a fallback encryption key if none was provided.
+     */
+    private function fallback_encryption_key(): ?string
+    {
+        if (defined('WP2_UPDATE_ENCRYPTION_KEY') && !empty(WP2_UPDATE_ENCRYPTION_KEY)) {
+            return WP2_UPDATE_ENCRYPTION_KEY;
+        }
+
+        if (defined('AUTH_KEY') && !empty(AUTH_KEY)) {
+            return AUTH_KEY;
+        }
+
+        return null;
+    }
+
+    /**
+     * Generates a JWT for GitHub App authentication.
      */
     private function generate_jwt(string $appId, string $privateKey): ?string
     {
         $issuedAt = time();
-        $payload = [
+        $payload  = [
             'iat' => $issuedAt,
             'exp' => $issuedAt + 540,
             'iss' => $appId,
@@ -221,14 +405,70 @@ class CredentialService
         }
     }
 
-    /**
-     * Retrieves the stored installation ID.
-     *
-     * @return int|null The installation ID, or null if not set.
-     */
-    public function get_installation_id(): ?int
+    private function build_install_url_from_app(array $app): ?string
     {
-        $credentials = get_option(Config::OPTION_CREDENTIALS, []);
-        return !empty($credentials['installation_id']) ? (int) $credentials['installation_id'] : null;
+        $slug = trim((string) ($app['slug'] ?? ''));
+        if ('' !== $slug) {
+            return sprintf('https://github.com/apps/%s/installations/new', rawurlencode($slug));
+        }
+
+        $htmlUrl = trim((string) ($app['html_url'] ?? ''));
+        if ('' !== $htmlUrl) {
+            return rtrim($htmlUrl, '/') . '/installations/new';
+        }
+
+        return null;
+    }
+
+    /**
+     * Delete app credentials.
+     *
+     * @param string $appUid The ID of the app to delete.
+     * @return void
+     */
+    public function delete_app_credentials(string $appUid): void
+    {
+        $app = $this->repository->find($appUid);
+
+        if (!$app) {
+            throw new \RuntimeException("App with ID {$appUid} not found.");
+        }
+
+        $this->repository->delete($appUid);
+    }
+
+    /**
+     * Fetch managed repositories for a given installation ID.
+     *
+     * @param int $installationId The GitHub App installation ID.
+     * @return array The list of managed repositories.
+     */
+    private function fetch_managed_repositories(int $installationId): array
+    {
+        // Placeholder logic for fetching repositories. Replace with actual implementation.
+        Logger::log('INFO', "Fetching managed repositories for installation ID {$installationId}.");
+
+        // Example: Fetch repositories from GitHub API
+        return $this->repositoryService->get_repositories_by_installation($installationId) ?? [];
+    }
+
+    /**
+     * Fetch managed repositories for a given app.
+     *
+     * @param string $appUid The unique ID of the app.
+     * @return array The list of managed repositories.
+     */
+    public function get_managed_repositories(string $appUid): array
+    {
+        return $this->repositoryService->get_managed_repositories();
+    }
+
+    /**
+     * Set the RepositoryService instance.
+     * @param RepositoryService $repositoryService
+     */
+    public function setRepositoryService(RepositoryService $repositoryService): void
+    {
+        $this->repositoryService = $repositoryService;
     }
 }

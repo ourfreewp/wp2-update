@@ -6,15 +6,12 @@ use WP2\Update\Core\API\CredentialService;
 use WP2\Update\Security\Permissions;
 use WP_REST_Request;
 use WP_REST_Response;
-use WP2\Update\Utils\HttpClient;
 
 final class CredentialsController {
     private CredentialService $credentialService;
-    private HttpClient $httpClient;
 
-    public function __construct(CredentialService $credentialService, HttpClient $httpClient) {
+    public function __construct(CredentialService $credentialService) {
         $this->credentialService = $credentialService;
-        $this->httpClient = $httpClient;
     }
 
     public static function check_permissions(WP_REST_Request $request): bool {
@@ -28,6 +25,11 @@ final class CredentialsController {
         $private_key     = wp_unslash($request->get_param('wp2_private_key'));
         $webhook_secret  = sanitize_text_field($request->get_param('wp2_webhook_secret'));
         $encryption_key  = sanitize_text_field($request->get_param('encryption_key'));
+        $app_slug        = sanitize_title($request->get_param('wp2_app_slug'));
+        $app_html_url    = esc_url_raw($request->get_param('wp2_app_html_url'));
+        $app_uid         = sanitize_text_field($request->get_param('app_uid'));
+        $account_type    = $request->get_param('account_type');
+        $organization    = $request->get_param('organization');
 
         // Validate private key format
         if (!$this->is_valid_private_key($private_key)) {
@@ -37,10 +39,6 @@ final class CredentialsController {
         // Additional validation for app_id and installation_id
         if ($app_id <= 0) {
             return new WP_REST_Response(['message' => esc_html__('Invalid App ID.', 'wp2-update')], 400);
-        }
-
-        if ($installation_id <= 0) {
-            return new WP_REST_Response(['message' => esc_html__('Invalid Installation ID.', 'wp2-update')], 400);
         }
 
         // Validate webhook secret
@@ -53,22 +51,36 @@ final class CredentialsController {
             return new WP_REST_Response(['message' => esc_html__('Invalid Encryption Key. It must be at least 16 characters long.', 'wp2-update')], 400);
         }
 
-        $this->credentialService->store_app_credentials([
-            'name'            => $app_name,
-            'app_id'          => $app_id,
-            'installation_id' => $installation_id,
-            'private_key'     => $private_key,
-            'webhook_secret'  => $webhook_secret,
-            'encryption_key'  => $encryption_key,
+        $app = $this->credentialService->store_app_credentials([
+            'app_uid'        => $app_uid,
+            'name'           => $app_name,
+            'app_id'         => $app_id,
+            'installation_id'=> $installation_id,
+            'slug'           => $app_slug,
+            'html_url'       => $app_html_url,
+            'account_type'   => is_string($account_type) ? $account_type : 'user',
+            'organization'   => is_string($organization) ? $organization : '',
+            'private_key'    => $private_key,
+            'webhook_secret' => $webhook_secret,
+            'encryption_key' => $encryption_key,
         ]);
 
-        do_action('wp2_update_credentials_saved', $app_id, $installation_id);
+        // Updated hook to include app ID
+        do_action('wp2_update_credentials_saved', $app_id, $installation_id, $app['id']);
 
-        return new WP_REST_Response(['message' => esc_html__('Credentials saved successfully.', 'wp2-update')], 200);
+        return new WP_REST_Response([
+            'app' => $app,
+            'requires_installation' => 0 === $installation_id,
+        ], 200);
     }
 
     public function rest_disconnect(WP_REST_Request $request): WP_REST_Response {
-        $this->credentialService->clear_stored_credentials();
+        $appId = $request->get_param('app_id');
+        if (empty($appId)) {
+            return new WP_REST_Response(['message' => esc_html__('Missing app identifier.', 'wp2-update')], 400);
+        }
+
+        $this->credentialService->clear_stored_credentials((string) $appId);
 
         do_action('wp2_update_credentials_disconnected');
 
@@ -82,7 +94,6 @@ final class CredentialsController {
      * @return bool True if the key is valid, false otherwise.
      */
     private function is_valid_private_key(string $key): bool {
-        // Example validation: Ensure the key starts and ends with expected markers
         return preg_match('/-----BEGIN (.*) PRIVATE KEY-----.*-----END (.*) PRIVATE KEY-----/s', $key) === 1;
     }
 
@@ -105,14 +116,9 @@ final class CredentialsController {
             return new WP_REST_Response(['message' => esc_html__('A valid encryption key is required.', 'wp2-update')], 400);
         }
 
-        // Start a session and store the encryption key securely
-        if (!session_id()) {
-            session_start();
-        }
-        $_SESSION['encryption_key'] = $encryption_key;
-
         // Create the security nonce (state).
         $state = wp_create_nonce('wp2-manifest');
+        $this->store_encryption_key_for_state($state, $encryption_key);
 
         $callback_url = esc_url_raw(admin_url('admin.php?page=wp2-update-github-callback'));
 
@@ -143,6 +149,8 @@ final class CredentialsController {
                 'manifest' => $manifest_json,
                 'account'  => $org_name ? "https://github.com/organizations/{$org_name}/settings/apps/new" : 'https://github.com/settings/apps/new',
                 'state'    => $state,
+                'account_type' => $account_type,
+                'organization' => $org_name,
             ],
             200
         );
@@ -169,60 +177,92 @@ final class CredentialsController {
             return new WP_REST_Response(['message' => esc_html__('Authorization code is missing.', 'wp2-update')], 400);
         }
 
-        // Retrieve the encryption key from the session
-        if (!session_id()) {
-            session_start();
+        $encryption_payload = $this->get_encryption_payload_for_state($state);
+        if (!$encryption_payload) {
+            return new WP_REST_Response(['message' => esc_html__('Encryption key could not be retrieved. Please restart the connection.', 'wp2-update')], 400);
         }
-        $encryption_key = $_SESSION['encryption_key'] ?? null;
-        unset($_SESSION['encryption_key']); // Clear the session key after use
-
-        if (empty($encryption_key)) {
-            return new WP_REST_Response(['message' => esc_html__('Encryption key not found in session.', 'wp2-update')], 400);
-        }
+        $encryption_key         = $encryption_payload['key'];
+        $encryption_transient   = $encryption_payload['transient'];
 
         $url = "https://api.github.com/app-manifests/{$code}/conversions";
         $headers = [
             'Accept' => 'application/vnd.github+json',
             'User-Agent' => 'WP2-Update-Plugin',
+            'X-GitHub-Api-Version' => '2022-11-28',
         ];
 
-        $response = $this->httpClient->post($url, ['headers' => $headers, 'timeout' => 20]);
+        $response = wp_remote_post($url, [
+            'headers'     => $headers,
+            'timeout'     => 20,
+            'body'        => '',
+            'httpversion' => '1.1',
+        ]);
 
         if (is_wp_error($response)) {
             \WP2\Update\Utils\Logger::log('ERROR', 'GitHub OAuth exchange failed: ' . $response->get_error_message());
             return new WP_REST_Response(['message' => esc_html($response->get_error_message())], 500);
         }
 
-        $body = wp_remote_retrieve_body($response);
+        $statusCode = wp_remote_retrieve_response_code($response);
+        $body       = wp_remote_retrieve_body($response);
+
+        if ($statusCode < 200 || $statusCode >= 300) {
+            \WP2\Update\Utils\Cache::delete($encryption_transient);
+            \WP2\Update\Utils\Logger::log(
+                'ERROR',
+                sprintf(
+                    'GitHub OAuth exchange HTTP %d. Response: %s',
+                    $statusCode,
+                    is_string($body) && $body !== '' ? $body : '[empty body]'
+                )
+            );
+
+            $message = __('Unexpected response from GitHub.', 'wp2-update');
+            if ($statusCode === 404 || $statusCode === 410) {
+                $message = __('The GitHub manifest code has expired. Please restart the connection process.', 'wp2-update');
+            }
+
+            return new WP_REST_Response(['message' => $message], $statusCode >= 400 && $statusCode < 500 ? 400 : 500);
+        }
+
         $credentials = json_decode($body, true);
 
         if (empty($credentials['id']) || empty($credentials['pem']) || empty($credentials['html_url'])) {
-            \WP2\Update\Utils\Logger::log('ERROR', 'GitHub OAuth exchange returned invalid data: ' . $body);
+            \WP2\Update\Utils\Cache::delete($encryption_transient);
+            \WP2\Update\Utils\Logger::log(
+                'ERROR',
+                'GitHub OAuth exchange returned invalid data: ' . (is_string($body) && $body !== '' ? $body : '[empty body]')
+            );
             return new WP_REST_Response(['message' => __('Unexpected response from GitHub.', 'wp2-update')], 500);
         }
 
         // The installation_id is now included in the manifest conversion response.
-        $installation_id = $credentials['installation_id'] ?? 0;
-        if (empty($installation_id)) {
-             \WP2\Update\Utils\Logger::log('ERROR', 'No installation ID was returned by GitHub after app creation.');
-             return new WP_REST_Response(['message' => __('Could not find the app installation ID. Please try connecting again.', 'wp2-update')], 400);
+        $installation_id = isset($credentials['installation_id']) ? absint($credentials['installation_id']) : 0;
+        if (0 === $installation_id) {
+            \WP2\Update\Utils\Logger::log('INFO', 'GitHub did not return an installation ID during manifest conversion. The user must install the app manually.');
         }
 
         // Pass sensitive data directly to store_app_credentials for encryption
-        $this->credentialService->store_app_credentials([
+        $app = $this->credentialService->store_app_credentials([
             'name'            => $credentials['name'] ?? '',
             'app_id'          => absint($credentials['id']),
             'installation_id' => absint($installation_id),
+            'slug'            => sanitize_title($credentials['slug'] ?? ''),
+            'html_url'        => esc_url_raw($credentials['html_url'] ?? ''),
             'private_key'     => (string) $credentials['pem'],
             'webhook_secret'  => (string) ($credentials['webhook_secret'] ?? ''),
             'encryption_key'  => $encryption_key,
         ]);
 
-        do_action('wp2_update_credentials_saved', $credentials['id'], $installation_id);
+        // Updated hook to include app ID consistently
+        do_action('wp2_update_credentials_saved', $credentials['id'], $installation_id, $app['id']);
+        \WP2\Update\Utils\Cache::delete($encryption_transient);
 
         return new WP_REST_Response([
             'success' => true,
+            'app'     => $app,
             'app_id'  => absint($credentials['id']),
+            'requires_installation' => 0 === $installation_id,
         ], 200);
     }
 
@@ -236,12 +276,13 @@ final class CredentialsController {
     {
         $installationId = absint($request->get_param('installation_id'));
         $repositoryId = absint($request->get_param('repository_id'));
+        $appUid = $request->get_param('app_uid');
 
         if (!$installationId || !$repositoryId) {
             return new WP_REST_Response(['message' => __('Invalid installation or repository ID.', 'wp2-update')], 400);
         }
 
-        $token = $this->credentialService->get_installation_token($installationId);
+        $token = $this->credentialService->get_installation_token($installationId, $appUid ? (string) $appUid : null);
         if (!$token) {
             return new WP_REST_Response(['message' => __('Failed to retrieve installation token.', 'wp2-update')], 403);
         }
@@ -277,5 +318,71 @@ final class CredentialsController {
             'success' => $status >= 200 && $status < 300,
             'data'    => $data,
         ], $status);
+    }
+
+    private function store_encryption_key_for_state(string $state, string $encryptionKey): void {
+        $transientKey = $this->build_encryption_transient_key($state);
+        \WP2\Update\Utils\Cache::set(
+            $transientKey,
+            [
+                'key'  => $encryptionKey,
+                'user' => get_current_user_id(),
+            ],
+            10 * MINUTE_IN_SECONDS
+        );
+    }
+
+    private function get_encryption_payload_for_state(string $state): ?array {
+        $transientKey = $this->build_encryption_transient_key($state);
+        $payload = \WP2\Update\Utils\Cache::get($transientKey);
+
+        if (!is_array($payload) || empty($payload['key'])) {
+            return null;
+        }
+
+        $storedUser = isset($payload['user']) ? (int) $payload['user'] : 0;
+        $currentUser = get_current_user_id();
+        if ($storedUser > 0 && $currentUser > 0 && $storedUser !== $currentUser) {
+            return null;
+        }
+
+        return [
+            'key'       => (string) $payload['key'],
+            'transient' => $transientKey,
+        ];
+    }
+
+    private function build_encryption_transient_key(string $state): string {
+        $userId = get_current_user_id();
+        return 'wp2_enc_' . md5($state . '|' . $userId);
+    }
+
+    public function start_oauth_flow(WP_REST_Request $request): WP_REST_Response {
+        session_start();
+
+        $encryption_key = bin2hex(random_bytes(16)); // Generate a secure encryption key
+        $_SESSION['encryption_key'] = $encryption_key; // Store it in the session
+
+        $redirect_url = 'https://github.com/login/oauth/authorize';
+        $query_params = [
+            'client_id' => 'your-client-id',
+            'redirect_uri' => admin_url('admin.php?page=wp2-update-github-callback'),
+            'state' => $encryption_key,
+        ];
+
+        return new WP_REST_Response(['redirect_url' => $redirect_url . '?' . http_build_query($query_params)], 200);
+    }
+
+    public function handle_oauth_callback(WP_REST_Request $request): WP_REST_Response {
+        session_start();
+
+        $encryption_key = $_SESSION['encryption_key'] ?? null;
+        unset($_SESSION['encryption_key']); // Remove it from the session after use
+
+        if (!$encryption_key) {
+            return new WP_REST_Response(['message' => esc_html__('Encryption key not found in session.', 'wp2-update')], 400);
+        }
+
+        return new WP_REST_Response(['message' => esc_html__('OAuth callback handled successfully.', 'wp2-update')], 200);
     }
 }

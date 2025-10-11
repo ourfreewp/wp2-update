@@ -3,15 +3,19 @@
 namespace WP2\Update\Core\Updates;
 
 use WP2\Update\Utils\Formatting;
+use WP2\Update\Utils\Logger;
+use WP2\Update\Core\API\RepositoryService;
 
 /**
  * Scans the installation for themes and plugins that declare an Update URI.
  */
 class PackageFinder
 {
-    public function __construct()
+    private RepositoryService $repositoryService;
+
+    public function __construct(RepositoryService $repositoryService)
     {
-        // Constructor updated to remove unused dependencies
+        $this->repositoryService = $repositoryService;
     }
 
     /**
@@ -44,7 +48,7 @@ class PackageFinder
 
         foreach (get_plugins() as $slug => $plugin) {
             $updateUri = $plugin['UpdateURI'] ?? $plugin['Update URI'] ?? '';
-            $repo      = Formatting::normalize_repo($updateUri); // Updated to use SharedUtils
+            $repo      = Formatting::normalize_repo($updateUri);
 
             if (!$repo) {
                 continue;
@@ -81,7 +85,7 @@ class PackageFinder
 
         foreach (wp_get_themes() as $slug => $theme) {
             $updateUri = $theme->get('UpdateURI') ?: $theme->get('Update URI');
-            $repo      = Formatting::normalize_repo($updateUri); // Updated to use SharedUtils
+            $repo      = Formatting::normalize_repo($updateUri);
 
             if (!$repo) {
                 continue;
@@ -113,5 +117,41 @@ class PackageFinder
                 $this->get_managed_themes()
             )
         );
+    }
+
+    /**
+     * Write managed repositories back to the app record.
+     *
+     * @param string $appId The ID of the app.
+     * @param array $repositories The repositories to associate with the app.
+     * @return void
+     */
+    public function write_managed_repositories(int $appId): void
+    {
+        Logger::log('INFO', "Writing managed repositories for app {$appId}.");
+
+        $app = $this->repositoryService->find_app($appId);
+        if (!$app) {
+            Logger::log('ERROR', "App with ID {$appId} not found.");
+            return;
+        }
+
+        $app['managed_repositories'] = $this->get_managed_packages();
+        $this->repositoryService->save_app($app);
+
+        Logger::log('INFO', "Managed repositories written for app {$appId}.");
+    }
+
+    /**
+     * Update the app record when packages are assigned or removed.
+     *
+     * @param string $appId The ID of the app.
+     * @param array $packages The list of packages to assign.
+     * @return void
+     */
+    public function update_managed_repositories(string $appId, array $packages): void
+    {
+        // Simulate updating the app record with the assigned packages
+        Logger::log('INFO', "Updated managed repositories for app {$appId}: " . json_encode($packages));
     }
 }

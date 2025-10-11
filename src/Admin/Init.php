@@ -6,6 +6,7 @@ use WP2\Update\Admin\Menu\Manager as MenuManager;
 use WP2\Update\Admin\Assets\Manager as AssetManager;
 use WP2\Update\Core\API\ConnectionService;
 use WP2\Update\Core\Updates\PackageService;
+use WP2\Update\Utils\Logger;
 
 /**
  * Initializes all admin-facing functionality, including menus and assets.
@@ -41,7 +42,7 @@ final class Init {
             AssetManager::register_hooks();
         } catch (\Exception $e) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[WP2-Update] Admin Initialization Error: ' . $e->getMessage());
+                Logger::log('ERROR', 'Admin Initialization Error: ' . $e->getMessage());
             }
 
             add_action('admin_notices', function () {

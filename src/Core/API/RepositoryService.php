@@ -6,15 +6,27 @@ use Github\Exception\ExceptionInterface;
 use Github\Api\Repository\Releases;
 use WP2\Update\Config;
 use WP2\Update\Utils\Logger;
+use WP2\Update\Core\AppRepository;
 
 /**
  * Handles GitHub repository-related operations.
  */
 class RepositoryService
 {
-    private GitHubClientFactory $clientFactory;
+    private ?GitHubClientFactory $clientFactory;
+    private AppRepository $appRepository;
 
-    public function __construct(GitHubClientFactory $clientFactory)
+    public function __construct(?GitHubClientFactory $clientFactory = null, AppRepository $appRepository)
+    {
+        $this->clientFactory = $clientFactory;
+        $this->appRepository = $appRepository;
+    }
+
+    /**
+     * Set the GitHubClientFactory instance.
+     * @param GitHubClientFactory $clientFactory
+     */
+    public function setClientFactory(GitHubClientFactory $clientFactory): void
     {
         $this->clientFactory = $clientFactory;
     }
@@ -29,7 +41,7 @@ class RepositoryService
     {
         // Check if cached data exists
         $cache_key = Config::TRANSIENT_REPOSITORIES_CACHE;
-        $cached_repositories = get_transient($cache_key);
+        $cached_repositories = \WP2\Update\Utils\Cache::get($cache_key);
         if ($cached_repositories !== false) {
             Logger::log('INFO', 'Returning cached repositories.');
             return $cached_repositories;
@@ -46,7 +58,7 @@ class RepositoryService
             $repositories = $client->currentUser()->repositories();
 
             // Cache the result for the specified duration
-            set_transient($cache_key, $repositories, $cache_duration);
+            \WP2\Update\Utils\Cache::set($cache_key, $repositories, $cache_duration);
             Logger::log('INFO', 'Repositories cached successfully.');
 
             return $repositories;
@@ -144,5 +156,45 @@ class RepositoryService
 
         Logger::log('WARNING', 'Checksum not found for repository: ' . $repoSlug);
         return null;
+    }
+
+    /**
+     * Find an app by its ID.
+     *
+     * @param string $appId The ID of the app.
+     * @return array|null The app data or null if not found.
+     */
+    public function find_app(string $appId): ?array
+    {
+        Logger::log('INFO', "Finding app with ID {$appId}.");
+        return $this->appRepository->find($appId);
+    }
+
+    /**
+     * Save an app's data.
+     *
+     * @param array $app The app data to save.
+     * @return void
+     */
+    public function save_app(array $app): void
+    {
+        Logger::log('INFO', "Saving app with ID {$app['id']}.");
+        $this->appRepository->save($app);
+    }
+
+    /**
+     * Fetch repositories by installation ID.
+     *
+     * @param int $installationId The GitHub App installation ID.
+     * @return array|null List of repositories or null on failure.
+     */
+    public function get_repositories_by_installation(int $installationId): ?array
+    {
+        Logger::log('INFO', "Fetching repositories for installation ID {$installationId}.");
+
+        // Placeholder logic for fetching repositories. Replace with actual implementation.
+        return [
+            ['name' => 'example-repo', 'url' => 'https://github.com/example/example-repo'],
+        ];
     }
 }

@@ -4,8 +4,10 @@ namespace WP2\Update;
 
 class Config
 {
-    // Option keys
-    public const OPTION_CREDENTIALS = 'wp2_github_app_credentials';
+    /**
+     * Option key for storing GitHub App definitions.
+     */
+    public const OPTION_APPS = 'wp2_update_apps';
 
     // Transient keys
     public const TRANSIENT_PLUGIN_UPDATES = 'wp2_plugin_updates';

@@ -8,18 +8,28 @@ use Throwable;
 use Firebase\JWT\JWT;
 use Github\Exception\ExceptionInterface;
 use WP2\Update\Utils\Logger;
+use WP2\Update\Utils\Cache;
 
 /**
  * Factory for creating GitHub API clients.
  */
 class GitHubClientFactory
 {
-    private CredentialService $credentialService;
+    private ?CredentialService $credentialService;
 
-    private ?GitHubClient $installationClient = null;
-    private ?int $installationClientExpires = null;
+    /** @var array<string,GitHubClient> */
+    private array $installationClients = [];
 
-    public function __construct(CredentialService $credentialService)
+    public function __construct(?CredentialService $credentialService = null)
+    {
+        $this->credentialService = $credentialService;
+    }
+
+    /**
+     * Set the CredentialService instance.
+     * @param CredentialService $credentialService
+     */
+    public function setCredentialService(CredentialService $credentialService): void
     {
         $this->credentialService = $credentialService;
     }
@@ -29,24 +39,28 @@ class GitHubClientFactory
      *
      * @return GitHubClient
      */
-    public function getInstallationClient(bool $forceRefresh = false): ?GitHubClient
+    public function getInstallationClient(?string $appUid = null, bool $forceRefresh = false): ?GitHubClient
     {
         // Use the transient-based caching logic from getInstallationToken
-        $token = $this->getInstallationToken();
+        $token = $this->getInstallationToken($appUid);
 
         if (!$token) {
             Logger::log('ERROR', 'Failed to retrieve GitHub installation token.');
             return null;
         }
 
-        if (!$forceRefresh && $this->installationClient) {
-            return $this->installationClient;
+        $key = $appUid ?: 'default';
+
+        if (!$forceRefresh && isset($this->installationClients[$key])) {
+            return $this->installationClients[$key];
         }
 
-        $this->installationClient = new GitHubClient();
-        $this->installationClient->authenticate($token, AuthMethod::ACCESS_TOKEN);
+        $client = new GitHubClient();
+        $client->authenticate($token, AuthMethod::ACCESS_TOKEN);
 
-        return $this->installationClient;
+        $this->installationClients[$key] = $client;
+
+        return $client;
     }
 
     /**
@@ -113,17 +127,18 @@ class GitHubClientFactory
      *
      * @return string|null The installation token, or null on failure.
      */
-    public function getInstallationToken(): ?string
+    public function getInstallationToken(?string $appUid = null): ?string
     {
         // Use WordPress transients to cache the token across requests
-        $transientKey = 'github_installation_token';
-        $cachedToken = get_transient($transientKey);
+        $key = $appUid ?: 'default';
+        $transientKey = 'github_installation_token_' . $key;
+        $cachedToken = Cache::get($transientKey);
 
         if ($cachedToken) {
             return $cachedToken;
         }
 
-        $credentials = $this->credentialService->get_stored_credentials();
+        $credentials = $this->credentialService->get_stored_credentials($appUid);
         if (empty($credentials['app_id']) || empty($credentials['private_key']) || empty($credentials['installation_id'])) {
             return null;
         }
@@ -134,7 +149,7 @@ class GitHubClientFactory
         }
 
         // Cache the token in a transient with a slightly shorter expiry time
-        set_transient($transientKey, $tokenData['token'], $tokenData['expires'] - time() - 60);
+        Cache::set($transientKey, $tokenData['token'], max(1, $tokenData['expires'] - time() - 60));
 
         return $tokenData['token'];
     }
@@ -144,9 +159,9 @@ class GitHubClientFactory
      *
      * @return array|null Returns an array with rate limit information or null on failure.
      */
-    public function checkRateLimit(): ?array
+    public function checkRateLimit(?string $appUid = null): ?array
     {
-        $client = $this->getInstallationClient();
+        $client = $this->getInstallationClient($appUid);
         if (!$client) {
             Logger::log('ERROR', 'GitHub client not available for rate limit check.');
             return null;

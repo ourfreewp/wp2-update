@@ -13,12 +13,23 @@ final class Manager {
         <div id="wp2-update-app" class="wp2-container">
             <h1 class="wp2-main-title"><?php esc_html_e('GitHub Package Updater', 'wp2-update'); ?></h1>
 
-            <!-- Dashboard container. JavaScript renders all views within this element. -->
-            <div id="wp2-dashboard-root" class="wp2-dashboard-root"></div>
+            <!-- Tab Navigation -->
+            <nav class="wp2-tabs">
+                <ul>
+                    <li><a href="#dashboard" class="wp2-tab-link">Dashboard</a></li>
+                    <li><a href="#apps" class="wp2-tab-link">Apps</a></li>
+                    <li><a href="#settings" class="wp2-tab-link">Settings</a></li>
+                </ul>
+            </nav>
 
-            <!-- Manual Credentials container -->
-            <div id="wp2-manual-credentials" class="wp2-container" hidden></div>
+            <!-- Tab Content -->
+            <div id="wp2-tab-content">
+                <div id="wp2-dashboard-root" class="wp2-tab-panel"></div>
+                <div id="wp2-apps-root" class="wp2-tab-panel" hidden></div>
+                <div id="wp2-settings-root" class="wp2-tab-panel" hidden></div>
+            </div>
 
+            <!-- Modals -->
             <?php self::render_modal(); ?>
         </div>
         <?php

@@ -28,7 +28,7 @@ class ReleaseService
     public function get_latest_release(string $owner, string $repo): ?array
     {
         $transientKey = sprintf(Config::TRANSIENT_LATEST_RELEASE, $owner, $repo);
-        $cachedRelease = get_transient($transientKey);
+        $cachedRelease = \WP2\Update\Utils\Cache::get($transientKey);
 
         if ($cachedRelease !== false) {
             return $cachedRelease;
@@ -52,7 +52,7 @@ class ReleaseService
                 throw new \RuntimeException('Failed to fetch release data.');
             }
 
-            set_transient($transientKey, $releaseData, HOUR_IN_SECONDS);
+            \WP2\Update\Utils\Cache::set($transientKey, $releaseData, HOUR_IN_SECONDS);
             return $releaseData;
         } catch (\Exception $e) {
             Logger::log('ERROR', 'Error fetching latest release: ' . $e->getMessage());
@@ -88,7 +88,7 @@ class ReleaseService
             return null;
         }
 
-        $response = \WP2\Update\Utils\HttpClient::get(
+        $response = HttpClient::get(
             $url,
             [
                 'Authorization' => 'Bearer ' . $token,

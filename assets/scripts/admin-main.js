@@ -1,8 +1,9 @@
-import { dashboard_state, updateDashboardState, STATUS } from './modules/state/store.js';
+import { dashboard_state, app_state, updateDashboardState, updateAppState, STATUS } from './modules/state/store.js';
 import { api_request } from './modules/api.js';
 import { show_global_spinner, hide_global_spinner } from './modules/ui/spinner.js';
-import { render } from './modules/ui/setup.js';
+import { App } from './modules/ui/setup.js';
 import { ensureToast } from './modules/ui/toast.js';
+import { AddAppWizard } from './modules/ui/wizards/AddAppWizard.js';
 
 let pollHandle = null;
 
@@ -22,7 +23,7 @@ const syncPackages = async () => {
     try {
         show_global_spinner();
         const { packages = [], unlinked_packages = [] } = await api_request('sync-packages', { method: 'GET' }) || {};
-        updateDashboardState({ packages, unlinked_packages });
+        updateDashboardState({ packages, unlinkedPackages: unlinked_packages });
     } catch (error) {
         console.error('Failed to sync packages', error);
         const toast = await ensureToast();
@@ -138,7 +139,7 @@ const handleGitHubCallback = () => {
 
 // Pass controller functions to the render module
 const controllers = { fetchConnectionStatus, syncPackages, stopPolling };
-dashboard_state.listen((state) => render(state, controllers));
+dashboard_state.listen((state) => App.render(state, controllers));
 
 window.addEventListener('message', (event) => {
     if (event.data === 'wp2-update-github-connected') {
@@ -146,11 +147,65 @@ window.addEventListener('message', (event) => {
     }
 });
 
+// Ensure wp2UpdateData exists with default values
+const wp2UpdateData = window.wp2UpdateData || {};
+
+// Localize app list and selected app ID
+const localizeAppData = () => {
+    const localizedData = wp2UpdateData.apps || [];
+    const selectedAppId = wp2UpdateData.selectedAppId || null;
+
+    if (!Array.isArray(localizedData)) {
+        console.warn('WP2 Update: localizedData.apps is not an array or is undefined.');
+    }
+
+    updateAppState({
+        apps: localizedData,
+        selectedAppId,
+    });
+};
+
+// Validate apps before using .map()
+const renderAppSelectionDropdown = () => {
+    const appDropdown = document.getElementById('wp2-app-selection');
+    if (appDropdown) {
+        const updateOptions = () => {
+            const { apps = [], selectedAppId = null } = app_state.get();
+            if (!Array.isArray(apps)) {
+                console.warn('WP2 Update: apps is not an array or is undefined.');
+                return;
+            }
+
+            appDropdown.innerHTML = apps.map(app => `<option value="${app.id}" ${app.id === selectedAppId ? 'selected' : ''}>${app.name}</option>`).join('');
+            if (selectedAppId) {
+                appDropdown.value = selectedAppId;
+            }
+        };
+
+        updateOptions();
+        app_state.subscribe(updateOptions);
+        appDropdown.addEventListener('change', (event) => {
+            updateAppState({ selectedAppId: event.target.value });
+            updateDashboardState((state) => ({ packages: state.allPackages }));
+        });
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
-    if (document.getElementById('wp2-update-github-callback')) {
+    localizeAppData();
+
+    const wizardContainer = document.getElementById('wp2-add-app-wizard');
+    if (wizardContainer) {
+        wizardContainer.innerHTML = AddAppWizard();
+    } else if (document.getElementById('wp2-update-github-callback')) {
         handleGitHubCallback();
     } else if (document.getElementById('wp2-update-app')) {
-        render(dashboard_state.get(), controllers); // Initial render
+        App.render(dashboard_state.get(), controllers); // Initial render
         fetchConnectionStatus();
     }
+
+    renderAppSelectionDropdown();
 });
+
+// Initialize the application
+App.init();
