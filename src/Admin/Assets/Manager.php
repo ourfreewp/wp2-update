@@ -2,7 +2,7 @@
 
 namespace WP2\Update\Admin\Assets;
 
-use WP2\Update\Config;
+use WP2\Update\Admin\DashboardData;
 use WP2\Update\Utils\Logger;
 /**
  * Manages the enqueuing of admin-facing scripts and styles.
@@ -67,30 +67,42 @@ final class Manager {
 	 */
 	private static function localize_script_data( string $handle, array $manifest ): void {
 		$callback_url = admin_url( 'admin.php?page=wp2-update-github-callback' );
-		$apps         = self::get_preloaded_apps();
-		$selected     = $apps[0]['id'] ?? null;
+		$state        = DashboardData::get_state();
+		$apps         = $state['apps'] ?? [];
+		$selected     = $state['selectedAppId'] ?? ( $apps[0]['id'] ?? null );
+		$packages     = [
+			'all'      => $state['packages'] ?? [],
+			'managed'  => $state['managedPackages'] ?? [],
+			'unlinked' => $state['unlinkedPackages'] ?? [],
+		];
+		$connection   = $state['connectionStatus'] ?? null;
 
         $data = [
-            'nonce'      => wp_create_nonce( 'wp_rest' ),
-            'apiRoot'    => esc_url_raw( rest_url( 'wp2-update/v1/' ) ),
-            'redirectUrl'=> esc_url_raw( admin_url( 'admin.php?page=wp2-update' ) ),
-            'siteName'   => get_bloginfo( 'name' ),
-            'manifest'   => $manifest,
-            'apps'       => $apps,
-            'selectedAppId' => $selected,
-            'app_id'    => $selected,
+            'nonce'          => wp_create_nonce( 'wp_rest' ),
+            'apiRoot'        => esc_url_raw( rest_url( 'wp2-update/v1/' ) ),
+            'redirectUrl'    => esc_url_raw( admin_url( 'admin.php?page=wp2-update' ) ),
+            'siteName'       => get_bloginfo( 'name' ),
+            'manifest'       => $manifest,
+            'apps'           => $apps,
+            'packages'       => $packages['all'],
+            'managedPackages'=> $packages['managed'],
+            'unlinkedPackages' => $packages['unlinked'],
+            'selectedAppId'  => $selected,
+            'app_id'         => $selected,
+            'connectionStatus' => $connection,
             'githubCallback' => [
 				'clientId'   => get_option( 'github_client_id', '' ),
 				'callbackUrl'=> esc_url_raw( $callback_url ),
 			],
 		];
 
+		if ( isset( $packages['error'] ) && is_string( $packages['error'] ) ) {
+			$data['packageError'] = $packages['error'];
+		}
+
 		wp_localize_script( $handle, 'wp2UpdateData', $data );
 	}
 
-	/**
-	 * Logs errors related to the Vite manifest.
-	 */
 	private static function log_manifest_error( string $message ): void {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 			Logger::log('ERROR', 'Manifest Error: ' . $message);
@@ -258,44 +270,6 @@ final class Manager {
 		<?php
 	}
 
-	/**
-	 * Retrieves preloaded app metadata for the SPA.
-	 * @return array The preloaded metadata.
-	 */
-	private static function get_preloaded_apps(): array {
-		$raw = get_option( Config::OPTION_APPS, [] );
-		if ( ! is_array( $raw ) ) {
-			return [];
-		}
-
-		$apps = array_map(
-				static function ( $app ) {
-					if ( ! is_array( $app ) ) {
-						return null;
-					}
-
-					$managed = is_array( $app['managed_repositories'] ?? null )
-						? array_filter( $app['managed_repositories'], static fn ( $repo ) => is_string( $repo ) && $repo !== '' )
-						: [];
-
-					return [
-						'id'           => (string) ( $app['id'] ?? '' ),
-						'name'         => sanitize_text_field( $app['name'] ?? '' ),
-						'status'       => sanitize_text_field( $app['status'] ?? 'pending' ),
-						'accountType'  => sanitize_text_field( $app['account_type'] ?? 'user' ),
-						'packageCount' => count( $managed ),
-					];
-				},
-				$raw
-			);
-
-		return array_values(
-			array_filter(
-				$apps,
-				static fn ( $app ) => is_array( $app ) && ( $app['id'] ?? '' ) !== ''
-			)
-		);
-	}
 }
 
 // Register the filter to modify the script tag for `admin-main.js`.

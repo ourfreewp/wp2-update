@@ -5,6 +5,7 @@ namespace WP2\Update\Core\Updates;
 use WP2\Update\Utils\Formatting;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Core\API\RepositoryService;
+use WP2\Update\Core\API\ConnectionService;
 
 /**
  * Scans the installation for themes and plugins that declare an Update URI.
@@ -13,12 +14,20 @@ class PackageFinder
 {
     private RepositoryService $repositoryService;
 
+    private ?ConnectionService $connectionService;
+
     private $fetchReleasesCallback;
 
-    public function __construct(RepositoryService $repositoryService, callable $fetchReleasesCallback)
+    public function __construct(RepositoryService $repositoryService, ?ConnectionService $connectionService, callable $fetchReleasesCallback)
     {
         $this->repositoryService = $repositoryService;
+        $this->connectionService = $connectionService;
         $this->fetchReleasesCallback = $fetchReleasesCallback;
+    }
+
+    public function setConnectionService(ConnectionService $connectionService): void
+    {
+        $this->connectionService = $connectionService;
     }
 
     /**
@@ -45,33 +54,32 @@ class PackageFinder
      */
     public function get_managed_plugins(): array
     {
+        Logger::log('DEBUG', 'get_managed_plugins method called.');
+
         $this->ensure_get_plugins_available();
 
         $managed = [];
 
         foreach (get_plugins() as $slug => $plugin) {
             $updateUri = $plugin['UpdateURI'] ?? $plugin['Update URI'] ?? '';
-            $repo      = Formatting::normalize_repo($updateUri);
 
-            if (!$repo) {
-                continue;
+            if (!$updateUri) {
+                continue; // Skip plugins without an UpdateURI.
             }
 
-            // Fetch release data from PackageService
-            $releases = $this->get_releases($repo);
+            Logger::log('DEBUG', "Plugin detected: Slug={$slug}, UpdateURI={$updateUri}");
 
             $managed[$slug] = [
                 'slug'     => $slug,
-                'repo'     => $repo,
+                'repo'     => Formatting::normalize_repo($updateUri),
                 'name'     => $plugin['Name'] ?? $slug,
                 'version'  => $plugin['Version'] ?? '0.0.0',
                 'type'     => 'plugin',
                 'app_slug' => sanitize_title($plugin['Name'] ?? $slug),
-                'releases' => $releases, // Include release data
             ];
         }
 
-        return apply_filters('wp2_update_managed_plugins', $managed);
+        return $managed;
     }
 
     /**
@@ -88,31 +96,30 @@ class PackageFinder
      */
     public function get_managed_themes(): array
     {
+        Logger::log('DEBUG', 'get_managed_themes method called.');
+
         $managed = [];
 
         foreach (wp_get_themes() as $slug => $theme) {
             $updateUri = $theme->get('UpdateURI') ?: $theme->get('Update URI');
-            $repo      = Formatting::normalize_repo($updateUri);
 
-            if (!$repo) {
-                continue;
+            if (!$updateUri) {
+                continue; // Skip themes without an UpdateURI.
             }
 
-            // Fetch release data from PackageService
-            $releases = $this->get_releases($repo);
+            Logger::log('DEBUG', "Theme detected: Slug={$slug}, UpdateURI={$updateUri}");
 
             $managed[$slug] = [
                 'slug'     => $slug,
-                'repo'     => $repo,
+                'repo'     => Formatting::normalize_repo($updateUri),
                 'name'     => $theme->get('Name') ?: $slug,
                 'version'  => $theme->get('Version') ?: '0.0.0',
                 'type'     => 'theme',
                 'app_slug' => sanitize_title($theme->get('Name') ?: $slug),
-                'releases' => $releases, // Include release data
             ];
         }
 
-        return apply_filters('wp2_update_managed_themes', $managed);
+        return $managed;
     }
 
     /**
@@ -122,6 +129,9 @@ class PackageFinder
      */
     public function get_managed_packages(): array
     {
+        Logger::log('DEBUG', 'get_managed_packages called. Managed plugins: ' . print_r($this->get_managed_plugins(), true));
+        Logger::log('DEBUG', 'get_managed_packages called. Managed themes: ' . print_r($this->get_managed_themes(), true));
+
         return array_values(
             array_merge(
                 $this->get_managed_plugins(),
@@ -185,6 +195,25 @@ class PackageFinder
         $this->repositoryService->save_app($app);
 
         Logger::log('INFO', "Updated managed repositories for app {$appId}: " . json_encode($managed));
+    }
+
+    /**
+     * Finds a package by its ID.
+     *
+     * @param string $packageId The package ID.
+     * @return array|null The package data, or null if not found.
+     */
+    public function find_package_by_id(string $packageId): ?array
+    {
+        $packages = $this->get_managed_packages();
+
+        foreach ($packages as $package) {
+            if ($package['id'] === $packageId) {
+                return $package;
+            }
+        }
+
+        return null;
     }
 
     /**

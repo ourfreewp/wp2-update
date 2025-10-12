@@ -29,29 +29,21 @@ final class PackagesController {
     }
 
     public function sync_packages(WP_REST_Request $request): WP_REST_Response {
-        $data = $this->packageService->sync_packages();
+        try {
+            $data = $this->packageService->sync_packages();
 
-        // Format the response to include additional metadata for the frontend
-        $formattedData = [
-            'packages' => array_map(function ($package) {
-                return [
-                    'name' => $package['name'] ?? '',
-                    'installed' => $package['version'] ?? '',
-                    'github_data' => $package['github_data'] ?? [],
-                    'last_updated' => $package['last_updated'] ?? null,
-                    'stars' => $package['stars'] ?? 0,
-                    'issues' => $package['issues'] ?? 0,
-                    'releases' => $package['releases'] ?? [],
-                    'managedBy' => $package['app_slug'] ?? null,
-                    'latest' => $package['latest'] ?? null,       // Add latest field
-                    'is_managed' => isset($package['app_slug']), // Add is_managed field
-                    'status' => $package['status'] ?? 'unknown', // Add status field
-                ];
-            }, $data['packages']),
-            'unlinked_packages' => $data['unlinked_packages'],
-        ];
+            return new WP_REST_Response([
+                'packages' => $data['packages'],
+                'unlinked_packages' => $data['unlinked_packages'],
+            ], 200);
+        } catch (\Throwable $exception) {
+            Logger::log('ERROR', 'Failed to sync packages: ' . $exception->getMessage());
 
-        return new WP_REST_Response($formattedData, 200);
+            return new WP_REST_Response([
+                'error' => true,
+                'message' => esc_html__('Unable to sync packages.', 'wp2-update'),
+            ], 500);
+        }
     }
 
     public function manage_packages(WP_REST_Request $request): WP_REST_Response {
@@ -72,6 +64,20 @@ final class PackagesController {
         }
 
         try {
+            if ($action === 'rollback') {
+                if ('' === $version) {
+                    return new WP_REST_Response(['message' => esc_html__('Version parameter is required for rollback.', 'wp2-update')], 400);
+                }
+
+                $success = $this->packageService->rollback_package($repoSlug, $version);
+
+                if (!$success) {
+                    return new WP_REST_Response(['message' => esc_html__('Failed to rollback package.', 'wp2-update')], 400);
+                }
+
+                return new WP_REST_Response(['message' => esc_html__('Package rolled back successfully.', 'wp2-update')], 200);
+            }
+
             $success = $this->packageService->manage_packages($action, $repoSlug, $version, $type);
 
             if (!$success) {
@@ -134,6 +140,61 @@ final class PackagesController {
             return $this->format_response([
                 'success' => false, // Ensure success boolean is included
                 'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function toggle_auto_update(WP_REST_Request $request): WP_REST_Response {
+        $packageId = $request->get_param('package_id');
+        $autoUpdate = $request->get_param('auto_update');
+
+        if (empty($packageId)) {
+            return new WP_REST_Response([
+                'message' => esc_html__('Package ID is required.', 'wp2-update')
+            ], 400);
+        }
+
+        try {
+            $success = $this->packageService->set_auto_update($packageId, $autoUpdate);
+
+            if (!$success) {
+                return new WP_REST_Response([
+                    'message' => esc_html__('Failed to update auto-update setting.', 'wp2-update')
+                ], 500);
+            }
+
+            return new WP_REST_Response([
+                'message' => esc_html__('Auto-update setting updated successfully.', 'wp2-update')
+            ], 200);
+        } catch (\Throwable $exception) {
+            Logger::log('ERROR', 'Failed to toggle auto-update: ' . $exception->getMessage());
+
+            return new WP_REST_Response([
+                'message' => esc_html__('An error occurred while updating auto-update setting.', 'wp2-update')
+            ], 500);
+        }
+    }
+
+    public function get_release_notes(WP_REST_Request $request): WP_REST_Response {
+        $packageId = $request->get_param('package_id');
+
+        if (empty($packageId)) {
+            return new WP_REST_Response([
+                'message' => esc_html__('Package ID is required.', 'wp2-update')
+            ], 400);
+        }
+
+        try {
+            $releaseNotes = $this->packageService->get_release_notes($packageId);
+
+            return new WP_REST_Response([
+                'notes' => $releaseNotes,
+            ], 200);
+        } catch (\Throwable $exception) {
+            Logger::log('ERROR', 'Failed to fetch release notes: ' . $exception->getMessage());
+
+            return new WP_REST_Response([
+                'message' => esc_html__('An error occurred while fetching release notes.', 'wp2-update')
             ], 500);
         }
     }

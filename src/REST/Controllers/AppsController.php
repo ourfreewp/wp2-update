@@ -107,35 +107,21 @@ final class AppsController extends AbstractRestController {
 	 */
 	public function list_apps( WP_REST_Request $request ): WP_REST_Response {
 		try {
-			$apps = $this->credentialService->get_app_summaries();
+			$apps = $this->credentialService->get_all_apps();
 
-			// Format the response to include additional metadata for the frontend
-			$formattedApps = array_map(
-				function ( $app ) {
-					return [
-						'id'                => $app['id'] ?? '',
-						'name'              => $app['name'] ?? '',
-						'type'              => $app['type'] ?? 'unknown',
-						'installationId'    => $app['installation_id'] ?? null,
-						'webhookStatus'     => $app['webhook_status'] ?? 'inactive',
-						'createdAt'         => $app['created_at'] ?? null,
-						'updatedAt'         => $app['updated_at'] ?? null,
-					];
-				},
-				$apps
-			);
-
-			return $this->respond(
+			return new WP_REST_Response(
 				[
-					'apps' => $formattedApps,
-				]
+					'apps' => $apps,
+				],
+				200
 			);
-		} catch ( \Throwable $error ) {
-			Logger::log( 'ERROR', 'Failed to list apps: ' . $error->getMessage() );
+		} catch ( \Throwable $exception ) {
+			Logger::log( 'ERROR', 'Failed to list apps: ' . $exception->getMessage() );
 
-			return $this->respond(
+			return new WP_REST_Response(
 				[
-					'error' => __( 'Unable to load app list.', 'wp2-update' ),
+					'error'   => true,
+					'message' => esc_html__( 'Unable to retrieve apps.', 'wp2-update' ),
 				],
 				500
 			);

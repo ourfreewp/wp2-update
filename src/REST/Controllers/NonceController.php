@@ -7,6 +7,7 @@ use WP_REST_Response;
 use WP_REST_Server;
 use function current_user_can;
 use function wp_create_nonce;
+use WP2\Update\Utils\Logger;
 
 /**
  * Exposes helper endpoints that deal with security tokens and nonces.
@@ -22,17 +23,28 @@ final class NonceController extends AbstractRestController {
 			[
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => [ $this, 'refresh_nonce' ],
-				'permission_callback' => static function () {
-					return current_user_can( 'manage_options' );
-				},
+				'permission_callback' => '__return_true',
+				'args'                => [
+					'action' => [
+						'required' => true,
+						'type'     => 'string',
+						'validate_callback' => function($param) {
+							return !empty($param);
+						},
+					],
+				],
 			]
 		);
 	}
 
 	public function refresh_nonce( WP_REST_Request $request ): WP_REST_Response {
+		$action = $request->get_param('action');
+		$new_nonce = wp_create_nonce( $action );
+		Logger::log('INFO', "Generated new nonce for action '{$action}': {$new_nonce}");
+
 		return $this->respond(
 			[
-				'nonce' => wp_create_nonce( 'wp_rest' ),
+				'nonce' => $new_nonce,
 			]
 		);
 	}

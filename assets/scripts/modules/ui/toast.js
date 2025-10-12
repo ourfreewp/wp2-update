@@ -44,3 +44,17 @@ export const ensureToast = async () => {
     }
     return toastInstance;
 };
+
+/**
+ * Displays a toast notification with server error details.
+ * @param {Response} response - The fetch API response object.
+ */
+export const toastServerError = async (response) => {
+    try {
+        const errorData = await response.json();
+        const errorMessage = errorData.message || `HTTP ${response.status} ${response.statusText}`;
+        toast('Server Error', 'error', errorMessage);
+    } catch {
+        toast('Server Error', 'error', `HTTP ${response.status} ${response.statusText}`);
+    }
+};

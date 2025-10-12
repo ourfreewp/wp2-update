@@ -16,7 +16,7 @@ final class CredentialsController {
     }
 
     public static function check_permissions(WP_REST_Request $request): bool {
-        return Permissions::current_user_can_manage($request);
+        return Permissions::current_user_can_manage($request, 'github_action');
     }
 
     public function rest_save_credentials(WP_REST_Request $request): WP_REST_Response {
@@ -131,19 +131,28 @@ final class CredentialsController {
                 return new WP_REST_Response(['message' => esc_html__('An organization slug is required for organization apps.', 'wp2-update')], 400);
             }
         }
+
         $raw_manifest = $request->get_param('manifest');
+        $encryption_key = sanitize_text_field($request->get_param('encryption_key'));
+        $app_uid = sanitize_text_field($request->get_param('app_uid'));
+
         if (!is_string($raw_manifest) || $raw_manifest === '') {
             \WP2\Update\Utils\Logger::log('ERROR', 'Manifest parameter is missing or invalid.');
             return new WP_REST_Response(['message' => esc_html__('Manifest payload is required.', 'wp2-update')], 400);
         }
-        $encryption_key = sanitize_text_field($request->get_param('encryption_key'));
+
         if (empty($encryption_key) || strlen($encryption_key) < 16) {
             return new WP_REST_Response(['message' => esc_html__('A valid encryption key is required.', 'wp2-update')], 400);
+        }
+        
+        // Ensure a valid app_uid is passed from the client, or generate a new one
+        if (empty($app_uid)) {
+            $app_uid = uniqid('wp2_app_', true);
         }
 
         // Create the security nonce (state).
         $state = wp_create_nonce('wp2-manifest');
-        $this->store_encryption_key_for_state($state, $encryption_key);
+        $this->store_encryption_key_for_state($state, $encryption_key, $app_uid); // Store both key and app_uid
 
         $callback_url = esc_url_raw(admin_url('admin.php?page=wp2-update-github-callback'));
 
@@ -171,11 +180,12 @@ final class CredentialsController {
 
         return new WP_REST_Response(
             [
-                'manifest_data' => $manifest_json, // Renamed 'manifest' to 'manifest_data' for clarity
+                'manifest_data' => $manifest_json,
                 'account_url'  => $org_name ? "https://github.com/organizations/{$org_name}/settings/apps/new" : 'https://github.com/settings/apps/new', // Renamed 'account' to 'account_url'
-                'state_token'    => $state, // Renamed 'state' to 'state_token'
-                'type_of_account' => $account_type, // Renamed 'account_type' to 'type_of_account'
-                'organization_name' => $org_name, // Renamed 'organization' to 'organization_name'
+                'state_token'    => $state, 
+                'type_of_account' => $account_type,
+                'organization_name' => $org_name,
+                'app_uid' => $app_uid,
             ],
             200
         );
@@ -193,12 +203,18 @@ final class CredentialsController {
      */
     public function rest_exchange_code(WP_REST_Request $request): WP_REST_Response {
         $state = (string) $request->get_param('state');
+        
+        // FIX: Assign the transient key before use.
+        $encryption_transient = $this->build_encryption_transient_key($state); 
+        
         if ('' === $state || !wp_verify_nonce($state, 'wp2-manifest')) {
+            \WP2\Update\Utils\Cache::delete($encryption_transient); // Attempt to delete even on failure
             return new WP_REST_Response(['message' => esc_html__('Invalid state parameter.', 'wp2-update')], 400);
         }
 
         $code = sanitize_text_field($request->get_param('code'));
         if (!$code) {
+            \WP2\Update\Utils\Cache::delete($encryption_transient); // Attempt to delete even on failure
             return new WP_REST_Response(['message' => esc_html__('Authorization code is missing.', 'wp2-update')], 400);
         }
 
@@ -206,8 +222,8 @@ final class CredentialsController {
         if (!$encryption_payload) {
             return new WP_REST_Response(['message' => esc_html__('Encryption key could not be retrieved. Please restart the connection.', 'wp2-update')], 400);
         }
-        $encryption_key         = $encryption_payload['key'];
-        $encryption_transient   = $encryption_payload['transient'];
+        $encryption_key         = $encryption_payload['encryption_key'];
+        $app_uid                = $encryption_payload['app_uid']; // Retrieve the app_uid
 
         $url = "https://api.github.com/app-manifests/{$code}/conversions";
         $headers = [
@@ -224,6 +240,7 @@ final class CredentialsController {
         ]);
 
         if (is_wp_error($response)) {
+            \WP2\Update\Utils\Cache::delete($encryption_transient);
             \WP2\Update\Utils\Logger::log('ERROR', 'GitHub OAuth exchange failed: ' . $response->get_error_message());
             return new WP_REST_Response(['message' => esc_html($response->get_error_message())], 500);
         }
@@ -269,6 +286,7 @@ final class CredentialsController {
 
         // Pass sensitive data directly to store_app_credentials for encryption
         $app = $this->credentialService->store_app_credentials([
+            'app_uid'         => $app_uid, // CRITICAL FIX: Link back to the existing app record
             'name'            => $credentials['name'] ?? '',
             'app_id'          => absint($credentials['id']),
             'installation_id' => absint($installation_id),
@@ -284,10 +302,10 @@ final class CredentialsController {
         \WP2\Update\Utils\Cache::delete($encryption_transient);
 
         return new WP_REST_Response([
-            'operation_successful' => true, // Renamed 'success' to 'operation_successful' for clarity
-            'application'     => $app, // Renamed 'app' to 'application'
-            'application_id'  => absint($credentials['id']), // Renamed 'app_id' to 'application_id'
-            'installation_required' => 0 === $installation_id, // Renamed 'requires_installation' for consistency
+            'success' => true,
+            'app'     => $app,
+            'app_id'  => absint($credentials['id']),
+            'requires_installation' => 0 === $installation_id,
         ], 200);
     }
 
@@ -345,42 +363,40 @@ final class CredentialsController {
         ], $status);
     }
 
-    private function store_encryption_key_for_state(string $state, string $encryptionKey): void {
-        $transientKey = $this->build_encryption_transient_key($state);
-        \WP2\Update\Utils\Cache::set(
-            $transientKey,
-            [
-                'key'  => $encryptionKey,
-                'user' => get_current_user_id(),
-            ],
-            10 * MINUTE_IN_SECONDS
-        );
+    /**
+     * Stores the encryption key and app UID for a given state.
+     *
+     * @param string $state The state nonce.
+     * @param string $encryptionKey The encryption key.
+     * @param string $appUid The app UID.
+     */
+    private function store_encryption_key_for_state(string $state, string $encryptionKey, string $appUid): void {
+        \WP2\Update\Utils\Cache::set($this->build_encryption_transient_key($state), [
+            'encryption_key' => $encryptionKey,
+            'app_uid' => $appUid,
+        ], HOUR_IN_SECONDS);
     }
 
+    /**
+     * Retrieves the encryption payload for a given state.
+     *
+     * @param string $state The state nonce.
+     * @return array|null The encryption payload, or null if not found.
+     */
     private function get_encryption_payload_for_state(string $state): ?array {
-        $transientKey = $this->build_encryption_transient_key($state);
-        $payload = \WP2\Update\Utils\Cache::get($transientKey);
-
-        if (!is_array($payload) || empty($payload['key'])) {
-            return null;
-        }
-
-        $storedUser = isset($payload['user']) ? (int) $payload['user'] : 0;
-        $currentUser = get_current_user_id();
-        if ($storedUser > 0 && $currentUser > 0 && $storedUser !== $currentUser) {
-            return null;
-        }
-
-        return [
-            'key'       => (string) $payload['key'],
-            'transient' => $transientKey,
-        ];
+        return \WP2\Update\Utils\Cache::get($this->build_encryption_transient_key($state));
     }
 
+    /**
+     * Builds the transient key for the given state.
+     * @param string $state The state nonce.
+     * @return string The transient key.
+     */
     private function build_encryption_transient_key(string $state): string {
-        $userId = get_current_user_id();
-        return 'wp2_enc_' . md5($state . '|' . $userId);
+        return "wp2_state_{$state}";
     }
+    
+    // Removed redundant store_app_uid_for_state method.
 
     public function start_oauth_flow(WP_REST_Request $request): WP_REST_Response {
         session_start();

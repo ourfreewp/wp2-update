@@ -6,6 +6,7 @@ use WP_REST_Request;
 use WP2\Update\REST\Controllers\CredentialsController;
 use WP2\Update\REST\Controllers\PackagesController;
 use WP2\Update\REST\Controllers\RestControllerInterface;
+use WP2\Update\REST\Controllers\HealthController;
 use WP2\Update\Security\Permissions;
 use function __;
 use function current_user_can;
@@ -16,6 +17,7 @@ use function current_user_can;
 final class Router {
 	private CredentialsController $credentialsController;
 	private PackagesController $packagesController;
+	private HealthController $healthController;
 
 	/**
 	 * @var RestControllerInterface[]
@@ -28,10 +30,12 @@ final class Router {
 	public function __construct(
 		CredentialsController $credentialsController,
 		PackagesController $packagesController,
+		HealthController $healthController,
 		array $modularControllers = []
 	) {
 		$this->credentialsController = $credentialsController;
 		$this->packagesController    = $packagesController;
+		$this->healthController      = $healthController;
 		$this->modularControllers    = $modularControllers;
 	}
 
@@ -47,6 +51,7 @@ final class Router {
 
 		$this->register_credentials_routes();
 		$this->register_package_routes();
+		$this->healthController->register_routes();
 	}
 
 	private function register_credentials_routes(): void {
@@ -59,6 +64,9 @@ final class Router {
 				'permission_callback' => [ Permissions::class, 'current_user_can_manage' ],
 			]
 		);
+
+		// Register GitHub wizard routes
+		$this->credentialsController->register_github_routes( 'wp2-update/v1' );
 	}
 
 	private function register_package_routes(): void {
@@ -127,6 +135,33 @@ final class Router {
 						'description' => __( 'The repository identifier to assign.', 'wp2-update' ),
 					],
 				],
+			]
+		);
+
+		register_rest_route(
+			'wp2-update/v1',
+			'/packages/(?P<package_id>[\w-]+)/auto-update',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this->packagesController, 'toggle_auto_update' ],
+				'permission_callback' => [ Permissions::class, 'current_user_can_manage' ],
+				'args'                => [
+					'auto_update' => [
+						'required'    => true,
+						'type'        => 'boolean',
+						'description' => __( 'Enable or disable auto-update for the package.', 'wp2-update' ),
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			'wp2-update/v1',
+			'/packages/(?P<package_id>[\w-]+)/release-notes',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this->packagesController, 'get_release_notes' ],
+				'permission_callback' => [ Permissions::class, 'current_user_can_manage' ],
 			]
 		);
 	}

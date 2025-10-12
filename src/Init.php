@@ -18,6 +18,7 @@ use WP2\Update\REST\Controllers\PackagesController;
 use WP2\Update\REST\Controllers\AppsController;
 use WP2\Update\REST\Controllers\ConnectionStatusController;
 use WP2\Update\REST\Controllers\NonceController;
+use WP2\Update\REST\Controllers\HealthController;
 use WP2\Update\REST\Router;
 use WP2\Update\Webhook\Controller as WebhookController;
 use WP2\Update\Utils\Logger;
@@ -56,18 +57,18 @@ final class Init {
     public function initialize_services(): void {
 
         $appRepository     = new AppRepository();
-        $credentialService = new CredentialService($appRepository);
+        $repositoryService = new RepositoryService($appRepository, new GitHubClientFactory());
+        $credentialService = new CredentialService($appRepository, $repositoryService);
         $clientFactory     = new GitHubClientFactory();
-        $repositoryService = new RepositoryService($appRepository, $clientFactory);
 
-        $credentialService->setRepositoryService($repositoryService);
         $clientFactory->setCredentialService($credentialService);
         $repositoryService->setClientFactory($clientFactory);
 
         $releaseService    = new ReleaseService($clientFactory);
-        $packageFinder     = new PackageFinder($repositoryService, [$releaseService, 'get_releases']);
+        $packageFinder     = new PackageFinder($repositoryService, null, [$releaseService, 'get_releases']);
+        $connectionService = new ConnectionService($clientFactory, $credentialService, $appRepository, $repositoryService, $packageFinder);
+        $packageFinder->setConnectionService($connectionService);
         $packageService    = new PackageService($repositoryService, $releaseService, $clientFactory, $packageFinder);
-        $connectionService = new ConnectionService($clientFactory, $credentialService, $packageFinder, $appRepository, $repositoryService);
 
         // REST API Controllers
         $credentialsController      = new CredentialsController($credentialService);
@@ -75,10 +76,12 @@ final class Init {
         $appsController             = new AppsController($credentialService, $connectionService);
         $connectionStatusController = new ConnectionStatusController($connectionService, $credentialService, $packageFinder);
         $nonceController            = new NonceController();
+        $healthController           = new HealthController($credentialService, $connectionService);
         $modularControllers         = [
             $appsController,
             $connectionStatusController,
             $nonceController,
+            $healthController,
         ];
 
         // Routers
@@ -94,7 +97,7 @@ final class Init {
 
         // Instantiate the Router
         try {
-            $router = new Router($credentialsController, $packagesController, $modularControllers);
+            $router = new Router($credentialsController, $packagesController, $healthController, $modularControllers);
             add_action('rest_api_init', [$router, 'register_routes']);
         } catch (\Exception $e) {
             Logger::log('CRITICAL', 'Failed to initialize Router: ' . $e->getMessage());
@@ -113,7 +116,7 @@ final class Init {
 
         // Admin Functionality (only loaded in the admin area)
         if (is_admin()) {
-            $adminInit = new AdminInit($connectionService, $packageService);
+            $adminInit = new AdminInit($connectionService, $packageService, $healthController);
             $adminInit->register_hooks();
         }
 

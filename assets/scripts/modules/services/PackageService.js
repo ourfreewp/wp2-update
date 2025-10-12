@@ -53,22 +53,13 @@ const persistPackagesToState = (packages = [], unlinkedPackages = []) => {
 export const PackageService = {
 	async fetchPackages() {
 		try {
-			const response = await api_request('sync-packages', { method: 'GET' });
+			Logger.info('Fetching packages from the backend...');
+			const response = await api_request('packages/sync', { method: 'GET' });
+			Logger.info('Packages fetched:', response);
 			return persistPackagesToState(response?.packages, response?.unlinked_packages);
 		} catch (error) {
 			Logger.error('Failed to fetch packages', error);
 			toast('Failed to fetch packages. Please try again.', 'error');
-			throw error;
-		}
-	},
-
-	async syncPackages() {
-		try {
-			const response = await api_request('sync-packages', { method: 'GET' });
-			return persistPackagesToState(response?.packages, response?.unlinked_packages);
-		} catch (error) {
-			Logger.error('Failed to sync packages', error);
-			toast('Failed to sync packages. Please try again.', 'error');
 			throw error;
 		}
 	},
@@ -103,5 +94,3 @@ export const PackageService = {
 		return [...allPackages, ...unlinkedPackages].find(pkg => pkg.repo === repo);
 	},
 };
-
-export const syncPackages = () => PackageService.syncPackages();

@@ -87,6 +87,9 @@ export const updateUnifiedState = (newState) => {
 		return;
 	}
 
+	// Add debug log to inspect state updates
+	console.debug('updateUnifiedState: Applying updates', updates);
+
 	const { packages: packagesUpdate, selectedAppId, ...restUpdates } = updates || {};
 
 	// Ensure packagesUpdate is an array of valid objects

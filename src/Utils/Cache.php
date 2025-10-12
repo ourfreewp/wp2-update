@@ -43,6 +43,17 @@ class Cache
     }
 
     /**
+     * Invalidates cache for a specific repository.
+     *
+     * @param string $repository The repository identifier (e.g., owner/repo).
+     */
+    public static function invalidate_repository_cache(string $repository): void
+    {
+        $prefix = "repo_" . md5($repository);
+        self::clear_all($prefix);
+    }
+
+    /**
      * Clears all transients related to the plugin.
      *
      * @param string $prefix The prefix for plugin-related transients.
@@ -50,6 +61,11 @@ class Cache
     public static function clear_all(string $prefix): void
     {
         global $wpdb;
+
+        if (!is_object($wpdb)) {
+            error_log('Database connection is not available. Unable to clear transients.');
+            return;
+        }
 
         $sql = $wpdb->prepare(
             "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",

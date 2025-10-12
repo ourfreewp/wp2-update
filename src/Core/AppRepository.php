@@ -3,6 +3,7 @@
 namespace WP2\Update\Core;
 
 use WP2\Update\Config;
+use WP2\Update\Utils\Logger;
 
 /**
  * Persists GitHub App definitions.
@@ -103,6 +104,7 @@ class AppRepository
     {
         $apps = get_option(Config::OPTION_APPS, []);
         if (!is_array($apps)) {
+            Logger::log('ERROR', 'Invalid apps data retrieved from storage. Expected array, got: ' . gettype($apps));
             return [];
         }
 
@@ -110,6 +112,7 @@ class AppRepository
         $normalized = [];
         foreach ($apps as $key => $app) {
             if (!is_array($app)) {
+                Logger::log('WARNING', 'Skipping invalid app entry. Expected array, got: ' . gettype($app));
                 continue;
             }
             $id = isset($app['id']) && is_string($app['id']) ? $app['id'] : (is_string($key) ? $key : wp_generate_uuid4());
@@ -121,6 +124,7 @@ class AppRepository
             update_option(Config::OPTION_APPS, $normalized, false);
         }
 
+        Logger::log('INFO', 'Loaded apps from storage: ' . count($normalized) . ' apps found.');
         return $normalized;
     }
 
@@ -136,5 +140,35 @@ class AppRepository
         return array_values(array_filter($this->cache, function ($app) use ($field, $value) {
             return isset($app[$field]) && $app[$field] === $value;
         }));
+    }
+
+    /**
+     * Retrieve all apps.
+     *
+     * @return array<int,array> The list of all apps.
+     */
+    public function find_all(): array
+    {
+        return $this->all();
+    }
+
+    /**
+     * Updates the managed repositories for a given app UID.
+     *
+     * @param string $appUid The app UID.
+     * @param array $repositories The list of repositories to associate with the app.
+     * @return void
+     */
+    public function update_managed_repositories(string $appUid, array $repositories): void
+    {
+        if (!isset($this->cache[$appUid])) {
+            Logger::log('WARNING', 'App UID not found: ' . $appUid);
+            return;
+        }
+
+        $this->cache[$appUid]['repositories'] = $repositories;
+        $this->persist($this->cache);
+
+        Logger::log('INFO', 'Managed repositories updated for app UID: ' . $appUid);
     }
 }

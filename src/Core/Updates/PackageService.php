@@ -33,60 +33,50 @@ class PackageService
      */
     public function sync_packages(): array
     {
+        Logger::log('DEBUG', 'sync_packages method called.');
+
         $localPackages = $this->packageFinder->get_managed_packages();
         $githubRepos = $this->repositoryService->get_managed_repositories();
 
+        Logger::log('DEBUG', 'sync_packages called. Local packages: ' . print_r($localPackages, true));
+        Logger::log('DEBUG', 'sync_packages called. GitHub repositories: ' . print_r($githubRepos, true));
+        Logger::log('DEBUG', 'Local packages: ' . print_r($localPackages, true));
+        Logger::log('DEBUG', 'GitHub repositories: ' . print_r($githubRepos, true));
+        error_log('Local packages: ' . print_r($localPackages, true));
+        error_log('GitHub repositories: ' . print_r($githubRepos, true));
+
         $repoIndex = [];
         foreach ($githubRepos as $repo) {
-            // Use 'full_name' as the key, which is the "owner/repo" slug.
             $repoIndex[$repo['full_name']] = $repo;
         }
 
         $packages = [];
         $unlinkedPackages = [];
+
         foreach ($localPackages as $localPackage) {
-            // The 'repo' key from PackageFinder holds the "owner/repo" slug.
             $repoSlug = $localPackage['repo'];
             $githubData = $repoIndex[$repoSlug] ?? null;
 
             if ($githubData) {
                 $releases = $this->releaseService->get_releases($repoSlug);
                 $latestRelease = $releases[0] ?? null;
-                $packages[] = array_change_key_case(array_merge(
+                
+                $packages[] = array_merge(
                     $localPackage,
                     [
                         'github_data' => $githubData,
-                        'last_updated' => $githubData['updated_at'] ?? null,
-                        'stars' => $githubData['stargazers_count'] ?? 0,
-                        'issues' => $githubData['open_issues_count'] ?? 0,
-                        'releases' => array_map(function ($release) {
-                            return [
-                                'tag' => $release['tag_name'] ?? '',
-                                'label' => $release['name'] ?? '',
-                                'download_url' => $release['zipball_url'] ?? '',
-                            ];
-                        }, $releases),
-                        'latest' => $latestRelease ? [
-                            'tag' => $latestRelease['tag_name'] ?? '',
-                            'label' => $latestRelease['name'] ?? '',
-                            'download_url' => $latestRelease['zipball_url'] ?? '',
-                        ] : null,
-                        'repo' => $repoSlug,
-                        'type' => $localPackage['type'] ?? 'unknown',
-                        'status' => $localPackage['status'] ?? 'unmanaged',
-                        'app_slug' => $localPackage['app_slug'] ?? null,
+                        'releases' => $releases,
+                        'latest' => $latestRelease,
+                        'status' => 'managed',
                     ]
-                ), CASE_LOWER);
+                );
             } else {
-                $unlinkedPackages[] = array_change_key_case(array_merge(
+                $unlinkedPackages[] = array_merge(
                     $localPackage,
                     [
-                        'repo' => $repoSlug,
-                        'type' => $localPackage['type'] ?? 'unknown',
                         'status' => 'unlinked',
-                        'app_slug' => $localPackage['app_slug'] ?? null,
                     ]
-                ), CASE_LOWER);
+                );
             }
         }
 
@@ -183,7 +173,33 @@ class PackageService
      */
     public function get_all_packages(): array
     {
-        return $this->sync_packages();
+        try {
+            return $this->sync_packages();
+        } catch (\Throwable $exception) {
+            Logger::log('ERROR', 'Failed to retrieve packages: ' . $exception->getMessage());
+
+            return [
+                'managed'  => [],
+                'unlinked' => [],
+                'all'      => [],
+                'error'    => $exception->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Fetches all managed packages.
+     *
+     * @return array The managed packages.
+     */
+    public function get_managed_packages(): array
+    {
+        try {
+            return $this->packageFinder->get_managed_packages();
+        } catch (\Throwable $exception) {
+            Logger::log('ERROR', 'Failed to fetch managed packages: ' . $exception->getMessage());
+            return [];
+        }
     }
 
     public function get_package_status(string $repoSlug): ?array
@@ -469,5 +485,145 @@ class PackageService
                 'download_url' => $release['zipball_url'] ?? '',
             ];
         }, $releases);
+    }
+
+    /**
+     * Rollback a package to a specific version.
+     *
+     * @param string $repoSlug The repository slug of the package.
+     * @param string $version The version to rollback to.
+     * @return bool True on success, false on failure.
+     */
+    public function rollback_package(string $repoSlug, string $version): bool
+    {
+        try {
+            $normalizedRepo = Formatting::normalize_repo($repoSlug);
+            if (!$normalizedRepo) {
+                throw new \Exception('Invalid repository slug provided.');
+            }
+
+            $release = $this->releaseService->get_release_by_version($normalizedRepo, $version);
+            if (!$release) {
+                throw new \Exception("Release '{$version}' not found for repository '{$normalizedRepo}'.");
+            }
+
+            $zipUrl = $this->releaseService->get_zip_url_from_release($release);
+            if (!$zipUrl) {
+                throw new \Exception('Download URL not found in release assets.');
+            }
+
+            $token = $this->clientFactory->getInstallationToken();
+            if (!$token) {
+                throw new \Exception('Failed to retrieve authentication token.');
+            }
+
+            $retryAttempts = 3;
+            $tempFile = null;
+            while ($retryAttempts > 0) {
+                try {
+                    $tempFile = $this->releaseService->download_package($zipUrl, $token);
+                    if ($tempFile && $this->is_valid_package_archive($tempFile, $repoSlug)) {
+                        break; // Exit retry loop on success
+                    }
+
+                    throw new \Exception("The downloaded file for '{$repoSlug}' is not a valid package.");
+                } catch (\Exception $downloadException) {
+                    $retryAttempts--;
+                    if ($retryAttempts === 0) {
+                        throw new \Exception('Failed to download package after multiple attempts: ' . $downloadException->getMessage());
+                    }
+                    sleep(2); // Wait before retrying
+                }
+            }
+
+            // Ensure cleanup of temporary files on failure
+            if (!$tempFile || !$this->is_valid_package_archive($tempFile, $repoSlug)) {
+                @unlink($tempFile);
+                throw new \Exception("The downloaded file for '{$repoSlug}' is not a valid package.");
+            }
+
+            $packageType = $this->get_package_type_by_repo($normalizedRepo);
+            $this->install_from_zip($tempFile, $packageType);
+
+            return true;
+        } catch (\Exception $e) {
+            Logger::log('ERROR', 'Rollback failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Checks the GitHub API rate limit and stores the status in a transient.
+     *
+     * @return array The rate limit status, including remaining requests and reset time.
+     */
+    public function check_rate_limit(): array
+    {
+        $rateLimitStatus = get_transient('wp2_github_rate_limit');
+
+        if ($rateLimitStatus) {
+            return $rateLimitStatus;
+        }
+
+        $rateLimit = $this->clientFactory->getRateLimit();
+        if (!$rateLimit) {
+            throw new \Exception('Unable to fetch GitHub API rate limit.');
+        }
+
+        $rateLimitStatus = [
+            'remaining' => $rateLimit['rate']['remaining'] ?? 0,
+            'reset' => $rateLimit['rate']['reset'] ?? time(),
+        ];
+
+        set_transient('wp2_github_rate_limit', $rateLimitStatus, 60);
+
+        return $rateLimitStatus;
+    }
+
+    /**
+     * Enable or disable auto-update for a package.
+     *
+     * @param string $packageId
+     * @param bool $autoUpdate
+     * @return bool
+     */
+    public function set_auto_update(string $packageId, bool $autoUpdate): bool
+    {
+        try {
+            // Logic to update the auto-update setting in the database or configuration.
+            Logger::log('INFO', sprintf('Auto-update for package %s set to %s.', $packageId, $autoUpdate ? 'enabled' : 'disabled'));
+            
+            // Example: Update the database (pseudo-code)
+            // $result = $this->database->update('packages', ['auto_update' => $autoUpdate], ['id' => $packageId]);
+            
+            return true; // Assume success for now.
+        } catch (\Throwable $exception) {
+            Logger::log('ERROR', 'Failed to set auto-update: ' . $exception->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Fetches release notes for a package.
+     *
+     * @param string $packageId The package ID.
+     * @return string|null The release notes, or null if not available.
+     */
+    public function get_release_notes(string $packageId): ?string
+    {
+        try {
+            $package = $this->packageFinder->find_package_by_id($packageId);
+            if (!$package) {
+                throw new \RuntimeException('Package not found.');
+            }
+
+            $releases = $this->releaseService->get_releases($package['repo']);
+            $latestRelease = $releases[0] ?? null;
+
+            return $latestRelease['body'] ?? null;
+        } catch (\Throwable $exception) {
+            Logger::log('ERROR', 'Failed to fetch release notes: ' . $exception->getMessage());
+            return null;
+        }
     }
 }

@@ -18,34 +18,38 @@ const build_url = (endpoint, query) => {
     return `${base}?${search.toString()}`;
 };
 
-const refresh_nonce = async () => {
-    const res = await fetch(build_url('refresh-nonce'), { method: 'GET' });
-    if (!res.ok) {
-        throw new Error('Failed to refresh nonce');
+const refresh_nonce = async (action = 'wp_rest') => {
+    try {
+        const res = await fetch(build_url('refresh-nonce', { action }), { method: 'GET' });
+        if (!res.ok) {
+            console.error('Failed to refresh nonce: HTTP status', res.status);
+            throw new Error('Failed to refresh nonce');
+        }
+        const data = await res.json();
+        current_nonce = data.data.nonce;
+        console.log(`Nonce refreshed successfully for action '${action}':`, current_nonce);
+    } catch (error) {
+        console.error('Error refreshing nonce:', error);
+        throw error;
     }
-    const data = await res.json();
-    current_nonce = data.nonce;
-};
-
-const addAppIdToParams = (params = {}) => {
-    const appId = window.wp2UpdateData?.app_id;
-    if (!appId) {
-        return params;
-    }
-    return { ...params, app_id: appId };
 };
 
 export const api_request = async (endpoint, options = {}, retries = 3) => {
     for (let attempt = 0; attempt < retries; attempt++) {
         try {
             const { params, headers: headerOverrides, ...restOptions } = options;
-            const url = build_url(endpoint, addAppIdToParams(params));
+            const url = build_url(endpoint, params);
+
+            const appId = window.wp2UpdateData?.selectedAppId;
+
             const init = {
-                method: 'POST',
+                // Set default method to GET
+                method: 'GET',
                 ...restOptions,
                 headers: {
                     'Content-Type': 'application/json',
                     'X-WP-Nonce': current_nonce,
+                    ...(appId ? { 'X-WP2-App-ID': appId } : {}),
                     ...(headerOverrides || {}),
                 },
             };
@@ -56,7 +60,8 @@ export const api_request = async (endpoint, options = {}, retries = 3) => {
                 init.body = JSON.stringify(init.body);
             }
 
-            if ((init.method || 'POST').toUpperCase() === 'GET') {
+            // Only include a body for non-GET requests
+            if (init.method.toUpperCase() === 'GET') {
                 delete init.body;
             }
 
@@ -85,7 +90,7 @@ export const fetchConnectionStatus = async () => {
 };
 
 export const syncPackages = async () => {
-    return api_request('sync-packages', { method: 'GET' });
+    return api_request('packages/sync', { method: 'GET' });
 };
 
 export const createApp = async (appData) => {
@@ -120,4 +125,19 @@ export const assignPackageToApp = async (packageData) => {
         method: 'POST',
         body: updatedPackageData,
     });
+};
+
+export const validate_nonce = async (nonce, action) => {
+    try {
+        const res = await fetch(build_url('validate-nonce', { nonce, action }), { method: 'GET' });
+        if (!res.ok) {
+            console.error('Nonce validation failed: HTTP status', res.status);
+            throw new Error('Nonce validation failed');
+        }
+        const data = await res.json();
+        return data.valid;
+    } catch (error) {
+        console.error('Error validating nonce:', error);
+        throw error;
+    }
 };

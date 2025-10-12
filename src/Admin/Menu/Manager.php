@@ -5,6 +5,7 @@ namespace WP2\Update\Admin\Menu;
 use WP2\Update\Core\API\ConnectionService;
 use WP2\Update\Core\Updates\PackageService;
 use WP2\Update\Admin\Screens\Manager as GitHubScreensManager;
+use WP2\Update\REST\Controllers\HealthController;
 
 /**
  * Class Manager
@@ -13,16 +14,19 @@ use WP2\Update\Admin\Screens\Manager as GitHubScreensManager;
 final class Manager {
     private ConnectionService $connectionService;
     private PackageService $packageService;
+    private HealthController $healthController;
 
     /**
      * Constructor for the Manager class.
      *
      * @param ConnectionService $connectionService Service for managing GitHub connections.
      * @param PackageService $packageService Service for managing package updates.
+     * @param HealthController $healthController Service for managing health checks.
      */
-    public function __construct(ConnectionService $connectionService, PackageService $packageService) {
+    public function __construct(ConnectionService $connectionService, PackageService $packageService, HealthController $healthController) {
         $this->connectionService = $connectionService;
         $this->packageService = $packageService;
+        $this->healthController = $healthController;
     }
 
     /**
@@ -34,12 +38,13 @@ final class Manager {
     public function register_menu(): void {
         do_action('wp2_update_before_register_menu');
 
+        $githubScreensManager = new GitHubScreensManager($this->healthController);
         add_menu_page(
             esc_html__('WP2 Updates', 'wp2-update'),
             esc_html__('WP2 Updates', 'wp2-update'),
             'manage_options',
             'wp2-update',
-            [GitHubScreensManager::class, 'render'],
+            [$githubScreensManager, 'render'],
             'dashicons-cloud'
         );
 

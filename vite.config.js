@@ -28,9 +28,9 @@ export default defineConfig(({ command }) => ({
     rollupOptions: {
       output: {
         format: 'es', // Use ES module format to support multiple inputs
-        entryFileNames: '[name].js',
-        chunkFileNames: '[name]-[hash].js',
-        assetFileNames: '[name]-[hash][extname]',
+        entryFileNames: 'wp2-[name].js',
+        chunkFileNames: 'wp2-[name]-[hash].js',
+        assetFileNames: 'wp2-[name]-[hash][extname]',
       },
       input: {
         'admin-main': path.resolve(__dirname, 'assets/scripts/admin-main.js'),
@@ -48,9 +48,16 @@ export default defineConfig(({ command }) => ({
   css: {
     preprocessorOptions: {
       scss: {
-        additionalData: `@use "sass:math";` // Ensure SCSS is processed correctly
-      }
-    }
+        additionalData: `@use "sass:math";`, // Ensure SCSS is processed correctly
+        includePaths: ["node_modules"],
+        silenceDeprecations: [
+          'import',
+          'mixed-decls',
+          'color-functions',
+          'global-builtin',
+        ],
+      },
+    },
   },
 
   server: {
@@ -60,4 +67,7 @@ export default defineConfig(({ command }) => ({
     port: 5173,
     strictPort: true,
   },
+
+  // Suppress deprecation warnings from Sass dependencies globally
+  quietDeps: true,
 }));

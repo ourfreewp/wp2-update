@@ -39,3 +39,41 @@ export const confirm_modal = (message, onConfirm, onCancel) => {
     modal.hidden = false; // Remove hidden attribute to make it interactive
     modal.classList.add('is-visible');
 };
+
+/**
+ * Displays a confirmation modal for destructive actions.
+ * @param {string} title - The title of the modal.
+ * @param {string} message - The message to display in the modal.
+ * @param {() => void} onConfirm - Callback for the confirm action.
+ * @param {() => void} [onCancel] - Optional callback for the cancel action.
+ */
+export const showConfirmationModal = (title, message, onConfirm, onCancel) => {
+    const modal = document.createElement('div');
+    modal.className = 'wp2-modal';
+    modal.innerHTML = `
+        <div class="wp2-modal-content">
+            <header class="wp2-modal-header">${title}</header>
+            <div class="wp2-modal-body">${message}</div>
+            <footer class="wp2-modal-footer">
+                <button class="wp2-btn wp2-btn--ghost" id="wp2-modal-cancel">Cancel</button>
+                <button class="wp2-btn wp2-btn--primary" id="wp2-modal-confirm">Confirm</button>
+            </footer>
+        </div>
+    `;
+
+    const closeModal = () => {
+        modal.remove();
+    };
+
+    modal.querySelector('#wp2-modal-cancel').addEventListener('click', () => {
+        closeModal();
+        if (onCancel) onCancel();
+    });
+
+    modal.querySelector('#wp2-modal-confirm').addEventListener('click', () => {
+        closeModal();
+        if (onConfirm) onConfirm();
+    });
+
+    document.body.appendChild(modal);
+};

@@ -6,7 +6,7 @@ use WP_REST_Request;
 use WP2\Update\Utils\Logger;
 
 final class Permissions {
-    public static function current_user_can_manage(?WP_REST_Request $request = null): bool {
+    public static function current_user_can_manage(?WP_REST_Request $request = null, string $action = 'wp_rest'): bool {
         if (!current_user_can('manage_options')) {
             Logger::log('ERROR', 'Permission denied: manage_options.');
             return false;
@@ -14,14 +14,14 @@ final class Permissions {
 
         if ($request instanceof WP_REST_Request) {
             $nonce = $request->get_header('X-WP-Nonce');
-            if (!$nonce || !wp_verify_nonce($nonce, 'wp_rest')) {
-                Logger::log('ERROR', 'Permission denied: invalid nonce from header.');
+            if (!$nonce || !wp_verify_nonce($nonce, $action)) {
+                Logger::log('ERROR', "Permission denied: invalid nonce for action '{$action}' from header.");
                 return false;
             }
         } else {
             $nonce = $_REQUEST['_wpnonce'] ?? '';
-            if (!$nonce || !wp_verify_nonce($nonce, 'wp_rest')) {
-                Logger::log('ERROR', 'Permission denied: invalid nonce from request parameter.');
+            if (!$nonce || !wp_verify_nonce($nonce, $action)) {
+                Logger::log('ERROR', "Permission denied: invalid nonce for action '{$action}' from request parameter.");
                 return false;
             }
         }

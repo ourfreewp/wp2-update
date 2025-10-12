@@ -17,18 +17,18 @@ use function __;
 final class ConnectionStatusController extends AbstractRestController {
 	private ConnectionService $connectionService;
 	private CredentialService $credentialService;
-	private ?PackageFinder $packageFinder;
+	private PackageFinder $packageFinder;
 
 	public function __construct(
 		ConnectionService $connectionService,
 		CredentialService $credentialService,
-		?PackageFinder $packageFinder = null,
+		PackageFinder $packageFinder,
 		?string $namespace = null
 	) {
 		parent::__construct( $namespace );
-		$this->connectionService  = $connectionService;
-		$this->credentialService  = $credentialService;
-		$this->packageFinder      = $packageFinder;
+		$this->connectionService = $connectionService;
+		$this->credentialService = $credentialService;
+		$this->packageFinder     = $packageFinder;
 	}
 
 	/**
@@ -74,34 +74,21 @@ final class ConnectionStatusController extends AbstractRestController {
 				$appUid ? (string) $appUid : null
 			);
 
-			if ( in_array( $status['status'] ?? '', [ 'not_configured', 'not_configured_with_packages' ], true )
-				&& $this->packageFinder
-			) {
-				$packages = $this->packageFinder->get_managed_packages();
-				if ( ! empty( $packages ) ) {
-					$status['status']             = 'not_configured_with_packages';
-					$status['unlinked_packages'] = array_values( $packages );
-				}
+			// Removed dependency on PackageFinder for fetching packages
+			if ( in_array( $status['status'] ?? '', [ 'not_configured', 'not_configured_with_packages' ], true ) ) {
+				$status['packages'] = [];
 			}
 
-			$httpStatus = ( 'connection_error' === ( $status['status'] ?? '' ) ) ? 400 : 200;
+			return new WP_REST_Response( $status, 200 );
+		} catch ( \Throwable $exception ) {
+			Logger::log( 'ERROR', 'Failed to retrieve connection status: ' . $exception->getMessage() );
 
-			return $this->respond( $status, $httpStatus );
-		} catch ( \Throwable $error ) {
-			Logger::log(
-				'CRITICAL',
-				'Connection status check failed: ' . $error->getMessage()
-			);
-
-			return $this->respond(
+			return new WP_REST_Response(
 				[
-					'connected' => false,
-					'message'   => __(
-						'Could not check connection status due to a server error.',
-						'wp2-update'
-					),
+					'error'   => true,
+					'message' => esc_html__( 'Unable to retrieve connection status.', 'wp2-update' ),
 				],
-				503
+				500
 			);
 		}
 	}

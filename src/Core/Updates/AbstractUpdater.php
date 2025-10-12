@@ -86,6 +86,8 @@ abstract class AbstractUpdater
                     'new_version' => $latestRelease['version'],
                     'package'     => $latestRelease['download_url'],
                     'slug'        => $slug,
+                    'plugin'      => $item['plugin_file'] ?? '',
+                    'url'         => $item['homepage'] ?? '',
                 ];
             }
         }

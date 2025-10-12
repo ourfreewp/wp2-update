@@ -98,8 +98,16 @@ final class Controller {
 
         if ($event === 'installation_repositories' && !empty($data['installation']['id'])) {
             $installationId = (int) $data['installation']['id'];
-            $this->credentialService->update_installation_id($matchedApp['id'], $installationId);
-            Logger::log('INFO', 'Installation repositories webhook received. Installation ID stored: ' . $installationId);
+            $appUid = $matchedApp['id'];
+
+            $this->credentialService->update_installation_id($appUid, $installationId);
+
+            // Refresh managed repositories
+            $this->credentialService->refresh_managed_repositories($appUid, $installationId);
+
+            Logger::log('INFO', 'Installation repositories webhook received. Installation ID stored, and managed repositories refreshed.');
+
+            return new WP_REST_Response(['message' => 'Installation recorded and repositories refreshed.'], 200);
         }
 
         // Only act on the 'published' action of a 'release' event.
@@ -115,10 +123,15 @@ final class Controller {
             }
 
             // Clear update transients only for managed repositories
-            delete_site_transient('update_plugins');
-            delete_site_transient('update_themes');
+            foreach ($managedRepositories as $repo) {
+                $pluginTransientKey = 'wp2_latest_release_' . md5($repo);
+                $themeTransientKey = 'wp2_update_all_releases_' . md5($repo);
 
-            Logger::log('INFO', 'Cleared update transients for managed repositories: ' . implode(', ', $managedRepositories));
+                delete_site_transient($pluginTransientKey);
+                delete_site_transient($themeTransientKey);
+            }
+
+            Logger::log('INFO', 'Cleared specific update transients for managed repositories: ' . implode(', ', $managedRepositories));
             do_action('wp2_update_release_published', $data, $matchedApp);
         }
 

@@ -6,7 +6,13 @@ import { ensureToast } from './modules/ui/toast.js';
 import { AppService } from './modules/services/AppService.js';
 import { PackageService } from './modules/services/PackageService.js';
 import { Logger } from './modules/utils.js';
-import { initializeTabs } from './modules/lib/tabby.js';
+import { HealthView } from './modules/ui/views/HealthView.js';
+import { initializeApp } from './modules/services/AppInitializer.js';
+import { onFormFieldInput, toggleOrgFields } from './modules/ui/handlers/appEventHandlers.js';
+import { openModal, closeModal } from './modules/ui/handlers/packageEventHandlers.js';
+
+// Import Bootstrap's JavaScript
+import * as bootstrap from 'bootstrap';
 
 let pollHandle = null;
 
@@ -23,7 +29,7 @@ const syncPackages = async () => {
     const syncButton = document.getElementById('wp2-sync-all');
     if (syncButton) {
         syncButton.disabled = true;
-        syncButton.textContent = 'Syncing...'; // Update button text to indicate loading
+        syncButton.textContent = 'Syncing...';
     }
 
     try {
@@ -38,7 +44,7 @@ const syncPackages = async () => {
         updateUnifiedState({ isProcessing: false });
         if (syncButton) {
             syncButton.disabled = false;
-            syncButton.textContent = 'Sync All'; // Restore original button text
+            syncButton.textContent = 'Sync All';
         }
     }
 };
@@ -121,9 +127,8 @@ const handleGitHubCallback = () => {
     };
 
     const params = new URLSearchParams(window.location.search);
-    // Prefer localized values but fall back to the URL if needed.
-    const code = window.wp2UpdateData?.githubCode ?? params.get('code');
-    const state = window.wp2UpdateData?.githubState ?? params.get('state');
+    const code = params.get('code');
+    const state = params.get('state');
 
     if (!code || !state) {
         notice('Invalid callback parameters. Please try again.', true);
@@ -145,9 +150,52 @@ const handleGitHubCallback = () => {
     })();
 };
 
-// --- Initialization ---
+const bootstrapInitialState = () => {
+    const {
+        connectionStatus,
+        apps = [],
+        selectedAppId = null,
+        packages = [],
+        unlinkedPackages = [],
+        packageError = '',
+        health = {},
+        stats = {}
+    } = window.wp2UpdateData || {};
 
-// Pass controller functions to the render module
+    updateUnifiedState({
+        status: connectionStatus?.status || STATUS.LOADING,
+        message: connectionStatus?.message || '',
+        details: connectionStatus?.details || {},
+        apps,
+        selectedAppId: selectedAppId ?? (apps[0]?.id ?? null),
+        allPackages: [...packages, ...unlinkedPackages],
+        packages: packages,
+        unlinkedPackages,
+        isProcessing: false,
+        health,
+        stats
+    });
+
+    if (packageError) {
+        Logger.error('Package preload error:', packageError);
+    }
+};
+
+const openWizardModal = () => {
+    const modal = document.getElementById('wp2-modal-app');
+    if (!modal) {
+        Logger.error('Modal content container not found in the DOM.');
+        return;
+    }
+
+    modal.hidden = false;
+    modal.querySelector('.wp2-modal-close').addEventListener('click', () => {
+        modal.hidden = true;
+    });
+
+    Logger.debug('Modal opened successfully.');
+};
+
 const controllers = { fetchConnectionStatus, syncPackages, stopPolling };
 App.setControllers(controllers);
 
@@ -157,115 +205,37 @@ window.addEventListener('message', (event) => {
     }
 });
 
-// Ensure wp2UpdateData exists with default values
-const wp2UpdateData = window.wp2UpdateData || {};
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.wp2UpdateInitialized) {
+        console.warn('App.init() called multiple times. Initialization skipped.');
+        return;
+    }
+    window.wp2UpdateInitialized = true;
 
-// Localize app list and selected app ID
-const localizeAppData = () => {
-    const localizedData = wp2UpdateData.apps || [];
-    const selectedAppId = wp2UpdateData.selectedAppId || null;
+    Logger.info('DOM Content Loaded. Initializing WP2 Update SPA.');
 
-    if (!Array.isArray(localizedData)) {
-        console.warn('WP2 Update: localizedData.apps is not an array or is undefined.');
+    if (document.getElementById('wp2-update-github-callback')) {
+        handleGitHubCallback();
+        return;
     }
 
-    updateUnifiedState({
-        apps: localizedData,
-        selectedAppId,
-    });
-};
+    // Bootstrap the data that was loaded by PHP.
+    bootstrapInitialState();
 
-const initializeApp = () => {
-    const state = unified_state.get();
-    renderApp(state);
-
-    unified_state.subscribe((newState) => {
-        renderApp(newState);
-    });
-};
-
-// Centralized Event Controller
-const handleAction = async (action, target) => {
-    const toast = await ensureToast();
-    try {
-        switch (action) {
-            case 'open-wizard':
-                openWizardModal();
-                break;
-            case 'refresh-packages':
-                show_global_spinner();
-                await PackageService.fetchPackages();
-                toast(__('Package list refreshed.', 'wp2-update'), 'success');
-                break;
-            case 'assign-app':
-                const repo = target.getAttribute('data-wp2-package');
-                if (repo) openAssignModal(repo);
-                break;
-            case 'package-details':
-                const packageRepo = target.getAttribute('data-wp2-package');
-                if (packageRepo) openPackageDetailsModal(packageRepo);
-                break;
-            case 'app-details':
-                const appId = target.getAttribute('data-wp2-app');
-                if (appId) openAppDetailsModal(appId);
-                break;
-            case 'copy-manifest':
-                handleCopyManifest();
-                break;
-            case 'open-github':
-                handleOpenGithub();
-                break;
-            case 'wizard-finished':
-                handleWizardFinished(fetchConnectionStatus);
-                break;
-            default:
-                Logger.warn(`Unhandled action: ${action}`);
-        }
-    } catch (error) {
-        Logger.error(`Action failed: ${action}`, error);
-        toast(__('An error occurred while processing your request.', 'wp2-update'), 'error');
-    } finally {
-        hide_global_spinner();
-    }
-};
-
-document.addEventListener('click', (event) => {
-    const actionButton = event.target.closest('[data-wp2-action]');
-    if (!actionButton) return;
-
-    const action = actionButton.getAttribute('data-wp2-action');
-    handleAction(action, actionButton);
-});
-
-// Call this once on DOMContentLoaded
-document.addEventListener('DOMContentLoaded', async () => {
-    Logger.info('DOMContentLoaded event fired. Initializing WP2 Update SPA.');
-
-    try {
-        await fetchConnectionStatus();
-        Logger.info('Connection status fetched successfully.');
-    } catch (error) {
-        Logger.error('Error fetching connection status.', error);
-    }
-
-    localizeAppData();
-    Logger.info('App data localized.');
-
-    initializeTabs();
-    Logger.info('Top-level tabs initialized with Tabby.');
-
-    const currentApps = unified_state.get().apps;
-    if (!Array.isArray(currentApps) || !currentApps.length) {
-        try {
-            await AppService.fetchApps();
-        } catch (error) {
-            Logger.error('Failed to load apps from the server.', error);
-            const toast = await ensureToast();
-            toast('Unable to load apps from the server.', 'error', error.message);
-        }
-    }
-
-    Logger.info('WP2 Update SPA initialized successfully.');
+    // Attach event listeners to the server-rendered dashboard.
+    App.init();
     initializeApp();
-    bindAppEvents();
+    onFormFieldInput();
+    toggleOrgFields();
+    packageEventHandlers.register();
+
+    // Now, fetch fresh data to ensure the tables are up-to-date.
+    PackageService.fetchPackages();
+    AppService.fetchApps();
+
+    const activeTab = new URLSearchParams(window.location.search).get('tab');
+
+    if (activeTab === 'health') {
+        HealthView.init();
+    }
 });

@@ -5,6 +5,9 @@
  * Main stylesheet for the WP2 Update admin interface.
  */
 
+// Import Bootstrap's SCSS
+@use "/workspaces/wp2-update/node_modules/bootstrap/scss/bootstrap" as *;
+
 /* ==========================================================================
    1. Design System (CSS Variables)
    ========================================================================== */
@@ -293,6 +296,7 @@
 	}
 
 	.wp2-modal-content {
+		position: relative;
 		background-color: var(--wp2-color-bg-card);
 		padding: calc(var(--wp2-spacing-unit) * 4);
 		border-radius: var(--wp2-border-radius);
@@ -1636,11 +1640,6 @@
 	transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-.wp2-wizard-step.is-active {
-	background-color: var(--wp2-color-primary);
-	color: var(--wp2-white);
-	font-weight: bold;
-}
 
 .wp2-wizard-content {
 	padding: calc(var(--wp2-spacing-unit) * 4);
