@@ -1,9 +1,12 @@
-import { dashboard_state, app_state, updateDashboardState, updateAppState, STATUS } from './modules/state/store.js';
+import { unified_state, updateUnifiedState, STATUS } from './modules/state/store.js';
 import { api_request } from './modules/api.js';
 import { show_global_spinner, hide_global_spinner } from './modules/ui/spinner.js';
 import { App } from './modules/ui/setup.js';
 import { ensureToast } from './modules/ui/toast.js';
-import { AddAppWizard } from './modules/ui/wizards/AddAppWizard.js';
+import { AppService } from './modules/services/AppService.js';
+import { PackageService } from './modules/services/PackageService.js';
+import { Logger } from './modules/utils.js';
+import { initializeTabs } from './modules/lib/tabby.js';
 
 let pollHandle = null;
 
@@ -11,33 +14,38 @@ const stopPolling = () => {
     if (pollHandle) {
         clearTimeout(pollHandle);
         pollHandle = null;
-        updateDashboardState({ polling: { active: false } });
+        updateUnifiedState({ polling: { active: false } });
     }
 };
 
 const syncPackages = async () => {
-    updateDashboardState({ isProcessing: true });
-    const syncButton = document.getElementById('wp2-sync-packages');
-    if (syncButton) syncButton.disabled = true;
+    updateUnifiedState({ isProcessing: true });
+    const syncButton = document.getElementById('wp2-sync-all');
+    if (syncButton) {
+        syncButton.disabled = true;
+        syncButton.textContent = 'Syncing...'; // Update button text to indicate loading
+    }
 
     try {
         show_global_spinner();
-        const { packages = [], unlinked_packages = [] } = await api_request('sync-packages', { method: 'GET' }) || {};
-        updateDashboardState({ packages, unlinkedPackages: unlinked_packages });
+        await PackageService.syncPackages();
     } catch (error) {
-        console.error('Failed to sync packages', error);
+        Logger.error('Failed to sync packages', error);
         const toast = await ensureToast();
         toast('Failed to sync packages from GitHub.', 'error', error.message);
     } finally {
         hide_global_spinner();
-        updateDashboardState({ isProcessing: false });
-        if (syncButton) syncButton.disabled = false;
+        updateUnifiedState({ isProcessing: false });
+        if (syncButton) {
+            syncButton.disabled = false;
+            syncButton.textContent = 'Sync All'; // Restore original button text
+        }
     }
 };
 
 const fetchConnectionStatus = async ({ silent = false } = {}) => {
     if (!silent) {
-        updateDashboardState({ status: STATUS.LOADING, isProcessing: true });
+        updateUnifiedState({ status: STATUS.LOADING, isProcessing: true });
     }
 
     try {
@@ -45,13 +53,13 @@ const fetchConnectionStatus = async ({ silent = false } = {}) => {
         const response = await api_request('connection-status', { method: 'GET' });
         const data = response?.data || {};
         let status = data.status || STATUS.NOT_CONFIGURED;
-        const previousStatus = dashboard_state.get().status;
+        const previousStatus = unified_state.get().status;
 
         if (status === STATUS.NOT_CONFIGURED && data.unlinked_packages?.length) {
             status = STATUS.NOT_CONFIGURED_WITH_PACKAGES;
         }
 
-        updateDashboardState({
+        updateUnifiedState({
             status,
             message: data.message || '',
             details: data.details || {},
@@ -59,25 +67,27 @@ const fetchConnectionStatus = async ({ silent = false } = {}) => {
             isProcessing: false,
         });
 
-        // --- PATCH START ---
-        // Provide feedback if a manual check results in the same "app_created" state.
         if (!silent && status === STATUS.APP_CREATED && previousStatus === STATUS.APP_CREATED) {
             const toast = await ensureToast();
             toast('Still waiting for installation. Please complete the setup on GitHub.', 'warning');
         }
-        // --- PATCH END ---
 
         if (status === STATUS.APP_CREATED) {
             scheduleInstallationPoll();
         } else if (status === STATUS.INSTALLED) {
             stopPolling();
             await syncPackages();
+            try {
+                await AppService.fetchApps();
+            } catch (error) {
+                Logger.error('Failed to refresh apps after installation.', error);
+            }
         }
     } catch (error) {
-        console.error('Failed to fetch connection status', error);
+        Logger.error('Failed to fetch connection status', error);
         const toast = await ensureToast();
         toast('Could not connect to the server.', 'error', error.message);
-        updateDashboardState({
+        updateUnifiedState({
             status: STATUS.ERROR,
             message: error.message || 'An unexpected error occurred.',
             isProcessing: false,
@@ -89,12 +99,12 @@ const fetchConnectionStatus = async ({ silent = false } = {}) => {
 
 const scheduleInstallationPoll = () => {
     if (pollHandle) return;
-    updateDashboardState({ polling: { active: true } });
+    updateUnifiedState({ polling: { active: true } });
 
     pollHandle = setTimeout(async () => {
         pollHandle = null;
         await fetchConnectionStatus({ silent: true });
-        if (dashboard_state.get().status === STATUS.APP_CREATED) {
+        if (unified_state.get().status === STATUS.APP_CREATED) {
             scheduleInstallationPoll();
         } else {
             stopPolling();
@@ -129,7 +139,7 @@ const handleGitHubCallback = () => {
             window.opener?.postMessage('wp2-update-github-connected', window.location.origin);
             window.close();
         } catch (error) {
-            console.error('GitHub exchange failed', error);
+            Logger.error('GitHub exchange failed', error);
             notice(`An error occurred: ${error.message}. Please try again.`, true);
         }
     })();
@@ -139,7 +149,7 @@ const handleGitHubCallback = () => {
 
 // Pass controller functions to the render module
 const controllers = { fetchConnectionStatus, syncPackages, stopPolling };
-dashboard_state.listen((state) => App.render(state, controllers));
+App.setControllers(controllers);
 
 window.addEventListener('message', (event) => {
     if (event.data === 'wp2-update-github-connected') {
@@ -159,53 +169,103 @@ const localizeAppData = () => {
         console.warn('WP2 Update: localizedData.apps is not an array or is undefined.');
     }
 
-    updateAppState({
+    updateUnifiedState({
         apps: localizedData,
         selectedAppId,
     });
 };
 
-// Validate apps before using .map()
-const renderAppSelectionDropdown = () => {
-    const appDropdown = document.getElementById('wp2-app-selection');
-    if (appDropdown) {
-        const updateOptions = () => {
-            const { apps = [], selectedAppId = null } = app_state.get();
-            if (!Array.isArray(apps)) {
-                console.warn('WP2 Update: apps is not an array or is undefined.');
-                return;
-            }
+const initializeApp = () => {
+    const state = unified_state.get();
+    renderApp(state);
 
-            appDropdown.innerHTML = apps.map(app => `<option value="${app.id}" ${app.id === selectedAppId ? 'selected' : ''}>${app.name}</option>`).join('');
-            if (selectedAppId) {
-                appDropdown.value = selectedAppId;
-            }
-        };
+    unified_state.subscribe((newState) => {
+        renderApp(newState);
+    });
+};
 
-        updateOptions();
-        app_state.subscribe(updateOptions);
-        appDropdown.addEventListener('change', (event) => {
-            updateAppState({ selectedAppId: event.target.value });
-            updateDashboardState((state) => ({ packages: state.allPackages }));
-        });
+// Centralized Event Controller
+const handleAction = async (action, target) => {
+    const toast = await ensureToast();
+    try {
+        switch (action) {
+            case 'open-wizard':
+                openWizardModal();
+                break;
+            case 'refresh-packages':
+                show_global_spinner();
+                await PackageService.fetchPackages();
+                toast(__('Package list refreshed.', 'wp2-update'), 'success');
+                break;
+            case 'assign-app':
+                const repo = target.getAttribute('data-wp2-package');
+                if (repo) openAssignModal(repo);
+                break;
+            case 'package-details':
+                const packageRepo = target.getAttribute('data-wp2-package');
+                if (packageRepo) openPackageDetailsModal(packageRepo);
+                break;
+            case 'app-details':
+                const appId = target.getAttribute('data-wp2-app');
+                if (appId) openAppDetailsModal(appId);
+                break;
+            case 'copy-manifest':
+                handleCopyManifest();
+                break;
+            case 'open-github':
+                handleOpenGithub();
+                break;
+            case 'wizard-finished':
+                handleWizardFinished(fetchConnectionStatus);
+                break;
+            default:
+                Logger.warn(`Unhandled action: ${action}`);
+        }
+    } catch (error) {
+        Logger.error(`Action failed: ${action}`, error);
+        toast(__('An error occurred while processing your request.', 'wp2-update'), 'error');
+    } finally {
+        hide_global_spinner();
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    localizeAppData();
+document.addEventListener('click', (event) => {
+    const actionButton = event.target.closest('[data-wp2-action]');
+    if (!actionButton) return;
 
-    const wizardContainer = document.getElementById('wp2-add-app-wizard');
-    if (wizardContainer) {
-        wizardContainer.innerHTML = AddAppWizard();
-    } else if (document.getElementById('wp2-update-github-callback')) {
-        handleGitHubCallback();
-    } else if (document.getElementById('wp2-update-app')) {
-        App.render(dashboard_state.get(), controllers); // Initial render
-        fetchConnectionStatus();
-    }
-
-    renderAppSelectionDropdown();
+    const action = actionButton.getAttribute('data-wp2-action');
+    handleAction(action, actionButton);
 });
 
-// Initialize the application
-App.init();
+// Call this once on DOMContentLoaded
+document.addEventListener('DOMContentLoaded', async () => {
+    Logger.info('DOMContentLoaded event fired. Initializing WP2 Update SPA.');
+
+    try {
+        await fetchConnectionStatus();
+        Logger.info('Connection status fetched successfully.');
+    } catch (error) {
+        Logger.error('Error fetching connection status.', error);
+    }
+
+    localizeAppData();
+    Logger.info('App data localized.');
+
+    initializeTabs();
+    Logger.info('Top-level tabs initialized with Tabby.');
+
+    const currentApps = unified_state.get().apps;
+    if (!Array.isArray(currentApps) || !currentApps.length) {
+        try {
+            await AppService.fetchApps();
+        } catch (error) {
+            Logger.error('Failed to load apps from the server.', error);
+            const toast = await ensureToast();
+            toast('Unable to load apps from the server.', 'error', error.message);
+        }
+    }
+
+    Logger.info('WP2 Update SPA initialized successfully.');
+    initializeApp();
+    bindAppEvents();
+});

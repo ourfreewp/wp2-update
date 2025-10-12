@@ -1,4 +1,4 @@
-// Table for displaying packages
+import { escapeHtml } from '../../../utils.js';
 
 /**
  * Render a table for displaying packages.
@@ -7,31 +7,45 @@
  */
 export const PackagesTable = (packages) => {
     return `
-        <table>
+        <div class="wp2-table-wrapper">
+        <table class="wp2-table" data-wp2-table="packages">
             <thead>
                 <tr>
                     <th>Package</th>
                     <th>Installed</th>
                     <th>Latest</th>
                     <th>Status</th>
-                    <th>Managed By</th>
+                    <th>Stars</th>
+                    <th>Issues</th>
                     <th style="text-align: right;">Action</th>
                 </tr>
             </thead>
             <tbody>
-                ${packages.map(pkg => `
-                    <tr>
-                        <td>${pkg.name}</td>
-                        <td>${pkg.installed}</td>
-                        <td>${pkg.latest}</td>
-                        <td>${pkg.status}</td>
-                        <td>${pkg.managedBy}</td>
-                        <td style="text-align: right;">
-                            <!-- Actions should be handled externally -->
-                        </td>
-                    </tr>
-                `).join('')}
+                ${packages.map(pkg => {
+                    const latestRelease = pkg.github_data?.latest_release || 'N/A';
+                    const status = pkg.installed === latestRelease ? 'Up-to-date' : 'Outdated';
+
+                    return `
+                        <tr>
+                            <td>${escapeHtml(pkg.name)}</td>
+                            <td>${escapeHtml(pkg.installed)}</td>
+                            <td>${escapeHtml(latestRelease)}</td>
+                            <td>${escapeHtml(status)}</td>
+                            <td>${escapeHtml(pkg.stars.toString())}</td>
+                            <td>${escapeHtml(pkg.issues.toString())}</td>
+                            <td style="text-align: right;">
+                                <button class="wp2-btn wp2-btn-icon" data-wp2-action="package-details" data-wp2-package="${escapeHtml(pkg.id)}">
+                                    <i class="icon icon-details"></i> Details
+                                </button>
+                                <button class="wp2-btn wp2-btn-icon wp2-btn-sync" data-wp2-action="sync-package" data-wp2-package="${escapeHtml(pkg.id)}">
+                                    <i class="icon icon-sync"></i> Sync
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
             </tbody>
         </table>
+        </div>
     `;
 };

@@ -2,6 +2,7 @@
 
 namespace WP2\Update\Admin\Assets;
 
+use WP2\Update\Config;
 use WP2\Update\Utils\Logger;
 /**
  * Manages the enqueuing of admin-facing scripts and styles.
@@ -21,7 +22,7 @@ final class Manager {
 	 * This is the primary callback for the 'admin_enqueue_scripts' hook.
 	 */
 	public static function enqueue_assets(): void {
-		// Abort if we're not on a screen belonging to our plugin.
+		// Ensure assets are enqueued only for plugin-specific admin screens
 		if ( ! self::is_plugin_screen() ) {
 			return;
 		}
@@ -37,7 +38,7 @@ final class Manager {
 
 		self::enqueue_styles_from_manifest( $manifest );
 		self::enqueue_scripts_from_manifest( $manifest, $main_script_handle );
-		self::localize_script_data( $main_script_handle );
+		self::localize_script_data( $main_script_handle, $manifest );
 	}
 
 	/**
@@ -64,36 +65,25 @@ final class Manager {
 	/**
 	 * Localizes the main script with data from PHP.
 	 */
-	private static function localize_script_data( string $handle ): void {
+	private static function localize_script_data( string $handle, array $manifest ): void {
 		$callback_url = admin_url( 'admin.php?page=wp2-update-github-callback' );
-		$redirect_url = admin_url( 'admin.php?page=wp2-update-github-callback' );
+		$apps         = self::get_preloaded_apps();
+		$selected     = $apps[0]['id'] ?? null;
 
-		$data = [
-			'apiRoot'  => esc_url_raw( rest_url( 'wp2-update/v1/' ) ),
-			'nonce'    => wp_create_nonce( 'wp_rest' ),
-			'siteName' => get_bloginfo( 'name' ),
-			'redirectUrl' => esc_url_raw( $callback_url ),
-			'manifest' => json_decode( wp_json_encode( [
-				'name'                => get_bloginfo( 'name' ) . ' Updater',
-				'url'                 => home_url(),
-				'public'              => false,
-				'callback_urls'       => [ $callback_url ],
-				'setup_url'           => esc_url_raw( $redirect_url ),
-				'setup_on_update'     => false,
-				'default_permissions' => [
-					'contents' => 'read',
-					'metadata' => 'read',
-				],
-				'default_events'      => [ 'release' ],
-			] ), true ),
+        $data = [
+            'nonce'      => wp_create_nonce( 'wp_rest' ),
+            'apiRoot'    => esc_url_raw( rest_url( 'wp2-update/v1/' ) ),
+            'redirectUrl'=> esc_url_raw( admin_url( 'admin.php?page=wp2-update' ) ),
+            'siteName'   => get_bloginfo( 'name' ),
+            'manifest'   => $manifest,
+            'apps'       => $apps,
+            'selectedAppId' => $selected,
+            'app_id'    => $selected,
+            'githubCallback' => [
+				'clientId'   => get_option( 'github_client_id', '' ),
+				'callbackUrl'=> esc_url_raw( $callback_url ),
+			],
 		];
-
-		if (self::is_plugin_screen() && ($_GET['page'] ?? '') === 'wp2-update-github-callback') {
-			$data['githubCode'] = isset($_GET['code']) ? sanitize_text_field($_GET['code']) : null;
-			$data['githubState'] = isset($_GET['state']) ? sanitize_text_field($_GET['state']) : null;
-		}
-
-		$data['app_id'] = get_option('wp2_update_app_id', null) ?: null; // Ensure app_id is optional and defaults to null
 
 		wp_localize_script( $handle, 'wp2UpdateData', $data );
 	}
@@ -113,44 +103,105 @@ final class Manager {
 	 * @return array|null The manifest data or null on failure.
 	 */
 	private static function load_manifest(): ?array {
-		$manifest_path = trailingslashit( WP2_UPDATE_PLUGIN_DIR ) . 'dist/.vite/manifest.json';
-		Logger::log('INFO', 'Attempting to load manifest from: ' . $manifest_path);
-		if ( ! file_exists( $manifest_path ) ) {
-			Logger::log('ERROR', 'Manifest file not found at: ' . $manifest_path);
-			self::log_manifest_error( 'Manifest file not found at ' . $manifest_path );
-			return null;
+		$base_dir = trailingslashit( WP2_UPDATE_PLUGIN_DIR ) . 'dist/';
+		$candidates = apply_filters(
+			'wp2_update_manifest_candidates',
+			[
+				'.vite/manifest.json',
+				'manifest.json',
+			]
+		);
+
+		foreach ( $candidates as $relative_path ) {
+			$manifest_path = $base_dir . $relative_path;
+			Logger::log( 'INFO', 'Attempting to load manifest from: ' . $manifest_path );
+
+			if ( ! file_exists( $manifest_path ) ) {
+				continue;
+			}
+
+			$manifest_contents = file_get_contents( $manifest_path );
+			if ( false === $manifest_contents ) {
+				Logger::log( 'ERROR', 'Failed to read manifest file at: ' . $manifest_path );
+				continue;
+			}
+
+			$manifest = json_decode( $manifest_contents, true );
+			if ( json_last_error() !== JSON_ERROR_NONE ) {
+				Logger::log( 'ERROR', 'Failed to decode manifest JSON (' . $relative_path . '): ' . json_last_error_msg() );
+				continue;
+			}
+
+			return is_array( $manifest ) ? $manifest : null;
 		}
 
-		$manifest_contents = file_get_contents( $manifest_path );
-		if ( false === $manifest_contents ) {
-			Logger::log('ERROR', 'Failed to read manifest file at: ' . $manifest_path);
-			self::log_manifest_error( 'Failed to read manifest file at ' . $manifest_path );
-			return null;
+		self::log_manifest_error(
+			sprintf(
+				'Manifest file not found. Checked: %s',
+				implode( ', ', array_map( static fn( $path ) => $base_dir . $path, $candidates ) )
+			)
+		);
+
+		return null;
+	}
+
+	/**
+	 * Resolve a manifest entry by matching potential keys or sources.
+	 *
+	 * @param array<string,mixed> $manifest Full manifest array.
+	 * @param string[]            $candidates Keys or src values to search for.
+	 */
+	private static function resolve_manifest_entry( array $manifest, array $candidates ): ?array {
+		foreach ( $candidates as $candidate ) {
+			if ( isset( $manifest[ $candidate ] ) && is_array( $manifest[ $candidate ] ) ) {
+				return $manifest[ $candidate ];
+			}
 		}
 
-		$manifest = json_decode( $manifest_contents, true );
-		if ( json_last_error() !== JSON_ERROR_NONE ) {
-			Logger::log('ERROR', 'Failed to decode manifest JSON: ' . json_last_error_msg());
-			self::log_manifest_error( 'Failed to decode manifest JSON: ' . json_last_error_msg() );
-			return null;
+		foreach ( $manifest as $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+
+			$entry_values = [
+				$entry['src'] ?? null,
+				$entry['file'] ?? null,
+				$entry['name'] ?? null,
+			];
+
+			if ( array_intersect( array_filter( $entry_values ), $candidates ) ) {
+				return $entry;
+			}
 		}
 
-		return $manifest;
+		return null;
 	}
 
 	/**
 	 * Enqueues stylesheets based on the manifest data.
 	 */
 	private static function enqueue_styles_from_manifest( array $manifest ): void {
-		$style_entry = 'assets/styles/admin-main.scss';
+		$entry = self::resolve_manifest_entry(
+			$manifest,
+			apply_filters(
+				'wp2_update_style_candidates',
+				[
+					'assets/styles/admin-main.scss',
+					'admin-style.css',
+					'admin-main.css',
+				]
+			)
+		);
 
-		if ( ! empty( $manifest[ $style_entry ]['file'] ) ) {
+		if ( $entry && ! empty( $entry['file'] ) ) {
 			wp_enqueue_style(
 				'wp2-update-admin-main',
-				WP2_UPDATE_PLUGIN_URL . 'dist/' . $manifest[ $style_entry ]['file'],
+				WP2_UPDATE_PLUGIN_URL . 'dist/' . ltrim( $entry['file'], '/' ),
 				[],
 				null
 			);
+		} else {
+			Logger::log( 'ERROR', 'Admin stylesheet entry missing from manifest.' );
 		}
 	}
 
@@ -158,19 +209,28 @@ final class Manager {
 	 * Enqueues JavaScript files based on the manifest data.
 	 */
 	private static function enqueue_scripts_from_manifest( array $manifest, string $handle ): void {
-		$script_entry = 'assets/scripts/admin-main.js';
+		$entry = self::resolve_manifest_entry(
+			$manifest,
+			[
+				'assets/scripts/admin-main.js',
+				'admin-main.js',
+			]
+		);
 
-		if ( ! empty( $manifest[ $script_entry ]['file'] ) ) {
-			$script_path    = WP2_UPDATE_PLUGIN_DIR . 'dist/' . $manifest[ $script_entry ]['file'];
+		if ( $entry && ! empty( $entry['file'] ) ) {
+			$relative_file  = ltrim( $entry['file'], '/' );
+			$script_path    = WP2_UPDATE_PLUGIN_DIR . 'dist/' . $relative_file;
 			$script_version = file_exists( $script_path ) ? filemtime( $script_path ) : time();
 
 			wp_enqueue_script(
 				$handle,
-				WP2_UPDATE_PLUGIN_URL . 'dist/' . $manifest[ $script_entry ]['file'],
+				WP2_UPDATE_PLUGIN_URL . 'dist/' . $relative_file,
 				[ 'wp-i18n', 'wp-api', 'wp-api-fetch' ], // WordPress internationalization as a dependency.
 				$script_version, // Use file modification time or current timestamp for cache busting
 				true // Load script in the footer
 			);
+		} else {
+			Logger::log( 'ERROR', 'Admin script entry missing from manifest.' );
 		}
 	}
 
@@ -196,6 +256,45 @@ final class Manager {
 			</p>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Retrieves preloaded app metadata for the SPA.
+	 * @return array The preloaded metadata.
+	 */
+	private static function get_preloaded_apps(): array {
+		$raw = get_option( Config::OPTION_APPS, [] );
+		if ( ! is_array( $raw ) ) {
+			return [];
+		}
+
+		$apps = array_map(
+				static function ( $app ) {
+					if ( ! is_array( $app ) ) {
+						return null;
+					}
+
+					$managed = is_array( $app['managed_repositories'] ?? null )
+						? array_filter( $app['managed_repositories'], static fn ( $repo ) => is_string( $repo ) && $repo !== '' )
+						: [];
+
+					return [
+						'id'           => (string) ( $app['id'] ?? '' ),
+						'name'         => sanitize_text_field( $app['name'] ?? '' ),
+						'status'       => sanitize_text_field( $app['status'] ?? 'pending' ),
+						'accountType'  => sanitize_text_field( $app['account_type'] ?? 'user' ),
+						'packageCount' => count( $managed ),
+					];
+				},
+				$raw
+			);
+
+		return array_values(
+			array_filter(
+				$apps,
+				static fn ( $app ) => is_array( $app ) && ( $app['id'] ?? '' ) !== ''
+			)
+		);
 	}
 }
 

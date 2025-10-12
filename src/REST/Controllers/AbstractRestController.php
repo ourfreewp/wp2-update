@@ -27,7 +27,7 @@ abstract class AbstractRestController implements RestControllerInterface {
 	}
 
 	/**
-	 * Create a standardized REST response.
+	 * Create a standardized REST response with consistent JSON structure.
 	 *
 	 * @param mixed $data    Response payload.
 	 * @param int   $status  HTTP status code.
@@ -37,13 +37,20 @@ abstract class AbstractRestController implements RestControllerInterface {
 			return $data;
 		}
 
-		return new WP_REST_Response(
-			[
-				'success' => $status >= 200 && $status < 300,
-				'data'    => $data,
-			],
-			$status
-		);
+		// Ensure consistent structure for all responses
+		$response = [
+			'success' => $status >= 200 && $status < 300,
+			'data'    => $data,
+		];
+
+		// Add error details if the status indicates a failure
+		if ($status >= 400) {
+			$response['error'] = is_array($data) && isset($data['error'])
+				? $data['error']
+				: __('An unexpected error occurred.', 'wp2-update');
+		}
+
+		return new WP_REST_Response($response, $status);
 	}
 
 	/**
@@ -53,6 +60,22 @@ abstract class AbstractRestController implements RestControllerInterface {
 		return static function ( WP_REST_Request $request ): bool {
 			return Permissions::current_user_can_manage( $request );
 		};
+	}
+
+	/**
+	 * Validate the nonce for the current request.
+	 *
+	 * @param WP_REST_Request $request The REST request object.
+	 * @return bool True if the nonce is valid, false otherwise.
+	 */
+	protected function validate_nonce( WP_REST_Request $request ): bool {
+		$nonce = $request->get_header('X-WP-Nonce');
+
+		if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+			return false;
+		}
+
+		return true;
 	}
 }
 

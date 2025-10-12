@@ -1,4 +1,4 @@
-// Table for displaying apps
+import { escapeHtml } from '../../../utils.js';
 
 /**
  * Render a table for displaying apps.
@@ -7,7 +7,8 @@
  */
 export const AppsTable = (apps) => {
     return `
-        <table>
+        <div class="wp2-table-wrapper">
+        <table class="wp2-table" data-wp2-table="apps">
             <thead>
                 <tr>
                     <th>App Name</th>
@@ -19,15 +20,21 @@ export const AppsTable = (apps) => {
             <tbody>
                 ${apps.map(app => `
                     <tr>
-                        <td>${app.name}</td>
-                        <td>${app.type}</td>
-                        <td>${app.packageCount}</td>
+                        <td>${escapeHtml(app.name)}</td>
+                        <td>${escapeHtml(app.account_type)}</td>
+                        <td>${escapeHtml(app.packageCount)}</td>
                         <td style="text-align: right;">
-                            <!-- Actions should be handled externally -->
+                            <button class="wp2-btn wp2-btn-icon" data-wp2-action="app-details" data-wp2-app="${escapeHtml(app.id)}">
+                                <i class="icon icon-details"></i> Details
+                            </button>
+                            <button class="wp2-btn wp2-btn-icon wp2-btn-danger" data-wp2-action="delete-app" data-wp2-app="${escapeHtml(app.id)}">
+                                <i class="icon icon-delete"></i> Delete
+                            </button>
                         </td>
                     </tr>
                 `).join('')}
             </tbody>
         </table>
+        </div>
     `;
 };

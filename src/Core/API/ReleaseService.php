@@ -85,27 +85,40 @@ class ReleaseService
 
         $tempFile = wp_tempnam($url);
         if (!$tempFile) {
+            Logger::log('ERROR', 'Failed to create temporary file for ' . $url);
             return null;
         }
 
-        $response = HttpClient::get(
+        $response = wp_remote_get(
             $url,
             [
-                'Authorization' => 'Bearer ' . $token,
-                'Accept'        => 'application/octet-stream',
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $token,
+                    'Accept'        => 'application/octet-stream',
+                ],
+                'timeout' => 30,
+                'stream'  => true,
+                'filename' => $tempFile,
             ]
         );
 
-        if (!$response) {
+        if (is_wp_error($response)) {
             @unlink($tempFile);
-            Logger::log('ERROR', 'Failed to download package from ' . $url);
+            Logger::log('ERROR', 'HTTP error while downloading package from ' . $url . ': ' . $response->get_error_message());
             return null;
         }
 
-        $statusCode = $response['status_code'] ?? 0;
+        $statusCode = wp_remote_retrieve_response_code($response);
         if ($statusCode < 200 || $statusCode >= 300) {
             @unlink($tempFile);
             Logger::log('ERROR', 'Failed to download package from ' . $url . ' (HTTP ' . $statusCode . ').');
+            return null;
+        }
+
+        $contentType = wp_remote_retrieve_header($response, 'content-type');
+        if (strpos($contentType, 'application/octet-stream') === false) {
+            @unlink($tempFile);
+            Logger::log('ERROR', 'Invalid content type for package from ' . $url . ': ' . $contentType);
             return null;
         }
 

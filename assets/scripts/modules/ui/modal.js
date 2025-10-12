@@ -1,17 +1,27 @@
+import { Logger } from '../utils.js';
+
 /**
  * @param {string} message
  * @param {() => void} onConfirm
  * @param {() => void} [onCancel]
  */
+// Standardize modal structure with consistent header and footer
 export const confirm_modal = (message, onConfirm, onCancel) => {
     const modal = document.getElementById('wp2-disconnect-modal');
-    if (!modal) return console.error('Modal #wp2-disconnect-modal not found');
+    if (!modal) {
+        Logger.error('Modal #wp2-disconnect-modal not found');
+        return;
+    }
 
+    const header = modal.querySelector('.wp2-modal-header');
     const msg = modal.querySelector('.wp2-modal-message');
+    const footer = modal.querySelector('.wp2-modal-footer');
     const ok = modal.querySelector('[data-wp2-action="confirm-disconnect"]');
     const cancel = modal.querySelector('[data-wp2-action="cancel-disconnect"]');
 
+    if (header) header.textContent = 'Confirmation'; // Add a consistent header
     if (msg) msg.textContent = message;
+    if (footer) footer.textContent = 'Please confirm your action.'; // Add a consistent footer
 
     const close = () => {
         modal.classList.remove('is-visible');

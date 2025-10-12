@@ -17,7 +17,6 @@ use WP2\Update\REST\Controllers\CredentialsController;
 use WP2\Update\REST\Controllers\PackagesController;
 use WP2\Update\REST\Controllers\AppsController;
 use WP2\Update\REST\Controllers\ConnectionStatusController;
-use WP2\Update\REST\Controllers\GitHubAuthController;
 use WP2\Update\REST\Controllers\NonceController;
 use WP2\Update\REST\Router;
 use WP2\Update\Webhook\Controller as WebhookController;
@@ -59,30 +58,26 @@ final class Init {
         $appRepository     = new AppRepository();
         $credentialService = new CredentialService($appRepository);
         $clientFactory     = new GitHubClientFactory();
-        $repositoryService = new RepositoryService();
+        $repositoryService = new RepositoryService($appRepository, $clientFactory);
 
         $credentialService->setRepositoryService($repositoryService);
         $clientFactory->setCredentialService($credentialService);
         $repositoryService->setClientFactory($clientFactory);
 
         $releaseService    = new ReleaseService($clientFactory);
-        $packageFinder     = new PackageFinder(
-            $repositoryService,
-        );
-        $connectionService = new ConnectionService($clientFactory, $credentialService, $packageFinder);
+        $packageFinder     = new PackageFinder($repositoryService, [$releaseService, 'get_releases']);
         $packageService    = new PackageService($repositoryService, $releaseService, $clientFactory, $packageFinder);
+        $connectionService = new ConnectionService($clientFactory, $credentialService, $packageFinder, $appRepository, $repositoryService);
 
         // REST API Controllers
         $credentialsController      = new CredentialsController($credentialService);
         $packagesController         = new PackagesController($packageService);
         $appsController             = new AppsController($credentialService, $connectionService);
         $connectionStatusController = new ConnectionStatusController($connectionService, $credentialService, $packageFinder);
-        $gitHubAuthController       = new GitHubAuthController($credentialsController);
         $nonceController            = new NonceController();
         $modularControllers         = [
             $appsController,
             $connectionStatusController,
-            $gitHubAuthController,
             $nonceController,
         ];
 

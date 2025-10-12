@@ -17,6 +17,11 @@ export const AddAppWizard = () => {
         const appName = form.querySelector('#wp2-app-name').value;
         const appType = form.querySelector('#wp2-app-type').value;
 
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalText = submitButton.textContent;
+        submitButton.disabled = true;
+        submitButton.textContent = 'Adding...';
+
         try {
             const newApp = await AppService.createApp({ name: appName, type: appType });
             handleRequiresInstallation(newApp);
@@ -24,6 +29,9 @@ export const AddAppWizard = () => {
         } catch (error) {
             console.error('Failed to create app:', error);
             alert('Failed to create app. Please try again.');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.textContent = originalText;
         }
     };
 

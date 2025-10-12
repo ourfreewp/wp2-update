@@ -13,6 +13,7 @@ class CredentialService
 {
     private AppRepository $repository;
     private ?RepositoryService $repositoryService;
+    private ?string $customEncryptionKey = null;
 
     public function __construct(AppRepository $repository, ?RepositoryService $repositoryService = null)
     {
@@ -31,7 +32,7 @@ class CredentialService
         $appUid   = isset($credentials['app_uid']) ? sanitize_text_field($credentials['app_uid']) : '';
         $existing = $appUid ? $this->repository->find($appUid) : null;
 
-        $encryptionKey = $credentials['encryption_key'] ?? ($existing['encryption_key'] ?? $this->fallback_encryption_key());
+        $encryptionKey = $this->fallback_encryption_key();
         if (!$encryptionKey) {
             throw new \RuntimeException('Cannot store credentials without an encryption key.');
         }
@@ -51,7 +52,6 @@ class CredentialService
             'org_slug'              => sanitize_title($credentials['org_slug'] ?? $credentials['organization'] ?? ($existing['org_slug'] ?? '')),
             'app_id'                => absint($credentials['app_id'] ?? ($existing['app_id'] ?? 0)),
             'installation_id'       => absint($credentials['installation_id'] ?? ($existing['installation_id'] ?? 0)),
-            'encryption_key'        => $encryptionKey,
             'private_key'           => $privateKeyPlain !== '' ? $this->encrypt_secret($privateKeyPlain, $encryptionKey) : ($existing['private_key'] ?? ''),
             'webhook_secret'        => $webhookPlain !== '' ? $this->encrypt_secret($webhookPlain, $encryptionKey) : ($existing['webhook_secret'] ?? ''),
             'managed_repositories'  => $existing['managed_repositories'] ?? [],
@@ -139,18 +139,35 @@ class CredentialService
     /**
      * Retrieve decrypted credentials for an app.
      *
+     * @param string $appUid The unique identifier for the app.
      * @return array{name:string,app_id:string,installation_id:string,private_key:string,slug:string,html_url:string,id:string}
+     * @throws \InvalidArgumentException If $appUid is not provided.
      */
-    public function get_stored_credentials(?string $appUid = null): array
+    public function get_stored_credentials(string $appUid): array
     {
-        $app = $this->resolve_app($appUid);
+        $app = $this->repository->find($appUid);
         if (!$app || empty($app['private_key'])) {
             return [];
         }
 
-        $encryptionKey = $app['encryption_key'] ?? '';
-        if ('' === $encryptionKey) {
+        $encryptionKey = $this->fallback_encryption_key();
+        if (!$encryptionKey) {
             throw new \RuntimeException('Credentials are encrypted, but no encryption key is available.');
+        }
+
+        $privateKey = $this->decrypt_secret($app['private_key'], $encryptionKey);
+
+        if ($privateKey === '') {
+            Logger::log('WARNING', sprintf('Stored credentials for app %s could not be decrypted. Resetting.', $app['id']));
+
+            unset($app['encryption_key']);
+            $app['private_key']     = '';
+            $app['webhook_secret']  = '';
+            $app['installation_id'] = 0;
+            $app['status']          = 'pending';
+
+            $this->repository->save($app);
+            return [];
         }
 
         return [
@@ -160,7 +177,7 @@ class CredentialService
             'installation_id' => $app['installation_id'] ?? '',
             'slug'            => $app['slug'] ?? '',
             'html_url'        => $app['html_url'] ?? '',
-            'private_key'     => $this->decrypt_secret($app['private_key'] ?? '', $encryptionKey),
+            'private_key'     => $privateKey,
             'managed_repositories' => $app['managed_repositories'] ?? [],
         ];
     }
@@ -196,8 +213,8 @@ class CredentialService
             return '';
         }
 
-        $encryptionKey = $app['encryption_key'] ?? '';
-        if ('' === $encryptionKey) {
+        $encryptionKey = $this->fallback_encryption_key();
+        if (!$encryptionKey) {
             return '';
         }
 
@@ -214,8 +231,8 @@ class CredentialService
         $map = [];
 
         foreach ($this->repository->all() as $app) {
-            $encryptionKey = $app['encryption_key'] ?? '';
-            if ('' === $encryptionKey || empty($app['webhook_secret'])) {
+            $encryptionKey = $this->fallback_encryption_key();
+            if (!$encryptionKey || empty($app['webhook_secret'])) {
                 continue;
             }
 
@@ -284,19 +301,14 @@ class CredentialService
     }
 
     /**
-     * Helper: ensure an app is available, falling back to the first stored entry.
+     * Helper: ensure an app is available.
+     *
+     * @param string $appUid The unique identifier for the app.
+     * @return array|null The app data, or null if not found.
      */
-    private function resolve_app(?string $appUid): ?array
+    private function resolve_app(string $appUid): ?array
     {
-        if ($appUid) {
-            $app = $this->repository->find($appUid);
-            if ($app) {
-                return $app;
-            }
-        }
-
-        $apps = $this->repository->all();
-        return $apps[0] ?? null;
+        return $this->repository->find($appUid);
     }
 
     private function encrypt_secret(string $value, string $key): string
@@ -370,10 +382,28 @@ class CredentialService
     }
 
     /**
-     * Determine a fallback encryption key if none was provided.
+     * Set a custom encryption key for credentials.
+     *
+     * @param string $customKey The custom encryption key to use.
      */
-    private function fallback_encryption_key(): ?string
+    public function set_custom_encryption_key(string $customKey): void
     {
+        if (empty($customKey) || strlen($customKey) < 16) {
+            throw new \InvalidArgumentException('Custom encryption key must be at least 16 characters long.');
+        }
+
+        $this->customEncryptionKey = $customKey;
+    }
+
+    /**
+     * Retrieve the encryption key, prioritizing the custom key if set.
+     */
+    private function get_encryption_key(): ?string
+    {
+        if (!empty($this->customEncryptionKey)) {
+            return $this->customEncryptionKey;
+        }
+
         if (defined('WP2_UPDATE_ENCRYPTION_KEY') && !empty(WP2_UPDATE_ENCRYPTION_KEY)) {
             return WP2_UPDATE_ENCRYPTION_KEY;
         }
@@ -383,6 +413,14 @@ class CredentialService
         }
 
         return null;
+    }
+
+    /**
+     * Update fallback_encryption_key to use get_encryption_key.
+     */
+    private function fallback_encryption_key(): ?string
+    {
+        return $this->get_encryption_key();
     }
 
     /**
@@ -445,11 +483,19 @@ class CredentialService
      */
     private function fetch_managed_repositories(int $installationId): array
     {
-        // Placeholder logic for fetching repositories. Replace with actual implementation.
-        Logger::log('INFO', "Fetching managed repositories for installation ID {$installationId}.");
+        $repositories = $this->repositoryService->get_repositories_by_installation($installationId) ?? [];
+        if (!is_array($repositories)) {
+            return [];
+        }
 
-        // Example: Fetch repositories from GitHub API
-        return $this->repositoryService->get_repositories_by_installation($installationId) ?? [];
+        $managed = [];
+        foreach ($repositories as $repository) {
+            if (!empty($repository['full_name'])) {
+                $managed[] = $repository['full_name'];
+            }
+        }
+
+        return $managed;
     }
 
     /**
@@ -460,7 +506,22 @@ class CredentialService
      */
     public function get_managed_repositories(string $appUid): array
     {
-        return $this->repositoryService->get_managed_repositories();
+        $app = $this->repository->find($appUid);
+        if (!$app) {
+            return [];
+        }
+
+        $managed = $app['managed_repositories'] ?? [];
+        if (!is_array($managed)) {
+            return [];
+        }
+
+        return array_values(
+            array_filter(
+                $managed,
+                static fn($value) => is_string($value) && $value !== ''
+            )
+        );
     }
 
     /**
@@ -470,5 +531,13 @@ class CredentialService
     public function setRepositoryService(RepositoryService $repositoryService): void
     {
         $this->repositoryService = $repositoryService;
+    }
+
+    /**
+     * Public wrapper for encrypt_secret (for testing purposes).
+     */
+    public function test_encrypt_secret(string $value, string $key): string
+    {
+        return $this->encrypt_secret($value, $key);
     }
 }

@@ -1,6 +1,20 @@
 import Toastify from 'toastify-js';
+import { Logger } from '../utils.js';
 
 let toastInstance;
+
+/**
+ * Logs toast notifications for debugging purposes.
+ * @param {string} text - The main message to display.
+ * @param {'success'|'error'} [type='success'] - The type of toast (success or error).
+ * @param {string} [details] - Optional detailed message for errors.
+ */
+const logToast = (text, type, details) => {
+    Logger.info(`Toast Notification: [${type.toUpperCase()}] ${text}`);
+    if (details) {
+        Logger.debug(`Details: ${details}`);
+    }
+};
 
 /**
  * Enhanced toast function to include optional detailed error messages.
@@ -9,6 +23,8 @@ let toastInstance;
  * @param {string} [details] - Optional detailed message for errors.
  */
 export const toast = (text, type = 'success', details) => {
+    logToast(text, type, details); // Log the toast notification
+
     const message = details && type === 'error' ? `${text}\nDetails: ${details}` : text;
     Toastify({
         text: message,
@@ -24,7 +40,6 @@ export const toast = (text, type = 'success', details) => {
 
 export const ensureToast = async () => {
     if (!toastInstance) {
-        // This is a simplified version; in a real app, you might lazy-load Toastify
         toastInstance = toast;
     }
     return toastInstance;

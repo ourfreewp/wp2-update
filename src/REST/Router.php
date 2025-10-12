@@ -45,7 +45,6 @@ final class Router {
 			}
 		}
 
-		// TODO: migrate remaining endpoints into dedicated controllers.
 		$this->register_credentials_routes();
 		$this->register_package_routes();
 	}
@@ -53,7 +52,7 @@ final class Router {
 	private function register_credentials_routes(): void {
 		register_rest_route(
 			'wp2-update/v1',
-			'/save-credentials',
+			'/credentials/save',
 			[
 				'methods'             => 'POST',
 				'callback'            => [ $this->credentialsController, 'rest_save_credentials' ],
@@ -65,7 +64,7 @@ final class Router {
 	private function register_package_routes(): void {
 		register_rest_route(
 			'wp2-update/v1',
-			'/run-update-check',
+			'/packages/update-check',
 			[
 				'methods'             => 'POST',
 				'callback'            => [ $this->packagesController, 'rest_run_update_check' ],
@@ -75,7 +74,7 @@ final class Router {
 
 		register_rest_route(
 			'wp2-update/v1',
-			'/sync-packages',
+			'/packages/sync',
 			[
 				'methods'             => 'GET',
 				'callback'            => [ $this->packagesController, 'sync_packages' ],
@@ -85,7 +84,7 @@ final class Router {
 
 		register_rest_route(
 			'wp2-update/v1',
-			'/manage-packages',
+			'/packages/manage',
 			[
 				'methods'             => 'POST',
 				'callback'            => [ $this->packagesController, 'manage_packages' ],
@@ -95,7 +94,7 @@ final class Router {
 
 		register_rest_route(
 			'wp2-update/v1',
-			'/package/(?P<repo_slug>[\w-]+/[\w-]+)',
+			'/packages/(?P<repo_slug>[\w-]+/[\w-]+)',
 			[
 				'methods'             => 'GET',
 				'callback'            => [ $this->packagesController, 'rest_get_package_status' ],

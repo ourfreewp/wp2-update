@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme and plugin updates.
- * Version:           0.0.28
+ * Version:           0.0.29
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -29,7 +29,7 @@ $autoloader = WP2_UPDATE_PLUGIN_DIR . '/vendor/autoload.php';
 if ( ! file_exists( $autoloader ) ) {
     // Add a more informative admin notice for the missing autoloader.
     add_action( 'admin_notices', function() {
-        echo '<div class="notice notice-error"><p>';
+        echo '<div class="wp2-notice wp2-notice--error"><p>';
         echo esc_html__( 'WP2 Update Error: Composer autoloader not found. Please run `composer install` in the plugin directory.', 'wp2-update' );
         echo '</p></div>';
     });

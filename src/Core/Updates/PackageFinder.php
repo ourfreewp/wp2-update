@@ -13,9 +13,12 @@ class PackageFinder
 {
     private RepositoryService $repositoryService;
 
-    public function __construct(RepositoryService $repositoryService)
+    private $fetchReleasesCallback;
+
+    public function __construct(RepositoryService $repositoryService, callable $fetchReleasesCallback)
     {
         $this->repositoryService = $repositoryService;
+        $this->fetchReleasesCallback = $fetchReleasesCallback;
     }
 
     /**
@@ -54,6 +57,9 @@ class PackageFinder
                 continue;
             }
 
+            // Fetch release data from PackageService
+            $releases = $this->get_releases($repo);
+
             $managed[$slug] = [
                 'slug'     => $slug,
                 'repo'     => $repo,
@@ -61,6 +67,7 @@ class PackageFinder
                 'version'  => $plugin['Version'] ?? '0.0.0',
                 'type'     => 'plugin',
                 'app_slug' => sanitize_title($plugin['Name'] ?? $slug),
+                'releases' => $releases, // Include release data
             ];
         }
 
@@ -91,6 +98,9 @@ class PackageFinder
                 continue;
             }
 
+            // Fetch release data from PackageService
+            $releases = $this->get_releases($repo);
+
             $managed[$slug] = [
                 'slug'     => $slug,
                 'repo'     => $repo,
@@ -98,10 +108,11 @@ class PackageFinder
                 'version'  => $theme->get('Version') ?: '0.0.0',
                 'type'     => 'theme',
                 'app_slug' => sanitize_title($theme->get('Name') ?: $slug),
+                'releases' => $releases, // Include release data
             ];
         }
 
-        return $managed;
+        return apply_filters('wp2_update_managed_themes', $managed);
     }
 
     /**
@@ -151,7 +162,42 @@ class PackageFinder
      */
     public function update_managed_repositories(string $appId, array $packages): void
     {
-        // Simulate updating the app record with the assigned packages
-        Logger::log('INFO', "Updated managed repositories for app {$appId}: " . json_encode($packages));
+        $app = $this->repositoryService->find_app($appId);
+        if (!$app) {
+            Logger::log('WARNING', "Attempted to update repositories for unknown app {$appId}.");
+            return;
+        }
+
+        $managed = array_values(array_filter(array_map(
+            static function ($package) {
+                if (is_array($package)) {
+                    $repo = $package['repo'] ?? $package['repository'] ?? null;
+                } else {
+                    $repo = $package;
+                }
+
+                return Formatting::normalize_repo($repo);
+            },
+            $packages
+        )));
+
+        $app['managed_repositories'] = $managed;
+        $this->repositoryService->save_app($app);
+
+        Logger::log('INFO', "Updated managed repositories for app {$appId}: " . json_encode($managed));
+    }
+
+    /**
+     * Set the PackageService instance.
+     * @param PackageService $packageService
+     */
+    public function setPackageService(PackageService $packageService): void
+    {
+        $this->packageService = $packageService;
+    }
+
+    private function get_releases(string $repo): array
+    {
+        return call_user_func($this->fetchReleasesCallback, $repo);
     }
 }

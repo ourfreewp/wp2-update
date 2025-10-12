@@ -6,6 +6,7 @@ use WP2\Update\Core\API\CredentialService;
 use WP2\Update\Security\Permissions;
 use WP_REST_Request;
 use WP_REST_Response;
+use WP_REST_Server;
 
 final class CredentialsController {
     private CredentialService $credentialService;
@@ -69,8 +70,8 @@ final class CredentialsController {
         do_action('wp2_update_credentials_saved', $app_id, $installation_id, $app['id']);
 
         return new WP_REST_Response([
-            'app' => $app,
-            'requires_installation' => 0 === $installation_id,
+            'application' => $app, // Renamed 'app' to 'application' for clarity
+            'installation_required' => 0 === $installation_id, // Renamed 'requires_installation' for consistency
         ], 200);
     }
 
@@ -88,13 +89,37 @@ final class CredentialsController {
     }
 
     /**
-     * Validates the format of a private key.
+     * Validates the format and integrity of a private key.
      *
      * @param string $key The private key to validate.
      * @return bool True if the key is valid, false otherwise.
      */
     private function is_valid_private_key(string $key): bool {
-        return preg_match('/-----BEGIN (.*) PRIVATE KEY-----.*-----END (.*) PRIVATE KEY-----/s', $key) === 1;
+        // Check for PEM markers
+        if (!preg_match('/-----BEGIN (.*) PRIVATE KEY-----.*-----END (.*) PRIVATE KEY-----/s', $key)) {
+            return false;
+        }
+
+        // Ensure the key is not empty and has a reasonable length
+        if (strlen($key) < 160) { // Minimum length for a valid RSA private key
+            return false;
+        }
+
+        // Attempt to parse the key using OpenSSL
+        $parsedKey = openssl_pkey_get_private($key);
+        if ($parsedKey === false) {
+            return false;
+        }
+
+        // Check if the key can be used to sign data
+        $testData = 'test';
+        $signature = '';
+        $signSuccess = openssl_sign($testData, $signature, $parsedKey, OPENSSL_ALGO_SHA256);
+
+        // No need to explicitly free the key resource in PHP 8.0 and above
+        unset($parsedKey);
+
+        return $signSuccess && !empty($signature);
     }
 
     public function rest_get_connect_url(WP_REST_Request $request): WP_REST_Response {
@@ -146,11 +171,11 @@ final class CredentialsController {
 
         return new WP_REST_Response(
             [
-                'manifest' => $manifest_json,
-                'account'  => $org_name ? "https://github.com/organizations/{$org_name}/settings/apps/new" : 'https://github.com/settings/apps/new',
-                'state'    => $state,
-                'account_type' => $account_type,
-                'organization' => $org_name,
+                'manifest_data' => $manifest_json, // Renamed 'manifest' to 'manifest_data' for clarity
+                'account_url'  => $org_name ? "https://github.com/organizations/{$org_name}/settings/apps/new" : 'https://github.com/settings/apps/new', // Renamed 'account' to 'account_url'
+                'state_token'    => $state, // Renamed 'state' to 'state_token'
+                'type_of_account' => $account_type, // Renamed 'account_type' to 'type_of_account'
+                'organization_name' => $org_name, // Renamed 'organization' to 'organization_name'
             ],
             200
         );
@@ -259,10 +284,10 @@ final class CredentialsController {
         \WP2\Update\Utils\Cache::delete($encryption_transient);
 
         return new WP_REST_Response([
-            'success' => true,
-            'app'     => $app,
-            'app_id'  => absint($credentials['id']),
-            'requires_installation' => 0 === $installation_id,
+            'operation_successful' => true, // Renamed 'success' to 'operation_successful' for clarity
+            'application'     => $app, // Renamed 'app' to 'application'
+            'application_id'  => absint($credentials['id']), // Renamed 'app_id' to 'application_id'
+            'installation_required' => 0 === $installation_id, // Renamed 'requires_installation' for consistency
         ], 200);
     }
 
@@ -384,5 +409,40 @@ final class CredentialsController {
         }
 
         return new WP_REST_Response(['message' => esc_html__('OAuth callback handled successfully.', 'wp2-update')], 200);
+    }
+
+    /**
+     * Register GitHub authentication routes.
+     */
+    public function register_github_routes(string $namespace): void {
+        register_rest_route(
+            $namespace,
+            '/github/connect-url',
+            [
+                'methods'             => [ WP_REST_Server::READABLE, WP_REST_Server::CREATABLE ],
+                'callback'            => [ $this, 'rest_get_connect_url' ],
+                'permission_callback' => [self::class, 'check_permissions'],
+            ]
+        );
+
+        register_rest_route(
+            $namespace,
+            '/github/exchange-code',
+            [
+                'methods'             => WP_REST_Server::CREATABLE,
+                'callback'            => [ $this, 'rest_exchange_code' ],
+                'permission_callback' => [self::class, 'check_permissions'],
+            ]
+        );
+
+        register_rest_route(
+            $namespace,
+            '/github/disconnect',
+            [
+                'methods'             => WP_REST_Server::CREATABLE,
+                'callback'            => [ $this, 'rest_disconnect' ],
+                'permission_callback' => [self::class, 'check_permissions'],
+            ]
+        );
     }
 }

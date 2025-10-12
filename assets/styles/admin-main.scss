@@ -40,6 +40,40 @@
 	--wp2-border-radius: 4px;
 	--wp2-box-shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.05);
 	--wp2-box-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+	// Gray Scale
+	--wp2-gray-50: #f9fafb;
+	--wp2-gray-100: #f3f4f6;
+	--wp2-gray-200: #e5e7eb;
+	--wp2-gray-300: #d1d5db;
+	--wp2-gray-500: #6b7280;
+	--wp2-gray-600: #4b5563;
+	--wp2-gray-700: #374151;
+	--wp2-gray-800: #1f2937;
+	--wp2-gray-900: #111827;
+
+	// Semantic Colors
+	--wp2-white: #ffffff;
+	--wp2-red-600: #dc2626;
+	--wp2-red-800: #991b1b;
+	--wp2-blue-500: #3b82f6;
+	--wp2-blue-600: #2563eb;
+	--wp2-green-100: #dcfce7;
+	--wp2-green-500: #22c55e;
+	--wp2-green-600: #16a34a;
+	--wp2-green-700: #15803d;
+	--wp2-green-800: #166534;
+	--wp2-yellow-100: #fef9c3;
+	--wp2-yellow-500: #eab308;
+	--wp2-yellow-800: #854d0e;
+
+	// Shadows
+	--wp2-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+
+	// Border Radius
+	--wp2-border-radius-lg: 0.5rem;
+	--wp2-border-radius-xl: 0.75rem;
+	--wp2-border-radius-2xl: 1rem;
 }
 
 /* ==========================================================================
@@ -63,6 +97,23 @@
 	}
 }
 
+@keyframes wp2-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes wp2-pulse {
+
+	0%,
+	100% {
+		opacity: 1;
+	}
+
+	50% {
+		opacity: 0.5;
+	}
+}
 
 /* ==========================================================================
    3. Base & Layout
@@ -181,6 +232,43 @@
 	&:hover:not(:disabled) {
 		color: var(--wp2-color-primary-dark);
 	}
+}
+
+/* ==========================================================================
+   4. Polished Table Actions
+   ========================================================================== */
+.wp2-table-actions {
+	display: flex;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+	justify-content: center;
+	align-items: center;
+}
+
+.wp2-table-actions button {
+	display: flex;
+	align-items: center;
+	gap: calc(var(--wp2-spacing-unit) * 1);
+	padding: calc(var(--wp2-spacing-unit) * 1.5) calc(var(--wp2-spacing-unit) * 2);
+	background-color: var(--wp2-color-primary);
+	color: var(--wp2-white);
+	border: none;
+	border-radius: var(--wp2-border-radius);
+	font-size: var(--wp2-font-size-sm);
+	cursor: pointer;
+	transition: background-color 0.3s ease;
+}
+
+.wp2-table-actions button:hover {
+	background-color: var(--wp2-color-primary-dark);
+}
+
+.wp2-table-actions button:focus {
+	outline: 2px solid var(--wp2-color-border-focus);
+}
+
+.wp2-table-actions button svg {
+	width: 16px;
+	height: 16px;
 }
 
 /* ==========================================================================
@@ -356,6 +444,60 @@
 	margin-top: calc(var(--wp2-spacing-unit) * 4);
 }
 
+/* ==========================================================================
+   7.1 HTML Defaults for Forms
+   ========================================================================== */
+.wp2-textarea {
+	width: 100%;
+	padding: var(--wp2-spacing-unit) calc(var(--wp2-spacing-unit) * 1.5);
+	border: 1px solid var(--wp2-color-border);
+	border-radius: var(--wp2-border-radius);
+	font-size: var(--wp2-font-size-base);
+	color: var(--wp2-color-text);
+	background-color: #fff;
+	box-shadow: var(--wp2-box-shadow-sm);
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+	&:focus {
+		outline: none;
+		border-color: var(--wp2-color-border-focus);
+		box-shadow: 0 0 0 1px var(--wp2-color-border-focus);
+	}
+
+	&:disabled {
+		background-color: var(--wp2-color-bg-alt);
+		cursor: not-allowed;
+	}
+}
+
+.wp2-fieldset {
+	border: 1px solid var(--wp2-color-border);
+	border-radius: var(--wp2-border-radius);
+	padding: calc(var(--wp2-spacing-unit) * 2);
+	margin: 0;
+}
+
+.wp2-legend {
+	font-size: var(--wp2-font-size-base);
+	font-weight: 600;
+	color: var(--wp2-color-text);
+	padding: 0 calc(var(--wp2-spacing-unit) * 1.5);
+}
+
+.wp2-checkbox,
+.wp2-radio {
+	margin-right: var(--wp2-spacing-unit);
+	vertical-align: middle;
+}
+
+.wp2-checkbox-label,
+.wp2-radio-label {
+	font-size: var(--wp2-font-size-base);
+	color: var(--wp2-color-text);
+	display: inline-flex;
+	align-items: center;
+	cursor: pointer;
+}
 
 /* ==========================================================================
    8. Tables
@@ -439,54 +581,126 @@
 }
 
 /* ==========================================================================
-   9. Spinners & Loaders
+   9. Additional Styles for App Container
    ========================================================================== */
-.wp2-spinner {
-	display: inline-block;
-	width: 20px;
-	height: 20px;
-	border: 2px solid currentColor;
-	border-top-color: transparent;
-	border-radius: 50%;
-	animation: spin 0.8s linear infinite;
-	color: var(--wp2-color-primary);
-
-	.wp2-button-primary & {
-		color: #fff;
-	}
+.wp2-tabs {
+	display: flex;
+	border-bottom: 1px solid var(--wp2-color-border);
+	margin-bottom: calc(var(--wp2-spacing-unit) * 2);
 }
 
-.wp2-large-spinner {
-	width: 48px;
-	height: 48px;
-	border-width: 4px;
-	margin: calc(var(--wp2-spacing-unit) * 2) auto;
+.wp2-tabs ul {
+	display: flex;
+	list-style: none;
+	padding: 0;
+	margin: 0;
 }
 
-#wp2-global-spinner {
-	position: fixed;
-	top: 0;
-	left: 0;
+.wp2-tab-link {
+	padding: calc(var(--wp2-spacing-unit) * 1) calc(var(--wp2-spacing-unit) * 2);
+	text-decoration: none;
+	color: var(--wp2-color-text-subtle);
+	font-weight: 500;
+	cursor: pointer;
+	border-bottom: 2px solid transparent;
+	transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.wp2-tab-link.active {
+	color: var(--wp2-color-text);
+	border-color: var(--wp2-color-primary);
+}
+
+.wp2-app-selector {
+	margin: calc(var(--wp2-spacing-unit) * 2) 0;
+}
+
+.wp2-configuring {
+	padding: calc(var(--wp2-spacing-unit) * 3);
+	background-color: var(--wp2-color-bg-card);
+	border-radius: var(--wp2-border-radius);
+	box-shadow: var(--wp2-box-shadow-sm);
+}
+
+.wp2-configuring h2 {
+	font-size: var(--wp2-font-size-lg);
+	font-weight: 600;
+	color: var(--wp2-color-text);
+	margin-bottom: calc(var(--wp2-spacing-unit) * 2);
+}
+
+.wp2-configuring p {
+	color: var(--wp2-color-text-subtle);
+	margin-bottom: calc(var(--wp2-spacing-unit) * 3);
+}
+
+.wp2-field-group {
+	margin-bottom: calc(var(--wp2-spacing-unit) * 2.5);
+}
+
+.wp2-field-group label {
+	display: block;
+	font-weight: 600;
+	color: var(--wp2-color-text);
+	margin-bottom: var(--wp2-spacing-unit);
+}
+
+.wp2-field-group input,
+.wp2-field-group select,
+.wp2-field-group textarea {
 	width: 100%;
-	height: 100%;
-	background-color: rgba(255, 255, 255, 0.8);
-	z-index: 99999;
-
-	&::after {
-		content: '';
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		width: 40px;
-		height: 40px;
-		margin: -20px 0 0 -20px;
-		border: 4px solid var(--wp2-color-border);
-		border-top-color: var(--wp2-color-primary);
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-	}
+	padding: var(--wp2-spacing-unit) calc(var(--wp2-spacing-unit) * 1.5);
+	border: 1px solid var(--wp2-color-border);
+	border-radius: var(--wp2-border-radius);
+	font-size: var(--wp2-font-size-base);
+	color: var(--wp2-color-text);
+	background-color: var(--wp2-color-bg-card);
+	box-shadow: var(--wp2-box-shadow-sm);
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.wp2-field-group input:focus,
+.wp2-field-group select:focus,
+.wp2-field-group textarea:focus {
+	border-color: var(--wp2-color-border-focus);
+	box-shadow: 0 0 0 3px var(--wp2-color-bg-info);
+	outline: none;
+}
+
+.wp2-field-group .wp2-btn {
+	margin-top: calc(var(--wp2-spacing-unit) * 2);
+}
+
+.wp2-actions {
+	display: flex;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+	justify-content: flex-end;
+	margin-top: calc(var(--wp2-spacing-unit) * 3);
+}
+
+.wp2-panel-section {
+	margin-bottom: calc(var(--wp2-spacing-unit) * 4);
+}
+
+.wp2-panel-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: calc(var(--wp2-spacing-unit) * 2);
+}
+
+.wp2-panel-header h2 {
+	font-size: var(--wp2-font-size-lg);
+	font-weight: 600;
+	color: var(--wp2-color-text);
+}
+
+.wp2-empty-state {
+	text-align: center;
+	color: var(--wp2-color-text-subtle);
+	font-size: var(--wp2-font-size-base);
+	margin-top: calc(var(--wp2-spacing-unit) * 2);
+}
 
 /* ==========================================================================
    10. Notices & Alerts
@@ -841,4 +1055,675 @@
 		right: 0;
 		max-width: fit-content;
 	}
+}
+
+/* ==========================================================================
+   13. Tabs
+   ========================================================================== */
+.wp2-tabs {
+	display: flex;
+	justify-content: center;
+	margin-bottom: calc(var(--wp2-spacing-unit) * 4);
+	border-bottom: 1px solid var(--wp2-color-border);
+
+	ul {
+		display: flex;
+		gap: calc(var(--wp2-spacing-unit) * 2);
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+
+	.wp2-tab-link {
+		padding: calc(var(--wp2-spacing-unit) * 1.5) calc(var(--wp2-spacing-unit) * 3);
+		text-decoration: none;
+		color: var(--wp2-color-text);
+		font-weight: 600;
+		border-bottom: 2px solid transparent;
+		transition: color 0.2s ease, border-color 0.2s ease;
+
+		&:hover {
+			color: var(--wp2-color-primary);
+		}
+
+		&.active,
+		&[aria-selected="true"] {
+			color: var(--wp2-color-primary);
+			border-color: var(--wp2-color-primary);
+		}
+	}
+}
+
+/* ==========================================================================
+   14. Tab Panels
+   ========================================================================== */
+.wp2-tab-panel {
+	display: none;
+	padding: calc(var(--wp2-spacing-unit) * 4);
+	background-color: var(--wp2-color-bg-card);
+	border-radius: var(--wp2-border-radius);
+	box-shadow: var(--wp2-box-shadow-sm);
+
+	&.active {
+		display: block;
+	}
+}
+
+.wp2-panel-section {
+	margin-bottom: calc(var(--wp2-spacing-unit) * 4);
+	background-color: var(--wp2-color-bg-card);
+	border: 1px solid var(--wp2-color-border);
+	border-radius: var(--wp2-border-radius);
+	box-shadow: var(--wp2-box-shadow-sm);
+	padding: calc(var(--wp2-spacing-unit) * 4);
+}
+
+.wp2-panel-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+	margin-bottom: calc(var(--wp2-spacing-unit) * 2);
+
+	h2 {
+		margin: 0;
+	}
+}
+
+.wp2-panel-subtitle {
+	margin: calc(var(--wp2-spacing-unit) * 0.5) 0 0;
+	color: var(--wp2-color-text-subtle);
+}
+
+.wp2-status-summary {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+}
+
+.wp2-status-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+}
+
+.wp2-definition-list {
+	display: grid;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+}
+
+.wp2-definition-list__item {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--wp2-spacing-unit) * 0.5);
+
+	dt {
+		font-weight: 600;
+		text-transform: capitalize;
+	}
+
+	dd {
+		margin: 0;
+		word-break: break-word;
+	}
+}
+
+.wp2-dashboard {
+	max-width: 80rem;
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--wp2-spacing-unit) * 4);
+}
+
+.wp2-dashboard__header {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+
+	@media (min-width: 768px) {
+		flex-direction: row;
+		align-items: flex-start;
+		justify-content: space-between;
+	}
+}
+
+.wp2-dashboard__title {
+	margin: 0;
+	font-size: var(--wp2-font-size-xl);
+	font-weight: 700;
+	color: var(--wp2-gray-800);
+}
+
+.wp2-dashboard__subtitle {
+	margin: 0;
+	color: var(--wp2-gray-500);
+	font-size: var(--wp2-font-size-base);
+}
+
+.wp2-dashboard__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+	align-items: center;
+}
+
+.wp2-dashboard-card {
+	background: var(--wp2-white);
+	border: 1px solid var(--wp2-gray-200);
+	border-radius: 12px;
+	box-shadow: var(--wp2-box-shadow-sm);
+	padding: calc(var(--wp2-spacing-unit) * 4);
+}
+
+.wp2-dashboard-tabs {
+	display: flex;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+	border-bottom: 1px solid var(--wp2-gray-200);
+	margin-bottom: calc(var(--wp2-spacing-unit) * 4);
+}
+
+.wp2-dashboard-tab {
+	position: relative;
+	padding: calc(var(--wp2-spacing-unit) * 1.5) calc(var(--wp2-spacing-unit) * 2);
+	background: transparent;
+	border: none;
+	color: var(--wp2-gray-500);
+	font-weight: 600;
+	cursor: pointer;
+	transition: color 0.2s ease;
+
+	&::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: -1px;
+		height: 2px;
+		background: transparent;
+		transition: background 0.2s ease;
+	}
+
+	&:hover {
+		color: var(--wp2-gray-700);
+	}
+
+	&.active {
+		color: var(--wp2-gray-800);
+
+		&::after {
+			background: var(--wp2-color-primary);
+		}
+	}
+}
+
+.wp2-dashboard-panels {
+	display: block;
+}
+
+.wp2-dashboard-panel {
+	display: none;
+
+	&.active {
+		display: block;
+	}
+}
+
+.wp2-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: calc(var(--wp2-spacing-unit) * 1);
+	font-weight: 600;
+	padding: calc(var(--wp2-spacing-unit) * 1.5) calc(var(--wp2-spacing-unit) * 3);
+	border-radius: 999px;
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--wp2-gray-700);
+	cursor: pointer;
+	transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.wp2-btn:disabled {
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.wp2-btn--primary {
+	background: var(--wp2-color-primary);
+	color: var(--wp2-white);
+	border-color: var(--wp2-color-primary);
+
+	&:hover:not(:disabled) {
+		background: var(--wp2-color-primary-dark);
+		border-color: var(--wp2-color-primary-dark);
+	}
+}
+
+.wp2-btn--primary-outline {
+	background: var(--wp2-white);
+	border-color: var(--wp2-gray-300);
+	color: var(--wp2-gray-700);
+
+	&:hover:not(:disabled) {
+		border-color: var(--wp2-color-primary);
+		color: var(--wp2-color-primary);
+	}
+}
+
+.wp2-btn--ghost {
+	background: transparent;
+	border-color: var(--wp2-gray-200);
+	color: var(--wp2-gray-600);
+
+	&:hover:not(:disabled) {
+		color: var(--wp2-gray-800);
+		border-color: var(--wp2-gray-300);
+	}
+}
+
+.wp2-icon-plus,
+.wp2-icon-refresh {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1rem;
+	height: 1rem;
+}
+
+.wp2-icon-plus::before {
+	content: '+';
+	font-weight: 700;
+}
+
+.wp2-icon-refresh::before {
+	content: '⟳';
+}
+
+.wp2-table-cell__title {
+	font-weight: 600;
+	color: var(--wp2-gray-800);
+}
+
+.wp2-table-cell__subtitle {
+	font-size: var(--wp2-font-size-sm);
+	color: var(--wp2-gray-500);
+}
+
+.wp2-table-cell__highlight {
+	font-weight: 600;
+	color: var(--wp2-gray-800);
+}
+
+.wp2-table-cell__actions {
+	text-align: right;
+}
+
+.wp2-status-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: calc(var(--wp2-spacing-unit) * 1);
+	padding: calc(var(--wp2-spacing-unit) * 0.75) calc(var(--wp2-spacing-unit) * 1.5);
+	border-radius: 999px;
+	font-size: var(--wp2-font-size-sm);
+	font-weight: 500;
+}
+
+.wp2-status-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 999px;
+}
+
+.wp2-status-badge--update {
+	background: var(--wp2-yellow-100);
+	color: var(--wp2-yellow-800);
+}
+
+.wp2-status-dot--update {
+	background: var(--wp2-yellow-500);
+}
+
+.wp2-status-badge--ok {
+	background: #dcfce7;
+	color: var(--wp2-green-800);
+}
+
+.wp2-status-dot--ok {
+	background: var(--wp2-green-500);
+}
+
+.wp2-status-badge--unmanaged {
+	background: var(--wp2-gray-100);
+	color: var(--wp2-gray-600);
+}
+
+.wp2-status-dot--unmanaged {
+	background: var(--wp2-gray-400, #9ca3af);
+}
+
+.wp2-modal-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(17, 24, 39, 0.45);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: calc(var(--wp2-spacing-unit) * 4);
+	z-index: 1000;
+}
+
+.wp2-modal-overlay[hidden] {
+	display: none !important;
+}
+
+.wp2-modal-window {
+	position: relative;
+	background: var(--wp2-white);
+	border-radius: 16px;
+	padding: calc(var(--wp2-spacing-unit) * 4);
+	box-shadow: var(--wp2-box-shadow-md);
+	max-width: 36rem;
+	width: 100%;
+	max-height: 90vh;
+	overflow-y: auto;
+}
+
+.wp2-modal-window--wide {
+	max-width: 48rem;
+}
+
+.wp2-modal-close {
+	position: absolute;
+	top: calc(var(--wp2-spacing-unit) * 2);
+	right: calc(var(--wp2-spacing-unit) * 2);
+	border: none;
+	background: transparent;
+	font-size: 1.5rem;
+	line-height: 1;
+	cursor: pointer;
+	color: var(--wp2-gray-500);
+}
+
+.wp2-modal-header {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--wp2-spacing-unit) * 1);
+	margin-bottom: calc(var(--wp2-spacing-unit) * 3);
+
+	h2 {
+		margin: 0;
+		font-size: var(--wp2-font-size-xl);
+		color: var(--wp2-gray-800);
+	}
+
+	p {
+		margin: 0;
+		color: var(--wp2-gray-500);
+	}
+}
+
+.wp2-modal-actions {
+	margin-top: calc(var(--wp2-spacing-unit) * 4);
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+}
+
+.wp2-detail-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: calc(var(--wp2-spacing-unit) * 2);
+
+	@media (max-width: 640px) {
+		grid-template-columns: 1fr;
+	}
+}
+
+.wp2-detail-item dt {
+	font-weight: 600;
+	color: var(--wp2-gray-600);
+}
+
+.wp2-detail-item dd {
+	margin: 0;
+	color: var(--wp2-gray-800);
+}
+
+.wp2-sync-log {
+	margin-top: calc(var(--wp2-spacing-unit) * 3);
+	background: var(--wp2-gray-900);
+	color: var(--wp2-gray-100);
+	padding: calc(var(--wp2-spacing-unit) * 3);
+	border-radius: 8px;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+	font-size: var(--wp2-font-size-sm);
+	max-height: 200px;
+	overflow-y: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.wp2-form {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--wp2-spacing-unit) * 3);
+}
+
+.wp2-form-grid {
+	display: grid;
+	grid-template-columns: repeat(1, minmax(0, 1fr));
+	gap: calc(var(--wp2-spacing-unit) * 3);
+
+	@media (min-width: 768px) {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+.wp2-form-field {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--wp2-spacing-unit) * 1);
+}
+
+.wp2-form-label {
+	font-weight: 600;
+	color: var(--wp2-gray-700);
+}
+
+.wp2-input {
+	display: block;
+	width: 100%;
+	padding: calc(var(--wp2-spacing-unit) * 1.5) calc(var(--wp2-spacing-unit) * 2);
+	border-radius: 8px;
+	border: 1px solid var(--wp2-gray-300);
+	background: var(--wp2-white);
+	box-shadow: var(--wp2-box-shadow-sm);
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.wp2-input:focus {
+	outline: none;
+	border-color: var(--wp2-color-primary);
+	box-shadow: 0 0 0 1px var(--wp2-color-primary);
+}
+
+.wp2-input--code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+	white-space: pre-wrap;
+}
+
+.wp2-field-help {
+	margin: 0;
+	font-size: var(--wp2-font-size-sm);
+	color: var(--wp2-gray-500);
+}
+
+.wp2-manifest-actions {
+	display: flex;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+	margin-top: calc(var(--wp2-spacing-unit) * 2);
+	flex-wrap: wrap;
+}
+
+.wp2-manifest-note {
+	margin-top: calc(var(--wp2-spacing-unit) * 3);
+	color: var(--wp2-gray-500);
+	font-size: var(--wp2-font-size-sm);
+}
+
+.wp2-pill-group {
+	display: flex;
+	gap: calc(var(--wp2-spacing-unit) * 2);
+	flex-wrap: wrap;
+}
+
+.wp2-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: calc(var(--wp2-spacing-unit) * 1);
+	padding: calc(var(--wp2-spacing-unit) * 1.5) calc(var(--wp2-spacing-unit) * 2);
+	border-radius: 999px;
+	border: 1px solid var(--wp2-gray-300);
+	cursor: pointer;
+	color: var(--wp2-gray-700);
+	transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+
+	input {
+		margin: 0;
+	}
+
+	&:has(input:checked) {
+		border-color: var(--wp2-color-primary);
+		background: var(--wp2-color-bg-info);
+		color: var(--wp2-color-primary);
+	}
+}
+
+.wp2-wizard-step {
+	display: none;
+}
+
+.wp2-wizard-step.is-active {
+	display: block;
+}
+
+/* ==========================================================================
+   16. Wizard Modal Enhancements
+   ========================================================================== */
+.wp2-wizard {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--wp2-spacing-unit) * 4);
+}
+
+.wp2-wizard-steps {
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: calc(var(--wp2-spacing-unit) * 2);
+}
+
+.wp2-wizard-step {
+	flex: 1;
+	text-align: center;
+	padding: calc(var(--wp2-spacing-unit) * 2);
+	border: 1px solid var(--wp2-color-border);
+	border-radius: var(--wp2-border-radius);
+	background-color: var(--wp2-gray-50);
+	color: var(--wp2-gray-700);
+	transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.wp2-wizard-step.is-active {
+	background-color: var(--wp2-color-primary);
+	color: var(--wp2-white);
+	font-weight: bold;
+}
+
+.wp2-wizard-content {
+	padding: calc(var(--wp2-spacing-unit) * 4);
+	border: 1px solid var(--wp2-color-border);
+	border-radius: var(--wp2-border-radius);
+	background-color: var(--wp2-color-bg-card);
+	box-shadow: var(--wp2-box-shadow-sm);
+}
+
+/* ==========================================================================
+   5. Hover and Focus States
+   ========================================================================== */
+
+/* Buttons */
+.wp2-btn:hover {
+	background-color: var(--wp2-color-primary-dark);
+	color: var(--wp2-white);
+	box-shadow: var(--wp2-box-shadow-md);
+}
+
+.wp2-btn:focus {
+	outline: 2px solid var(--wp2-color-border-focus);
+	outline-offset: 2px;
+}
+
+/* Links */
+.wp2-link:hover {
+	color: var(--wp2-color-text-link);
+	text-decoration: underline;
+}
+
+.wp2-link:focus {
+	outline: 2px solid var(--wp2-color-border-focus);
+	outline-offset: 2px;
+}
+
+/* Table Rows */
+.wp2-table tbody tr:hover {
+	background-color: var(--wp2-gray-100);
+}
+
+.wp2-table tbody tr:focus {
+	outline: 2px solid var(--wp2-color-border-focus);
+	outline-offset: -2px;
+}
+
+/* Inputs */
+.wp2-form-group input:hover,
+.wp2-form-group select:hover,
+.wp2-form-group textarea:hover {
+	border-color: var(--wp2-gray-300);
+}
+
+.wp2-form-group input:focus,
+.wp2-form-group select:focus,
+.wp2-form-group textarea:focus {
+	border-color: var(--wp2-color-border-focus);
+	box-shadow: 0 0 0 3px var(--wp2-color-bg-info);
+}
+
+/* Ensure consistent focus styles for all interactive elements */
+
+/* Dropdowns */
+.wp2-dropdown:focus {
+	outline: 2px solid var(--wp2-color-border-focus);
+	outline-offset: 2px;
+}
+
+/* Modal Buttons */
+.wp2-modal button:focus {
+	outline: 2px solid var(--wp2-color-border-focus);
+	outline-offset: 2px;
+}
+
+/* Tabs */
+.wp2-tab:focus {
+	outline: 2px solid var(--wp2-color-border-focus);
+	outline-offset: 2px;
+}
+
+/* Add focus styles for cards */
+.wp2-card:focus {
+	outline: 2px solid var(--wp2-color-border-focus);
+	outline-offset: 2px;
+	box-shadow: var(--wp2-box-shadow-md);
 }

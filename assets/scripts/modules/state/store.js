@@ -60,7 +60,8 @@ const buildDefaultManifestDraft = () => {
 	};
 };
 
-export const dashboard_state = atom({
+// Unified state atom
+export const unified_state = atom({
 	status: STATUS.LOADING,
 	isProcessing: false,
 	message: '',
@@ -71,68 +72,56 @@ export const dashboard_state = atom({
 	unlinkedPackages: [],
 	error: null,
 	polling: { active: false },
-});
-
-// Add support for multiple apps
-export const app_state = atom({
 	apps: [], // List of apps
 	selectedAppId: null, // Currently selected app ID
 });
 
 // Centralized state management
-export const updateAppState = (newState) => {
-	const currentState = app_state.get();
+export const updateUnifiedState = (newState) => {
+	const currentState = unified_state.get();
 	const updates = typeof newState === 'function' ? newState(currentState) : newState;
 
-	app_state.set({
+	// Validate incoming updates
+	if (updates && typeof updates !== 'object') {
+		console.warn('updateUnifiedState: Invalid state update provided.', updates);
+		return;
+	}
+
+	const { packages: packagesUpdate, selectedAppId, ...restUpdates } = updates || {};
+
+	// Ensure packagesUpdate is an array of valid objects
+	const allPackages = Array.isArray(packagesUpdate)
+		? packagesUpdate.filter(pkg => pkg && typeof pkg === 'object')
+		: currentState.allPackages || [];
+
+	const packagesForState = allPackages;
+
+	unified_state.set({
 		...currentState,
-		...(updates || {}),
-	});
-};
-
-// Update dashboard_state to filter packages by selected app
-export const updateDashboardState = (newState) => {
-	const currentDashboard = dashboard_state.get();
-	const updates = typeof newState === 'function' ? newState(currentDashboard) : newState;
-	const currentAppId = app_state.get().selectedAppId;
-	const { packages: packagesUpdate, ...restUpdates } = updates || {};
-	const hasPackagesUpdate = updates && Object.prototype.hasOwnProperty.call(updates, 'packages');
-	const allPackages = hasPackagesUpdate
-		? (Array.isArray(packagesUpdate) ? packagesUpdate : [])
-		: (currentDashboard.allPackages || []);
-	const packagesForState = currentAppId
-		? allPackages.filter(pkg => pkg.app_id === currentAppId)
-		: allPackages;
-
-	dashboard_state.set({
-		...currentDashboard,
 		...(restUpdates || {}),
 		allPackages,
 		packages: packagesForState,
+		selectedAppId: selectedAppId || currentState.selectedAppId,
 	});
 };
 
 // Add methods to manage apps
-
 export const addApp = (app) => {
-    const currentApps = app_state.get().apps;
-    app_state.set({
-        ...app_state.get(),
-        apps: [...currentApps, app],
-    });
+	const currentApps = unified_state.get().apps;
+	unified_state.set({
+		...unified_state.get(),
+		apps: [...currentApps, app],
+	});
 };
 
 export const removeApp = (appId) => {
-    const currentApps = app_state.get().apps;
-    app_state.set({
-        ...app_state.get(),
-        apps: currentApps.filter(app => app.id !== appId),
-    });
+	const currentApps = unified_state.get().apps;
+	unified_state.set({
+		...unified_state.get(),
+		apps: currentApps.filter(app => app.id !== appId),
+	});
 };
 
 export const selectApp = (appId) => {
-    app_state.set({
-        ...app_state.get(),
-        selectedAppId: appId,
-    });
+	updateUnifiedState({ selectedAppId: appId });
 };

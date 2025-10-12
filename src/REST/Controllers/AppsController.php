@@ -109,9 +109,25 @@ final class AppsController extends AbstractRestController {
 		try {
 			$apps = $this->credentialService->get_app_summaries();
 
+			// Format the response to include additional metadata for the frontend
+			$formattedApps = array_map(
+				function ( $app ) {
+					return [
+						'id'                => $app['id'] ?? '',
+						'name'              => $app['name'] ?? '',
+						'type'              => $app['type'] ?? 'unknown',
+						'installationId'    => $app['installation_id'] ?? null,
+						'webhookStatus'     => $app['webhook_status'] ?? 'inactive',
+						'createdAt'         => $app['created_at'] ?? null,
+						'updatedAt'         => $app['updated_at'] ?? null,
+					];
+				},
+				$apps
+			);
+
 			return $this->respond(
 				[
-					'apps' => $apps,
+					'apps' => $formattedApps,
 				]
 			);
 		} catch ( \Throwable $error ) {
@@ -142,6 +158,19 @@ final class AppsController extends AbstractRestController {
 			}
 
 			$manifest = $request->get_param( 'manifest' );
+			if ( ! empty( $manifest ) ) {
+				// Sanitize and validate the manifest
+				$manifest = wp_kses_post( $manifest );
+				$decoded_manifest = json_decode( $manifest, true );
+				if ( json_last_error() !== JSON_ERROR_NONE ) {
+					return $this->respond(
+						[
+							'error' => __( 'Invalid manifest JSON.', 'wp2-update' ),
+						],
+						400
+					);
+				}
+			}
 
 			$app = $this->connectionService->save_app(
 				[

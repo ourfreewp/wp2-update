@@ -127,11 +127,10 @@ class GitHubClientFactory
      *
      * @return string|null The installation token, or null on failure.
      */
-    public function getInstallationToken(?string $appUid = null): ?string
+    public function getInstallationToken(string $appUid): ?string
     {
         // Use WordPress transients to cache the token across requests
-        $key = $appUid ?: 'default';
-        $transientKey = 'github_installation_token_' . $key;
+        $transientKey = 'github_installation_token_' . $appUid;
         $cachedToken = Cache::get($transientKey);
 
         if ($cachedToken) {

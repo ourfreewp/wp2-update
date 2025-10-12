@@ -51,6 +51,7 @@ class PackageService
 
             if ($githubData) {
                 $releases = $this->releaseService->get_releases($repoSlug);
+                $latestRelease = $releases[0] ?? null;
                 $packages[] = array_change_key_case(array_merge(
                     $localPackage,
                     [
@@ -65,6 +66,11 @@ class PackageService
                                 'download_url' => $release['zipball_url'] ?? '',
                             ];
                         }, $releases),
+                        'latest' => $latestRelease ? [
+                            'tag' => $latestRelease['tag_name'] ?? '',
+                            'label' => $latestRelease['name'] ?? '',
+                            'download_url' => $latestRelease['zipball_url'] ?? '',
+                        ] : null,
                         'repo' => $repoSlug,
                         'type' => $localPackage['type'] ?? 'unknown',
                         'status' => $localPackage['status'] ?? 'unmanaged',
@@ -187,9 +193,17 @@ class PackageService
             return null;
         }
 
-        foreach ($this->sync_packages() as $package) {
-            if (($package['repo'] ?? '') === $repoSlug) {
-                return $package;
+        $synced = $this->sync_packages();
+        $collections = [
+            $synced['packages'] ?? [],
+            $synced['unlinked_packages'] ?? [],
+        ];
+
+        foreach ($collections as $packages) {
+            foreach ($packages as $package) {
+                if (($package['repo'] ?? '') === $repoSlug) {
+                    return $package;
+                }
             }
         }
 
@@ -260,35 +274,35 @@ class PackageService
      *
      * @param string $filePath Path to the temporary zip file.
      * @param string $repoSlug The expected repository slug (e.g., 'owner/repo').
-     * @return array An array with 'isValid' (bool) and 'error' (string|null).
+     * @return bool True if the package is valid, false otherwise.
      */
-    private function is_valid_package_archive(string $filePath, string $repoSlug): array
+    private function is_valid_package_archive(string $filePath, string $repoSlug): bool
     {
         // Validate the integrity of the archive using a checksum (if available)
         $expectedChecksum = $this->repositoryService->get_package_checksum($repoSlug);
         if ($expectedChecksum && hash_file('sha256', $filePath) !== $expectedChecksum) {
             Logger::log('ERROR', 'Checksum validation failed for package: ' . $repoSlug);
-            return ['isValid' => false, 'error' => 'Checksum validation failed.'];
+            return false;
         }
 
         $tempDir = wp_tempnam('wp2_package_validation');
         if (!$tempDir) {
             Logger::log('ERROR', 'Failed to create temporary directory for package validation.');
-            return ['isValid' => false, 'error' => 'Failed to create temporary directory.'];
+            return false;
         }
 
         // Remove the temp file and create a directory instead
         unlink($tempDir);
         if (!wp_mkdir_p($tempDir)) {
             Logger::log('ERROR', 'Failed to create directory for package validation: ' . $tempDir);
-            return ['isValid' => false, 'error' => 'Failed to create validation directory.'];
+            return false;
         }
 
         $zip = new \ZipArchive();
         if ($zip->open($filePath) !== true) {
             Logger::log('ERROR', 'Failed to open ZIP file: ' . $filePath);
             $this->delete_directory($tempDir);
-            return ['isValid' => false, 'error' => 'Failed to open ZIP file.'];
+            return false;
         }
 
         // Extract the archive to the temporary directory
@@ -296,7 +310,7 @@ class PackageService
             Logger::log('ERROR', 'Failed to extract ZIP file: ' . $filePath);
             $zip->close();
             $this->delete_directory($tempDir);
-            return ['isValid' => false, 'error' => 'Failed to extract ZIP file.'];
+            return false;
         }
         $zip->close();
 
@@ -327,8 +341,9 @@ class PackageService
         }
 
         if (!$isValid) {
+            Logger::log('ERROR', 'Required files not found in the package.');
             $this->delete_directory($tempDir);
-            return ['isValid' => false, 'error' => 'Required files not found in the package.'];
+            return false;
         }
 
         // Validate file types and extensions
@@ -336,21 +351,19 @@ class PackageService
             if ($file->isFile() && !in_array($file->getExtension(), $allowedExtensions, true)) {
                 Logger::log('ERROR', 'Invalid file type found in package: ' . $file->getFilename());
                 $this->delete_directory($tempDir);
-                return ['isValid' => false, 'error' => 'Invalid file type found: ' . $file->getFilename()];
+                return false;
             }
 
             // Prevent directory traversal
             if (strpos(realpath($file->getPathname()), realpath($tempDir)) !== 0) {
                 Logger::log('ERROR', 'Directory traversal attempt detected in package: ' . $file->getFilename());
                 $this->delete_directory($tempDir);
-                return ['isValid' => false, 'error' => 'Directory traversal attempt detected.'];
+                return false;
             }
         }
 
-        // Clean up the temporary directory
         $this->delete_directory($tempDir);
-
-        return ['isValid' => true, 'error' => null];
+        return true;
     }
 
     /**
@@ -386,7 +399,6 @@ class PackageService
      */
     public function assign_package_to_app(string $appId, string $repoId): void
     {
-        // Logic to assign the repository to the app
         Logger::log('INFO', "Assigning repository {$repoId} to app {$appId}.");
 
         // Retrieve the app
@@ -395,21 +407,27 @@ class PackageService
             throw new \RuntimeException("App with ID {$appId} not found.");
         }
 
+        // Normalize the repository identifier
+        $normalizedRepo = Formatting::normalize_repo($repoId);
+        if (!$normalizedRepo) {
+            throw new \InvalidArgumentException("Invalid repository identifier: {$repoId}.");
+        }
+
         // Check if the repository is already assigned
-        if (in_array($repoId, $app['managed_repositories'] ?? [], true)) {
-            Logger::log('WARNING', "Repository {$repoId} is already assigned to app {$appId}.");
+        if (in_array($normalizedRepo, $app['managed_repositories'] ?? [], true)) {
+            Logger::log('WARNING', "Repository {$normalizedRepo} is already assigned to app {$appId}.");
             return;
         }
 
         // Assign the repository
-        $app['managed_repositories'][] = $repoId;
+        $app['managed_repositories'][] = $normalizedRepo;
 
         // Save the updated app
         try {
             $this->repositoryService->save_app($app);
-            Logger::log('INFO', "Repository {$repoId} successfully assigned to app {$appId}.");
+            Logger::log('INFO', "Repository {$normalizedRepo} successfully assigned to app {$appId}.");
         } catch (\Exception $e) {
-            Logger::log('ERROR', "Failed to save app {$appId} after assigning repository {$repoId}: " . $e->getMessage());
+            Logger::log('ERROR', "Failed to save app {$appId} after assigning repository {$normalizedRepo}: " . $e->getMessage());
             throw new \RuntimeException("Failed to save app {$appId}.", 0, $e);
         }
     }
@@ -432,5 +450,24 @@ class PackageService
                 'managed_by' => $package['app_slug'] ?? 'unmanaged',
             ];
         }, $syncedData['packages']);
+    }
+
+    /**
+     * Get releases for a given repository slug.
+     *
+     * @param string $repoSlug The repository slug (e.g., "owner/repo").
+     * @return array The list of releases with tag, label, and download URL.
+     */
+    public function get_releases(string $repoSlug): array
+    {
+        $releases = $this->releaseService->get_releases($repoSlug);
+
+        return array_map(function ($release) {
+            return [
+                'tag' => $release['tag_name'] ?? '',
+                'label' => $release['name'] ?? '',
+                'download_url' => $release['zipball_url'] ?? '',
+            ];
+        }, $releases);
     }
 }

@@ -3,9 +3,14 @@
 namespace WP2\Update\Core\API;
 
 use Github\Exception\ExceptionInterface;
+use WP2\Update\Core\AppRepository;
 use WP2\Update\Core\Updates\PackageFinder;
 use WP2\Update\Utils\Cache;
 use WP2\Update\Utils\Logger;
+use WP2\Update\Utils\Formatting;
+use function sanitize_text_field;
+use function sanitize_title;
+use function wp_json_encode;
 
 /**
  * Handles connection-related operations for GitHub Apps.
@@ -15,20 +20,31 @@ class ConnectionService
     private GitHubClientFactory $clientFactory;
     private CredentialService $credentialService;
     private PackageFinder $packageFinder;
+    private AppRepository $appRepository;
+    private RepositoryService $repositoryService;
 
-    public function __construct(GitHubClientFactory $clientFactory, CredentialService $credentialService, PackageFinder $packageFinder)
+    public function __construct(
+        GitHubClientFactory $clientFactory,
+        CredentialService $credentialService,
+        PackageFinder $packageFinder,
+        AppRepository $appRepository,
+        RepositoryService $repositoryService
+    )
     {
         $this->clientFactory      = $clientFactory;
         $this->credentialService  = $credentialService;
         $this->packageFinder      = $packageFinder;
+        $this->appRepository      = $appRepository;
+        $this->repositoryService  = $repositoryService;
     }
 
     /**
      * Validate stored credentials.
      *
+     * @param string $appUid The unique identifier for the app.
      * @return array{success:bool,message:string}
      */
-    private function validate_credentials(?string $appUid = null): array
+    private function validate_credentials(string $appUid): array
     {
         $credentials = $this->credentialService->get_stored_credentials($appUid);
         if (!$credentials) {
@@ -45,10 +61,9 @@ class ConnectionService
     /**
      * Test webhook delivery for the provided app.
      */
-    private function test_webhook(?string $appUid = null): bool
+    private function test_webhook(string $appUid): bool
     {
-        $appKey = $appUid ?: 'default';
-        $cacheKey = 'wp2_update_webhook_test_' . $appKey;
+        $cacheKey = 'wp2_update_webhook_test_' . $appUid;
         $webhookTestValue = uniqid('webhook_', true);
         Cache::set($cacheKey, $webhookTestValue, 60 * 5);
 
@@ -58,14 +73,12 @@ class ConnectionService
     /**
      * Attempt to connect to GitHub using the stored credentials.
      *
+     * @param string $appUid The unique identifier for the app.
      * @return array{success:bool,message:string,code?:string}
      */
-    public function test_connection(?string $appUid = null): array
+    public function test_connection(string $appUid): array
     {
-        // Ensure appUid is provided
-        if ($appUid === null) {
-            return ['success' => false, 'message' => __('App ID is required to test the connection.', 'wp2-update')];
-        }
+        $this->log_credentials_debug($appUid); // Log credentials for debugging
 
         try {
             $credentialValidation = $this->validate_credentials($appUid);
@@ -293,14 +306,54 @@ class ConnectionService
      */
     public function save_app(array $appData): array
     {
-        // Simulate saving the app data (e.g., to a database or option)
-        $appData['id'] = uniqid('app_', true);
-        $appData['status'] = 'active';
+        $name = sanitize_text_field((string) ($appData['name'] ?? ''));
+        if ('' === $name) {
+            throw new \InvalidArgumentException(__('App name is required.', 'wp2-update'));
+        }
 
-        // Log the app creation for debugging purposes
-        Logger::log('INFO', 'App created: ' . json_encode($appData));
+        $slug = sanitize_title($appData['slug'] ?? $name);
+        $accountType = strtolower((string) ($appData['account_type'] ?? 'user'));
+        if (!in_array($accountType, ['user', 'organization'], true)) {
+            $accountType = 'user';
+        }
 
-        return $appData;
+        $organization = sanitize_text_field((string) ($appData['organization'] ?? ''));
+        $status = (string) ($appData['status'] ?? 'pending');
+        $allowedStatus = ['pending', 'active', 'inactive', 'requires_installation'];
+        if (!in_array($status, $allowedStatus, true)) {
+            $status = 'pending';
+        }
+
+        $managed = array_values(array_unique(array_filter(
+            array_map(
+                static fn($repo) => Formatting::normalize_repo(is_array($repo) ? ($repo['repo'] ?? null) : $repo),
+                (array) ($appData['managed_repositories'] ?? [])
+            )
+        )));
+
+        $manifest = $appData['manifest'] ?? null;
+        if (is_array($manifest)) {
+            $manifest = wp_json_encode($manifest);
+        }
+
+        $payload = array_filter(
+            [
+                'name'                 => $name,
+                'slug'                 => $slug,
+                'status'               => $status,
+                'account_type'         => $accountType,
+                'organization'         => $organization,
+                'manifest'             => is_string($manifest) ? $manifest : null,
+                'requires_installation'=> !empty($appData['requires_installation']),
+                'managed_repositories' => $managed,
+            ],
+            static fn($value) => null !== $value
+        );
+
+        $saved = $this->appRepository->save($payload);
+        Logger::log('INFO', 'App created: ' . json_encode($saved));
+
+        return $saved;
     }
 
     /**
@@ -312,21 +365,61 @@ class ConnectionService
      */
     public function update_app(string $id, array $updatedData): array
     {
-        // Simulate fetching the app (e.g., from a database or option)
-        $app = [
-            'id' => $id,
-            'name' => 'Existing App',
-            'status' => 'active',
-            'organization' => 'existing-org',
-        ];
+        $existing = $this->appRepository->find($id);
+        if (!$existing) {
+            throw new \RuntimeException(sprintf('App with ID %s not found.', $id));
+        }
 
-        // Merge the updated data
-        $app = array_merge($app, $updatedData);
+        $payload = ['id' => $id];
 
-        // Log the app update for debugging purposes
-        Logger::log('INFO', 'App updated: ' . json_encode($app));
+        if (array_key_exists('name', $updatedData)) {
+            $name = sanitize_text_field((string) $updatedData['name']);
+            if ($name !== '') {
+                $payload['name'] = $name;
+                $payload['slug'] = sanitize_title($updatedData['slug'] ?? $name);
+            }
+        }
 
-        return $app;
+        if (array_key_exists('status', $updatedData)) {
+            $status = (string) $updatedData['status'];
+            $allowedStatus = ['pending', 'active', 'inactive', 'requires_installation'];
+            if (in_array($status, $allowedStatus, true)) {
+                $payload['status'] = $status;
+            }
+        }
+
+        if (array_key_exists('organization', $updatedData)) {
+            $payload['organization'] = sanitize_text_field((string) $updatedData['organization']);
+        }
+
+        if (array_key_exists('account_type', $updatedData)) {
+            $accountType = strtolower((string) $updatedData['account_type']);
+            if (in_array($accountType, ['user', 'organization'], true)) {
+                $payload['account_type'] = $accountType;
+            }
+        }
+
+        if (array_key_exists('managed_repositories', $updatedData)) {
+            $payload['managed_repositories'] = array_values(array_unique(array_filter(
+                array_map(
+                    static fn($repo) => Formatting::normalize_repo(is_array($repo) ? ($repo['repo'] ?? null) : $repo),
+                    (array) $updatedData['managed_repositories']
+                )
+            )));
+        }
+
+        if (array_key_exists('manifest', $updatedData)) {
+            $manifest = $updatedData['manifest'];
+            if (is_array($manifest)) {
+                $manifest = wp_json_encode($manifest);
+            }
+            $payload['manifest'] = is_string($manifest) ? $manifest : null;
+        }
+
+        $saved = $this->appRepository->save(array_merge($existing, $payload));
+        Logger::log('INFO', 'App updated: ' . json_encode($saved));
+
+        return $saved;
     }
 
     /**
@@ -337,7 +430,8 @@ class ConnectionService
      */
     public function delete_app(string $id): void
     {
-        // Simulate deleting the app (e.g., from a database or option)
+        $this->appRepository->delete($id);
+        $this->credentialService->clear_stored_credentials($id);
         Logger::log('INFO', 'App deleted: ' . $id);
     }
 
@@ -350,7 +444,72 @@ class ConnectionService
      */
     public function assign_package(string $appId, string $repoId): void
     {
-        // Simulate assigning the repository to the app (e.g., updating a database or option)
-        Logger::log('INFO', "Assigned repository {$repoId} to app {$appId}");
+        $app = $this->appRepository->find($appId);
+        if (!$app) {
+            throw new \RuntimeException(sprintf('App with ID %s not found.', $appId));
+        }
+
+        $normalizedRepo = Formatting::normalize_repo($repoId);
+        if (!$normalizedRepo) {
+            throw new \InvalidArgumentException(__('Invalid repository identifier.', 'wp2-update'));
+        }
+
+        $managed = isset($app['managed_repositories']) && is_array($app['managed_repositories'])
+            ? $app['managed_repositories']
+            : [];
+
+        if (in_array($normalizedRepo, $managed, true)) {
+            Logger::log('INFO', sprintf('Repository %s already assigned to app %s.', $normalizedRepo, $appId));
+            return;
+        }
+
+        $managed[] = $normalizedRepo;
+        $this->repositoryService->update_managed_repositories($appId, array_values(array_unique($managed)));
+
+        Logger::log('INFO', sprintf('Assigned repository %s to app %s.', $normalizedRepo, $appId));
+    }
+
+    /**
+     * Unassign a repository from an app.
+     *
+     * @param string $appId The ID of the app.
+     * @param string $repoId The ID of the repository.
+     * @return void
+     */
+    public function unassign_package(string $appId, string $repoId): void
+    {
+        $app = $this->appRepository->find($appId);
+        if (!$app) {
+            throw new \RuntimeException(sprintf('App with ID %s not found.', $appId));
+        }
+
+        $managed = isset($app['managed_repositories']) && is_array($app['managed_repositories'])
+            ? $app['managed_repositories']
+            : [];
+
+        $normalizedRepo = Formatting::normalize_repo($repoId);
+        if (!$normalizedRepo || !in_array($normalizedRepo, $managed, true)) {
+            Logger::log('INFO', sprintf('Repository %s is not assigned to app %s.', $normalizedRepo, $appId));
+            return;
+        }
+
+        $managed = array_values(array_filter($managed, static fn($repo) => $repo !== $normalizedRepo));
+        $this->repositoryService->update_managed_repositories($appId, $managed);
+
+        Logger::log('INFO', sprintf('Unassigned repository %s from app %s.', $normalizedRepo, $appId));
+    }
+
+    private function log_credentials_debug(?string $appUid = null): void
+    {
+        $credentials = $this->credentialService->get_stored_credentials($appUid);
+        if (!$credentials) {
+            Logger::log('DEBUG', 'No credentials found for appUid: ' . ($appUid ?? 'default'));
+            return;
+        }
+
+        Logger::log('DEBUG', 'Credentials for appUid: ' . ($appUid ?? 'default'));
+        Logger::log('DEBUG', 'App ID: ' . ($credentials['app_id'] ?? 'N/A'));
+        Logger::log('DEBUG', 'Installation ID: ' . ($credentials['installation_id'] ?? 'N/A'));
+        Logger::log('DEBUG', 'Private Key: ' . (isset($credentials['private_key']) ? '[REDACTED]' : 'N/A'));
     }
 }

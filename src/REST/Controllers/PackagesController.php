@@ -35,13 +35,17 @@ final class PackagesController {
         $formattedData = [
             'packages' => array_map(function ($package) {
                 return [
-                    'name' => $package['Name'] ?? '',
-                    'installed' => $package['Version'] ?? '',
+                    'name' => $package['name'] ?? '',
+                    'installed' => $package['version'] ?? '',
                     'github_data' => $package['github_data'] ?? [],
                     'last_updated' => $package['last_updated'] ?? null,
                     'stars' => $package['stars'] ?? 0,
                     'issues' => $package['issues'] ?? 0,
                     'releases' => $package['releases'] ?? [],
+                    'managedBy' => $package['app_slug'] ?? null,
+                    'latest' => $package['latest'] ?? null,       // Add latest field
+                    'is_managed' => isset($package['app_slug']), // Add is_managed field
+                    'status' => $package['status'] ?? 'unknown', // Add status field
                 ];
             }, $data['packages']),
             'unlinked_packages' => $data['unlinked_packages'],
@@ -106,10 +110,12 @@ final class PackagesController {
         $packages = $this->packageService->get_all_packages();
 
         if (empty($packages)) {
-            return new WP_REST_Response(['message' => esc_html__('No packages found.', 'wp2-update')], 404);
+            return $this->format_response([
+                'message' => esc_html__('No packages found.', 'wp2-update')
+            ], 404);
         }
 
-        return new WP_REST_Response(['packages' => $packages], 200);
+        return $this->format_response(['packages' => $packages]);
     }
 
     public function assign_package( WP_REST_Request $request ): WP_REST_Response {
@@ -119,15 +125,15 @@ final class PackagesController {
         try {
             $this->packageService->assign_package_to_app($appId, $repoId);
 
-            return new WP_REST_Response([
-                'success' => true,
+            return $this->format_response([
+                'success' => true, // Ensure success boolean is included
                 'message' => esc_html__('Package assigned successfully.', 'wp2-update'),
-            ], 200);
+            ]);
         } catch ( \Exception $e ) {
             Logger::log('ERROR', 'Failed to assign package: ' . $e->getMessage());
-            return new WP_REST_Response([
-                'success' => false,
-                'error'   => $e->getMessage(),
+            return $this->format_response([
+                'success' => false, // Ensure success boolean is included
+                'error' => $e->getMessage(),
             ], 500);
         }
     }

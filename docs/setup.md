@@ -8,10 +8,14 @@
 5. Activate the plugin.
 
 ## Configuration
-1. Navigate to `WP2 Updates` in the WordPress admin menu.
-2. Click the **Connect to GitHub** button.
-3. Follow the on-screen instructions to authorize the creation of a GitHub App.
-4. Once redirected back to WordPress, the connection will be automatically validated.
+1. Define a persistent encryption key (recommended in `wp-config.php`):
+   ```php
+   define( 'WP2_UPDATE_ENCRYPTION_KEY', 'change-me-to-a-long-random-string' );
+   ```
+2. Navigate to `WP2 Updates` in the WordPress admin menu.
+3. Click the **Connect to GitHub** button.
+4. Follow the on-screen instructions to authorize the creation of a GitHub App.
+5. Once redirected back to WordPress, the connection will be automatically validated.
 
 ## Usage
 - **Sync Packages**: Fetch the latest packages and their releases.
@@ -23,14 +27,14 @@ When GitHub prompts for a manifest during the connection flow, ensure the JSON i
 
 ```json
 {
-  "name": "Example Site Updater",
-  "url": "https://example.com",
+  "name": "Your Site Updater",
+  "url": "https://your-site.com",
   "public": false,
   "callback_urls": [
-    "https://example.com"
+    "https://your-site.com"
   ],
-  "redirect_url": "https://example.com/wp-admin/admin.php?page=wp2-update-github-callback",
-  "setup_url": "https://example.com/wp-admin/admin.php?page=wp2-update",
+  "redirect_url": "https://your-site.com/wp-admin/admin.php?page=wp2-update-github-callback",
+  "setup_url": "https://your-site.com/wp-admin/admin.php?page=wp2-update",
   "setup_on_update": false,
   "default_permissions": {
     "contents": "read",

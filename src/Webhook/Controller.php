@@ -63,7 +63,10 @@ final class Controller {
         foreach ($secretMap as $appId => $secret) {
             $expected_hash = 'sha256=' . hash_hmac('sha256', $payload, $secret);
             if (hash_equals($expected_hash, $signature)) {
-                $matchedApp = $appId;
+                $matchedApp = [
+                    'id' => $appId,
+                    'secret' => $secret,
+                ];
                 break;
             }
         }
@@ -87,7 +90,7 @@ final class Controller {
         // Capture installation events to persist the installation ID once the app is installed.
         if ($event === 'installation' && !empty($data['installation']['id'])) {
             $installationId = (int) $data['installation']['id'];
-            $this->credentialService->update_installation_id($matchedApp, $installationId);
+            $this->credentialService->update_installation_id($matchedApp['id'], $installationId);
             Logger::log('INFO', 'Installation webhook received. Installation ID stored: ' . $installationId);
 
             return new WP_REST_Response(['message' => 'Installation recorded.'], 200);
@@ -95,7 +98,7 @@ final class Controller {
 
         if ($event === 'installation_repositories' && !empty($data['installation']['id'])) {
             $installationId = (int) $data['installation']['id'];
-            $this->credentialService->update_installation_id($matchedApp, $installationId);
+            $this->credentialService->update_installation_id($matchedApp['id'], $installationId);
             Logger::log('INFO', 'Installation repositories webhook received. Installation ID stored: ' . $installationId);
         }
 
@@ -104,7 +107,7 @@ final class Controller {
             Logger::log('INFO', 'Valid release webhook received. Clearing update transients.');
 
             // Fetch managed repositories for the matched app
-            $managedRepositories = $this->credentialService->get_managed_repositories($matchedApp);
+            $managedRepositories = $this->credentialService->get_managed_repositories($matchedApp['id']);
 
             if (empty($managedRepositories)) {
                 Logger::log('WARNING', 'No managed repositories found for app: ' . $matchedApp);
@@ -112,16 +115,11 @@ final class Controller {
             }
 
             // Clear update transients only for managed repositories
-            foreach ($managedRepositories as $repo) {
-                $pluginTransientKey = 'update_plugins_' . md5($repo['slug']);
-                $themeTransientKey = 'update_themes_' . md5($repo['slug']);
+            delete_site_transient('update_plugins');
+            delete_site_transient('update_themes');
 
-                delete_site_transient($pluginTransientKey);
-                delete_site_transient($themeTransientKey);
-            }
-
-            Logger::log('INFO', 'Cleared update transients for managed repositories.');
-            do_action('wp2_update_release_published', $data, $matchedApp['id']);
+            Logger::log('INFO', 'Cleared update transients for managed repositories: ' . implode(', ', $managedRepositories));
+            do_action('wp2_update_release_published', $data, $matchedApp);
         }
 
         // Log unexpected events for debugging purposes.
