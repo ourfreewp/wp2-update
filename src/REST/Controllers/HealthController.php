@@ -2,80 +2,74 @@
 
 namespace WP2\Update\REST\Controllers;
 
+use WP2\Update\Health\Checks\ConnectivityCheck;
+use WP2\Update\Health\Checks\DataIntegrityCheck;
+use WP2\Update\Health\Checks\EnvironmentCheck;
+use WP2\Update\REST\AbstractController;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
-use WP2\Update\Core\GitHub\CredentialService;
-use WP2\Update\Core\GitHub\ConnectionService;
-use WP2\Update\Core\Health\ConnectivityCheck;
-use WP2\Update\Core\Health\DataIntegrityCheck;
-use WP2\Update\Core\Health\AbstractCheck;
-use WP2\Update\Core\Health\EnvironmentCheck;
 
-final class HealthController extends AbstractRestController {
-
-    private CredentialService $credentialService;
-    private ConnectionService $connectionService;
-    private ConnectivityCheck $connectivityCheck;
-    private DataIntegrityCheck $dataIntegrityCheck;
-    private EnvironmentCheck $environmentCheck;
+/**
+ * REST controller for exposing system health status.
+ */
+final class HealthController extends AbstractController {
+    /**
+     * @var array An array of health check instances.
+     */
     private array $healthChecks;
 
     public function __construct(
-        CredentialService $credentialService,
-        ConnectionService $connectionService,
         ConnectivityCheck $connectivityCheck,
         DataIntegrityCheck $dataIntegrityCheck,
-        EnvironmentCheck $environmentCheck,
-        ?string $namespace = null
+        EnvironmentCheck $environmentCheck
     ) {
-        parent::__construct($namespace);
-        $this->credentialService = $credentialService;
-        $this->connectionService = $connectionService;
-        $this->connectivityCheck = $connectivityCheck;
-        $this->dataIntegrityCheck = $dataIntegrityCheck;
-        $this->environmentCheck = $environmentCheck;
-
+        parent::__construct();
         $this->healthChecks = [
-            $this->connectivityCheck,
-            $this->dataIntegrityCheck,
-            $this->environmentCheck,
+            'environment' => $environmentCheck,
+            'connectivity' => $connectivityCheck,
+            'data_integrity' => $dataIntegrityCheck,
         ];
     }
 
+    /**
+     * Registers the routes for this controller.
+     */
     public function register_routes(): void {
-        register_rest_route(
-            $this->namespace,
-            '/health',
-            [
-                'methods'             => WP_REST_Server::READABLE,
-                'callback'            => [ $this, 'get_health_status' ],
-                'permission_callback' => $this->permission_callback(),
-            ]
-        );
-
-        register_rest_route(
-            $this->namespace,
-            '/logs',
-            [
-                'methods'             => WP_REST_Server::READABLE,
-                'callback'            => [ $this, 'get_logs' ],
-                'permission_callback' => $this->permission_callback(),
-            ]
-        );
+        register_rest_route($this->namespace, '/health', [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => [$this, 'get_health_status'],
+            'permission_callback' => $this->permission_callback('wp2_get_health_status'),
+        ]);
     }
 
-    public function get_health_status( WP_REST_Request $request ): WP_REST_Response {
-        $results = array_map(function (AbstractCheck $check) {
-            return $check->run();
-        }, $this->healthChecks);
+    /**
+     * Runs all registered health checks and returns the results.
+     */
+    public function get_health_status(WP_REST_Request $request): WP_REST_Response {
+        $results = [
+            'Environment' => $this->healthChecks['environment']->run(),
+            'GitHub Connectivity' => $this->healthChecks['connectivity']->run(),
+            'Database' => $this->healthChecks['data_integrity']->run(),
+        ];
 
-        return $this->respond($results);
-    }
+        // Group checks by a title for better UI presentation
+        $grouped_results = [
+            [
+                'title' => 'System Checks',
+                'checks' => [
+                    $results['Environment'],
+                    $results['Database'],
+                ],
+            ],
+            [
+                'title' => 'Integration Checks',
+                'checks' => [
+                    $results['GitHub Connectivity'],
+                ],
+            ],
+        ];
 
-    public function get_logs( WP_REST_Request $request ): WP_REST_Response {
-        global $wpdb;
-        $logs = $this->dataIntegrityCheck->check_logs_table($wpdb);
-        return $this->respond($logs);
+        return $this->respond($grouped_results);
     }
 }

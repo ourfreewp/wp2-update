@@ -1,96 +1,67 @@
-// Service helpers for managing packages within the WP2 Update dashboard.
-
 import { api_request } from '../api.js';
-import { updateUnifiedState, unified_state } from '../state/store.js';
-import { Logger } from '../utils.js';
-import { toast } from '../ui/toast.js';
+import { updateState } from '../state/store.js';
+import { logger } from '../utils/logger.js';
+import { NotificationService } from './NotificationService.js';
 
-const normalizePackages = (packages = [], { managed } = { managed: false }) => {
-	return packages
-		.filter(pkg => pkg && typeof pkg === 'object')
-		.map(pkg => ({
-			name: pkg.name ?? pkg.title ?? 'Unknown Package',
-			version: pkg.version ?? pkg.installed ?? '',
-			repo: pkg.repo ?? pkg.repository ?? '',
-			status: pkg.status ?? 'unknown',
-			app_id: pkg.app_id ?? pkg.app_uid ?? null,
-			installed: pkg.installed ?? pkg.version ?? '',
-			latest: pkg.latest ?? pkg.github_data?.latest_release ?? '',
-			is_managed: managed ? true : Boolean(pkg.is_managed ?? pkg.app_id ?? pkg.app_uid),
-			last_sync: pkg.last_sync ?? pkg.lastChecked ?? pkg.last_checked ?? '',
-			sync_log: pkg.sync_log ?? pkg.syncLog ?? '',
-			...pkg,
-		}));
-};
+export class PackageService {
+    /**
+     * Fetches all packages from the backend.
+     */
+    async fetchPackages() {
+        try {
+            const response = await api_request('packages', { method: 'GET' });
+            const { packages, unlinked_packages } = response?.data || {};
+            updateState({ packages: [...(packages || []), ...(unlinked_packages || [])] });
+        } catch (error) {
+            logger.error('Failed to fetch packages:', error);
+        }
+    }
 
-const persistPackagesToState = (packages = [], unlinkedPackages = []) => {
-	const normalizedManaged = normalizePackages(packages, { managed: true });
-	const normalizedUnlinked = normalizePackages(unlinkedPackages).map(pkg => ({
-		...pkg,
-		is_managed: false,
-		app_id: null,
-	}));
+    /**
+     * Triggers a sync of all packages with GitHub.
+     */
+    async syncPackages() {
+        updateState({ isProcessing: true });
+        try {
+            await api_request('packages/sync', { method: 'POST' });
+            await this.fetchPackages();
+            NotificationService.showSuccess('Packages synced successfully.');
+        } catch (error) {
+            logger.error('Failed to sync packages:', error);
+        } finally {
+            updateState({ isProcessing: false });
+        }
+    }
 
-	const combined = [...normalizedManaged];
-	normalizedUnlinked.forEach(pkg => {
-		if (!combined.some(existing => existing.repo === pkg.repo)) {
-			combined.push(pkg);
-		}
-	});
+    /**
+     * Fetches release notes for a specific package.
+     * @param {string} packageRepo - The repository slug of the package.
+     * @returns {Promise<string|null>} The release notes HTML or null on error.
+     */
+    async getReleaseNotes(packageRepo) {
+        try {
+            const response = await api_request(`packages/${packageRepo}/release-notes`);
+            return response.notes;
+        } catch (error) {
+            logger.error(`Error fetching release notes for ${packageRepo}:`, error);
+            return null;
+        }
+    }
 
-	updateUnifiedState({
-		allPackages: combined,
-		packages: combined,
-		unlinkedPackages: normalizedUnlinked,
-	});
-
-	return {
-		packages: normalizedManaged,
-		unlinkedPackages: normalizedUnlinked,
-	};
-};
-
-export const PackageService = {
-	async fetchPackages() {
-		try {
-			Logger.info('Fetching packages from the backend...');
-			const response = await api_request('packages/sync', { method: 'GET' });
-			Logger.info('Packages fetched:', response);
-			return persistPackagesToState(response?.packages, response?.unlinked_packages);
-		} catch (error) {
-			Logger.error('Failed to fetch packages', error);
-			toast('Failed to fetch packages. Please try again.', 'error');
-			throw error;
-		}
-	},
-
-	async assignPackage(repoId, appId) {
-		try {
-			await api_request('packages/assign', {
-				method: 'POST',
-				body: { repo_id: repoId, app_id: appId },
-			});
-			return this.fetchPackages();
-		} catch (error) {
-			Logger.error('Failed to assign package to app', error);
-			toast('Failed to assign package. Please try again.', 'error');
-			throw error;
-		}
-	},
-
-	async unassignPackage(repoId) {
-		try {
-			await api_request(`packages/${encodeURIComponent(repoId)}/unassign`, { method: 'POST' });
-			return this.fetchPackages();
-		} catch (error) {
-			Logger.error('Failed to unassign package', error);
-			toast('Failed to unassign package. Please try again.', 'error');
-			throw error;
-		}
-	},
-
-	getPackageByRepo(repo) {
-		const { allPackages = [], unlinkedPackages = [] } = unified_state.get();
-		return [...allPackages, ...unlinkedPackages].find(pkg => pkg.repo === repo);
-	},
-};
+    /**
+     * Toggles the auto-update setting for a package.
+     * @param {string} packageRepo - The repository slug of the package.
+     * @param {boolean} isEnabled - The new auto-update status.
+     */
+    async toggleAutoUpdate(packageRepo, isEnabled) {
+        try {
+            await api_request(`packages/${packageRepo}/auto-update`, {
+                method: 'POST',
+                body: JSON.stringify({ auto_update: isEnabled }),
+            });
+            NotificationService.showSuccess(`Auto-update ${isEnabled ? 'enabled' : 'disabled'}.`);
+        } catch (error) {
+            logger.error(`Error toggling auto-update for ${packageRepo}:`, error);
+        }
+    }
+}

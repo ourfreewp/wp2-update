@@ -2,123 +2,145 @@
 
 namespace WP2\Update;
 
-use WP2\Update\Admin\Init as AdminInit;
-use WP2\Update\Core\API\CredentialService;
-use WP2\Update\Core\API\GitHubClientFactory;
-use WP2\Update\Core\API\ReleaseService;
-use WP2\Update\Core\API\RepositoryService;
-use WP2\Update\Core\Updates\PackageService;
-use WP2\Update\Core\API\ConnectionService;
-use WP2\Update\Core\Updates\PluginUpdater;
-use WP2\Update\Core\Updates\ThemeUpdater;
-use WP2\Update\Core\Updates\PackageFinder;
-use WP2\Update\Core\AppRepository;
-use WP2\Update\REST\Controllers\CredentialsController;
-use WP2\Update\REST\Controllers\PackagesController;
+// Admin
+use WP2\Update\Admin\Assets;
+use WP2\Update\Admin\Data;
+use WP2\Update\Admin\Menu;
+use WP2\Update\Admin\Screens;
+
+// CLI
+use WP2\Update\CLI\Commands;
+
+// Data
+use WP2\Update\Data\ConnectionData;
+
+// Database
+use WP2\Update\Database\Schema;
+
+// Health
+use WP2\Update\Health\Checks\ConnectivityCheck;
+use WP2\Update\Health\Checks\DataIntegrityCheck;
+use WP2\Update\Health\Checks\EnvironmentCheck;
+
+// REST
 use WP2\Update\REST\Controllers\AppsController;
-use WP2\Update\REST\Controllers\ConnectionStatusController;
-use WP2\Update\REST\Controllers\NonceController;
+use WP2\Update\REST\Controllers\ConnectionController;
+use WP2\Update\REST\Controllers\CredentialsController;
 use WP2\Update\REST\Controllers\HealthController;
+use WP2\Update\REST\Controllers\LogController;
+use WP2\Update\REST\Controllers\NonceController;
+use WP2\Update\REST\Controllers\PackagesController;
 use WP2\Update\REST\Router;
-use WP2\Update\Webhook\Controller as WebhookController;
+
+// Services
+use WP2\Update\Services\Github\AppService;
+use WP2\Update\Services\Github\ClientService;
+use WP2\Update\Services\Github\ConnectionService;
+use WP2\Update\Services\Github\ReleaseService;
+use WP2\Update\Services\Github\RepositoryService;
+use WP2\Update\Services\PackageService;
+
+// Updates
+use WP2\Update\Updates\PluginUpdater;
+use WP2\Update\Updates\ThemeUpdater;
+
+// Utils
+use WP2\Update\Utils\Encryption;
+use WP2\Update\Utils\JWT;
 use WP2\Update\Utils\Logger;
+
+// Webhooks
+use WP2\Update\Webhooks\WebhookController;
 
 /**
  * Main bootstrap class for the plugin.
+ * Initializes all services and registers hooks.
  */
 final class Init {
+
     /**
-     * Entry point called from the plugin loader.
+     * Kicks off the plugin initialization.
      */
     public static function boot(): void {
         $instance = new self();
-        $instance->register_hooks();
+        // Hook into 'plugins_loaded' to ensure all WordPress functions are available.
+        add_action('plugins_loaded', [$instance, 'initialize_services']);
+        // Hook for plugin activation to set up necessary database tables.
+        register_activation_hook(WP2_UPDATE_PLUGIN_FILE, [Schema::class, 'create_tables']);
     }
 
     /**
-     * Register WordPress hooks for the plugin.
-     */
-    private function register_hooks(): void {
-        add_action('plugins_loaded', [static::class, 'load_textdomain']);
-        add_action('init', [$this, 'initialize_services']);
-    }
-
-    /**
-     * Loads the plugin textdomain for translations.
-     */
-    public static function load_textdomain(): void {
-        load_plugin_textdomain('wp2-update', false, dirname(WP2_UPDATE_PLUGIN_FILE) . '/languages');
-    }
-
-    /**
-     * Instantiate all services and register their hooks.
-     * This acts as a simple dependency injection container.
+     * Instantiates and wires up all the plugin's services and registers hooks.
      */
     public function initialize_services(): void {
+        // --- Low-Level & Utility Services ---
+        $encryptionKey = defined('WP2_UPDATE_ENCRYPTION_KEY') ? WP2_UPDATE_ENCRYPTION_KEY : (defined('AUTH_KEY') ? AUTH_KEY : wp_salt());
+        $encryptionService = new Encryption($encryptionKey);
+        $jwtService = new JWT();
+        $logger = new Logger();
 
-        $appRepository     = new AppRepository();
-        $repositoryService = new RepositoryService($appRepository, new GitHubClientFactory());
-        $credentialService = new CredentialService($appRepository, $repositoryService);
-        $clientFactory     = new GitHubClientFactory();
+        // --- Data Layer ---
+        $connectionData = new ConnectionData();
 
-        $clientFactory->setCredentialService($credentialService);
-        $repositoryService->setClientFactory($clientFactory);
+        // --- GitHub Service Layer (inter-dependent) ---
+        $clientService = new ClientService($jwtService);
+        $repositoryService = new RepositoryService($connectionData, $clientService);
+        $connectionService = new ConnectionService($connectionData, $repositoryService, $encryptionService, $jwtService);
+        $clientService->setConnectionService($connectionService); // Circular dependency resolution
+        $releaseService = new ReleaseService($clientService);
 
-        $releaseService    = new ReleaseService($clientFactory);
-        $packageFinder     = new PackageFinder($repositoryService, null, [$releaseService, 'get_releases']);
-        $connectionService = new ConnectionService($clientFactory, $credentialService, $appRepository, $repositoryService, $packageFinder);
-        $packageFinder->setConnectionService($connectionService);
-        $packageService    = new PackageService($repositoryService, $releaseService, $clientFactory, $packageFinder);
+        // --- Application Service Layer ---
+        $packageService = new PackageService($repositoryService, $releaseService, $clientService);
+        $appService = new AppService($clientService, $connectionService, $repositoryService, $packageService);
 
-        // REST API Controllers
-        $credentialsController      = new CredentialsController($credentialService);
-        $packagesController         = new PackagesController($packageService);
-        $appsController             = new AppsController($credentialService, $connectionService);
-        $connectionStatusController = new ConnectionStatusController($connectionService, $credentialService, $packageFinder);
-        $nonceController            = new NonceController();
-        $healthController           = new HealthController($credentialService, $connectionService);
-        $modularControllers         = [
-            $appsController,
-            $connectionStatusController,
-            $nonceController,
-            $healthController,
-        ];
-
-        // Routers
-        if (!class_exists(Router::class)) {
-            $router_file = WP2_UPDATE_PLUGIN_DIR . '/src/REST/Router.php';
-            if (file_exists($router_file)) {
-                require_once $router_file;
-            } else {
-                Logger::log('CRITICAL', 'REST Router class missing. Expected at: ' . $router_file);
-                return;
-            }
-        }
-
-        // Instantiate the Router
-        try {
-            $router = new Router($credentialsController, $packagesController, $healthController, $modularControllers);
-            add_action('rest_api_init', [$router, 'register_routes']);
-        } catch (\Exception $e) {
-            Logger::log('CRITICAL', 'Failed to initialize Router: ' . $e->getMessage());
-            return;
-        }
-
-        // Webhook Controller
-        $webhookController = new WebhookController($credentialService);
-        add_action('rest_api_init', [$webhookController, 'register_route']);
-
-        // Updaters (Theme & Plugin)
-        $pluginUpdater = new PluginUpdater($packageFinder, $releaseService, $clientFactory, $repositoryService);
-        $themeUpdater  = new ThemeUpdater($packageFinder, $releaseService, $clientFactory, $repositoryService);
+        // --- WordPress Update Integration ---
+        $pluginUpdater = new PluginUpdater($packageService, $releaseService, $clientService, $repositoryService);
+        $themeUpdater = new ThemeUpdater($packageService, $releaseService, $clientService, $repositoryService);
         $pluginUpdater->register_hooks();
         $themeUpdater->register_hooks();
 
-        // Admin Functionality (only loaded in the admin area)
+        // --- Presentation Layers ---
+
+        // REST API
+        $controllers = [
+            new AppsController($connectionService),
+            new ConnectionController($connectionService),
+            new CredentialsController($connectionService),
+            new HealthController(
+                new ConnectivityCheck($connectionService),
+                new DataIntegrityCheck(),
+                new EnvironmentCheck()
+            ),
+            new LogController(),
+            new NonceController(),
+            new PackagesController($packageService),
+        ];
+        $router = new Router($controllers);
+        add_action('rest_api_init', [$router, 'register_routes']);
+
+        // Webhooks
+        $webhookController = new WebhookController($connectionService);
+        add_action('rest_api_init', [$webhookController, 'register_route']);
+
+        // Admin Area
         if (is_admin()) {
-            $adminInit = new AdminInit($connectionService, $packageService, $healthController);
-            $adminInit->register_hooks();
+            $data = new Data($packageService, $connectionService);
+            $healthController = new HealthController(
+                new ConnectivityCheck($connectionService),
+                new DataIntegrityCheck(),
+                new EnvironmentCheck()
+            );
+            $screens = new Screens($healthController, $data);
+            $menu = new Menu($screens);
+            $assets = new Assets($data, $logger);
+
+            add_action('admin_menu', [$menu, 'register_menu']);
+            $assets->register_hooks();
         }
 
+        // CLI
+        if (defined('WP_CLI') && WP_CLI) {
+            Commands::register($packageService);
+        }
     }
 }

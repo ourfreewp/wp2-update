@@ -2,10 +2,9 @@
 
 namespace Tests\Doubles;
 
-use Github\Client;
-use WP2\Update\Core\API\GitHubClientFactory;
+use WP2\Update\Services\Github\ClientService;
 
-class FakeGitHubClientFactory extends GitHubClientFactory
+class FakeGitHubClientFactory extends ClientService
 {
     public FakeGitHubClient $client;
 
@@ -14,8 +13,7 @@ class FakeGitHubClientFactory extends GitHubClientFactory
         $this->client = $client;
     }
 
-    public function getInstallationClient(?string $appUid = null, bool $forceRefresh = false): ?Client
-    {
-        return $this->client;
+    public function getInstallationClient(?string $appUid = null, bool $forceRefresh = false): ?\Github\Client {
+        return new \Github\Client(); // Returning a compatible instance.
     }
 }

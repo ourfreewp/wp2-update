@@ -7,7 +7,7 @@ This document provides a high-level overview of the internal architecture of the
 The plugin is organized into several key directories under the `/src` folder, each with a distinct responsibility, following PSR-4 autoloading standards.
 
 -   **/src/Core**: Contains the primary business logic of the plugin.
-    -   **API**: Handles all communication with the GitHub API, including authentication (`GitHubClientFactory`, `CredentialService`), connection management (`ConnectionService`), and fetching release data (`ReleaseService`, `RepositoryService`).
+    -   **API**: Handles all communication with the GitHub API, including authentication (`ClientService`, `CredentialService`), connection management (`ConnectionService`), and fetching release data (`ReleaseService`, `RepositoryService`).
     -   **Updates**: Manages the WordPress update process. It finds packages (`PackageFinder`), hooks into the WordPress update transients (`PluginUpdater`, `ThemeUpdater`), and provides a service layer (`PackageService`) for managing package actions.
     -   **AppRepository**: A repository class responsible for persisting and retrieving GitHub App definitions from the WordPress options table.
 

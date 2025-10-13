@@ -3,12 +3,12 @@
 namespace WP2\Update\CLI;
 
 use WP_CLI;
-use WP2\Update\Core\Updates\PackageService;
+use WP2\Update\Services\PackageService;
 
 /**
  * Handles WP-CLI commands for the WP2 Update plugin.
  */
-class Commands {
+class Commands extends \WP_CLI_Command {
 
     private PackageService $packageService;
 
@@ -17,97 +17,128 @@ class Commands {
     }
 
     /**
-     * Registers WP-CLI commands.
+     * Registers all WP-CLI commands for this plugin.
+     * @param PackageService $packageService The instantiated package service.
      */
-    public static function register(): void {
-        WP_CLI::add_command('wp2-update sync', [__CLASS__, 'sync_packages']);
-        WP_CLI::add_command('wp2-update update', [__CLASS__, 'update_package']);
-        WP_CLI::add_command('wp2-update rollback', [__CLASS__, 'rollback_package']);
-        WP_CLI::add_command('wp2-update app list', [__CLASS__, 'list_apps']);
+    public static function register(PackageService $packageService): void {
+        WP_CLI::add_command(\WP2\Update\Config::TEXT_DOMAIN, new self($packageService));
     }
 
     /**
-     * Sync packages with GitHub repositories.
+     * Forces a synchronization of all managed packages with their GitHub repositories.
      *
      * ## EXAMPLES
      *
-     *     wp wp2-update sync
+     * wp wp2-update sync
      *
      * @when after_wp_load
      */
-    public static function sync_packages(): void {
-        WP_CLI::success('Packages synced successfully.');
-    }
+    public function sync(): void {
+        WP_CLI::line('Starting package synchronization...');
+        try {
+            $result = $this->packageService->get_all_packages_grouped();
+            $managed_count = count($result['managed']);
+            $unlinked_count = count($result['unlinked']);
 
-    /**
-     * Update a specific package.
-     *
-     * ## OPTIONS
-     *
-     * <repo_slug>
-     * : The repository slug of the package to update.
-     *
-     * ## EXAMPLES
-     *
-     *     wp wp2-update update my-repo/my-package
-     *
-     * @when after_wp_load
-     */
-    public static function update_package(array $args): void {
-        $repoSlug = $args[0] ?? '';
-        if (empty($repoSlug)) {
-            WP_CLI::error('Repository slug is required.');
+            WP_CLI::success("Synchronization complete. Found {$managed_count} managed and {$unlinked_count} unlinked packages.");
+
+            if (!empty($result['unlinked'])) {
+                WP_CLI::warning('The following packages have a GitHub Update URI but could not be matched to a repository in your connected apps:');
+                $unlinked_items = array_map(function($pkg) {
+                    return ['name' => $pkg['name'], 'repo' => $pkg['repo']];
+                }, $result['unlinked']);
+                WP_CLI\Utils\format_items('table', $unlinked_items, ['name', 'repo']);
+            }
+        } catch (\Exception $e) {
+            WP_CLI::error('Failed to sync packages: ' . $e->getMessage());
         }
-
-        WP_CLI::success("Package {$repoSlug} updated successfully.");
     }
 
     /**
-     * Rollback a specific package to a previous version.
+     * Updates a specific package to the latest available release.
      *
      * ## OPTIONS
      *
      * <repo_slug>
-     * : The repository slug of the package to rollback.
+     * : The repository slug of the package to update (e.g., 'owner/repo').
+     *
+     * ## EXAMPLES
+     *
+     * wp wp2-update update owner/my-plugin
+     *
+     * @when after_wp_load
+     */
+    public function update(array $args): void {
+        [$repo_slug] = $args;
+        WP_CLI::line("Attempting to update package: {$repo_slug}");
+
+        $success = $this->packageService->update_package($repo_slug);
+
+        if ($success) {
+            WP_CLI::success("Package '{$repo_slug}' updated successfully.");
+        } else {
+            WP_CLI::error("Failed to update package '{$repo_slug}'. Check logs for details.");
+        }
+    }
+
+    /**
+     * Rolls back a package to a specific version.
+     *
+     * ## OPTIONS
+     *
+     * <repo_slug>
+     * : The repository slug of the package to roll back (e.g., 'owner/repo').
      *
      * --version=<version>
-     * : The version to rollback to.
+     * : The exact version tag to roll back to (e.g., '1.2.0').
      *
      * ## EXAMPLES
      *
-     *     wp wp2-update rollback my-repo/my-package --version=1.0.0
+     * wp wp2-update rollback owner/my-plugin --version=1.1.0
      *
      * @when after_wp_load
      */
-    public static function rollback_package(array $args, array $assocArgs): void {
-        $repoSlug = $args[0] ?? '';
-        $version = $assocArgs['version'] ?? '';
+    public function rollback(array $args, array $assoc_args): void {
+        [$repo_slug] = $args;
+        $version = $assoc_args['version'] ?? null;
 
-        if (empty($repoSlug) || empty($version)) {
-            WP_CLI::error('Repository slug and version are required.');
+        if (!$version) {
+            WP_CLI::error('The --version flag is required for rollback.');
+            return;
         }
 
-        WP_CLI::success("Package {$repoSlug} rolled back to version {$version} successfully.");
+        WP_CLI::line("Attempting to roll back '{$repo_slug}' to version '{$version}'...");
+
+        $success = $this->packageService->rollback_package($repo_slug, $version);
+
+        if ($success) {
+            WP_CLI::success("Package '{$repo_slug}' was successfully rolled back to version '{$version}'.");
+        } else {
+            WP_CLI::error("Failed to roll back package '{$repo_slug}'. Check logs for details.");
+        }
     }
 
     /**
-     * List all GitHub Apps.
+     * Clears all logs from the WP2 Update log table.
      *
      * ## EXAMPLES
      *
-     *     wp wp2-update app list
+     * wp wp2-update clear_logs
      *
      * @when after_wp_load
      */
-    public static function list_apps(): void {
-        WP_CLI::success('List of apps displayed successfully.');
+    public function clear_logs(): void {
+        global $wpdb;
+        $table_name = $wpdb->prefix . \WP2\Update\Config::LOGS_TABLE_NAME;
+
+        WP_CLI::confirm('Are you sure you want to clear all WP2 Update logs?');
+
+        $rows_deleted = $wpdb->query("TRUNCATE TABLE {$table_name}");
+
+        if ($rows_deleted === false) {
+            WP_CLI::error('Failed to clear logs.');
+        } else {
+            WP_CLI::success("All logs have been cleared successfully.");
+        }
     }
 }
-
-// Ensure WP-CLI is properly included.
-if (!class_exists('WP_CLI')) {
-    return;
-}
-
-// Register the commands.
-Commands::register();

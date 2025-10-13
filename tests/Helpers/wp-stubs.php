@@ -1,5 +1,7 @@
 <?php
 
+namespace Tests\Helpers;
+
 use Tests\Helpers\WordPressStubs;
 
 if (!defined('HOUR_IN_SECONDS')) {
@@ -359,7 +361,7 @@ if (!function_exists('is_admin')) {
 if (!function_exists('wp_die')) {
     function wp_die(string $message = ''): void
     {
-        throw new RuntimeException($message ?: 'wp_die called');
+        throw new \RuntimeException($message ?: 'wp_die called'); // Use global RuntimeException
     }
 }
 
@@ -368,7 +370,7 @@ if (!function_exists('wp_tempnam')) {
     {
         $temp = tempnam(sys_get_temp_dir(), 'wp2');
         if (false === $temp) {
-            throw new RuntimeException('Failed to create temp file.');
+            throw new \RuntimeException('Failed to create temp file.'); // Use global RuntimeException
         }
 
         return $temp;

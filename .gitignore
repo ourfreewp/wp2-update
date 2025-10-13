@@ -1,5 +1,11 @@
-vendor
-node_modules
+vendor/
+node_modules/
 .vscode/sftp.json
 dist/
 wp2-update.zip
+# Ignore additional build/config files
+.env
+*.log
+*.lock
+*.dist
+*.cache

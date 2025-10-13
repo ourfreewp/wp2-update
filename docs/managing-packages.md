@@ -1,45 +1,38 @@
 # Managing Your Packages
 
-Once you've connected a GitHub App, the WP2 Update dashboard becomes your central hub for managing your GitHub-hosted plugins and themes.
+The WP2 Update dashboard gives you a complete overview of all your GitHub-hosted plugins and themes, allowing for seamless version control.
 
 ## Viewing Package Status
 
-The main "Packages" tab gives you a complete overview of all your managed packages. For each package, you can see:
+The main **Packages** tab provides status for all items containing a valid Update URI header:
 
--   **Package**: The name of the plugin or theme.
--   **Type**: Whether it's a "plugin" or a "theme."
--   **Installed**: The version currently installed on your site.
--   **Latest**: The latest version available on GitHub.
--   **Status**: The current status of the package. This can be:
-    -   `Up to date`: The installed version is the latest version.
-    -   `Update available`: A new version is available on GitHub.
-    -   `Unmanaged`: The package has an "Update URI" but is not associated with any of your connected GitHub Apps.
+- **Up to date**: The installed version matches the latest release on GitHub.
+- **Update available**: A new version is available. Click **Update** to install it.
+- **Unmanaged**: The package is installed locally but is not assigned to any of your connected GitHub Apps.
 
+## Updating and Rollback
 
+All upgrade and rollback actions use the secure WordPress Upgrader system, ensuring file permissions and transports are handled correctly.
 
-## Updating a Package
+| Action               | How to Execute                                                                                                                                      |
+|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Update a Package** | Click the **Update** button. The plugin downloads the latest ZIP (using secure token authorization) and installs it.                                |
+| **Rollback a Package** | Use the **Actions** dropdown menu and select **Rollback**. In the modal, select the desired previous version from the list and click **Confirm Rollback**. |
 
-When a new version of a package is available, an "Update" button will appear in the actions column.
+## Assigning an Unmanaged Package
 
-1.  To update the package, simply click the **Update** button.
-2.  A confirmation modal will appear. Click **Confirm Update** to proceed.
-3.  The plugin will download the new version from GitHub and install it. A success message will be displayed upon completion.
+Packages marked as **Unmanaged** cannot receive updates until they are linked to a GitHub App that has permission to access their repository.
 
-## Rolling Back a Package
+1. Click the **Assign App** button for the unmanaged package.
+2. Select the connected GitHub App from the dropdown list that has access to the package's repository.
+3. Click **Assign App**.
 
-If an update causes an issue, you can easily roll back to a previous version.
+The package is now managed and ready for synchronization.
 
-1.  In the actions column for the package, click the **Rollback** button.
-2.  A modal will open with a dropdown list of previously published releases.
-3.  Select the version you want to roll back to and click **Confirm Rollback**.
-4.  The plugin will download and install the selected version, overwriting the current one.
+## Creating a New Package
 
-## Assigning a Package to an App
+Use the **Create Package** button to launch the wizard:
 
-If a package is listed as "Unmanaged," you'll need to assign it to one of your connected GitHub Apps.
-
-1.  Click the **Assign App** button in the actions column for the unmanaged package.
-2.  In the modal that opens, select the appropriate GitHub App from the dropdown list.
-3.  Click **Assign App**.
-
-The package will now be managed by the selected app, and the plugin will be able to fetch updates for it.
+1. **Select Type**: Choose whether to create a new Plugin or Theme based on a starter template.
+2. **Configure**: Provide the package name and target repository name.
+3. **Confirm**: The plugin creates the new repository on GitHub and registers it immediately within your WordPress installation.

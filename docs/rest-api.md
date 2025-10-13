@@ -1,140 +1,49 @@
 # WP2 Update REST API Documentation
 
-The WP2 Update plugin exposes a REST API to manage its functionality from the front-end interface. All endpoints are under the `/wp2-update/v1/` namespace.
+The WP2 Update plugin exposes a secure REST API for its single-page application frontend.
 
-**Authentication**: All endpoints require the user to be authenticated and have the `manage_options` capability. Requests must include a valid WordPress nonce, sent as the `X-WP-Nonce` header.
-
----
-
-### Apps
-
-#### List Apps
-
--   **Endpoint**: `GET /wp2-update/v1/apps`
--   **Description**: Retrieves a list of all configured GitHub Apps.
--   **Parameters**: None.
--   **Example Response**:
-    ```json
-    {
-      "success": true,
-      "data": {
-        "apps": [
-          {
-            "id": "app-uuid-123",
-            "name": "My Production App",
-            "status": "installed",
-            "account_type": "organization",
-            "package_count": 5
-          }
-        ]
-      }
-    }
-    ```
+- **Namespace:** All endpoints are under `/wp2-update/v1/`.
+- **Authentication:** All endpoints require a logged-in user with the `manage_options` capability. Requests must include a valid `X-WP-Nonce` header. The system uses the generic `wp_rest` nonce for all authenticated calls.
 
 ---
 
-#### Create App
+## App Management (`/apps`)
 
--   **Endpoint**: `POST /wp2-update/v1/apps`
--   **Description**: Creates a new GitHub App configuration.
--   **Parameters**:
-    -   `name` (string, required): The display name for the app.
--   **Example Request**:
-    ```json
-    {
-      "name": "New Staging App"
-    }
-    ```
--   **Example Response**:
-    ```json
-    {
-      "success": true,
-      "data": {
-        "message": "App created successfully.",
-        "app": {
-          "id": "new-app-uuid-456",
-          "name": "New Staging App",
-          "status": "pending",
-          "account_type": "user",
-          "package_count": 0
-        }
-      }
-    }
-    ```
+| Resource      | Method | Endpoint             | Description                                                                 |
+|---------------|--------|----------------------|-----------------------------------------------------------------------------|
+| App List      | GET    | `/apps`              | Retrieves summaries of all configured GitHub Apps.                          |
+| App Creation  | POST   | `/apps`              | Creates a new placeholder app record before the GitHub manifest flow begins (internal use). |
+| App Deletion  | DELETE | `/apps/<id>`         | Deletes the specified app record and clears related cached tokens.           |
 
 ---
 
-### Packages
+## Package Actions (`/packages`)
 
-#### Sync Packages
-
--   **Endpoint**: `GET /wp2-update/v1/packages/sync`
--   **Description**: Scans the WordPress installation for managed plugins and themes and synchronizes their status with the connected GitHub repositories.
--   **Parameters**: None.
--   **Example Response**:
-    ```json
-    {
-      "success": true,
-      "data": {
-        "packages": [
-          {
-            "name": "My Awesome Plugin",
-            "repo": "owner/my-awesome-plugin",
-            "installed": "1.0.0",
-            "latest": "1.1.0",
-            "status": "outdated",
-            "is_managed": true
-          }
-        ],
-        "unlinked_packages": []
-      }
-    }
-    ```
+| Resource      | Method     | Endpoint                                 | Description                                                                |
+|---------------|------------|------------------------------------------|----------------------------------------------------------------------------|
+| Package List  | GET        | `/packages`                              | Retrieves all local packages grouped by management status.                  |
+| Full Sync     | GET/POST   | `/packages/sync`                         | Forces a full synchronization of all packages with GitHub release data.     |
+| Assign App    | POST       | `/packages/assign`                       | Links an unmanaged package to a specific GitHub App ID.                     |
+| Action Handler| POST       | `/packages/action`                       | Executes an action (update, rollback, or install) on a specified package/version. |
+| Release Notes | GET        | `/packages/<repo_slug>/release-notes`    | Fetches the full list of release notes (Markdown body) for a repository.    |
+| Release Channel| POST      | `/packages/<repo_slug>/release-channel`  | Updates the version channel (e.g., stable or beta) for a package.           |
 
 ---
 
-#### Manage a Package
+## Configuration & Credentials (`/credentials`)
 
--   **Endpoint**: `POST /wp2-update/v1/packages/manage`
--   **Description**: Performs an action on a package, such as updating, installing, or rolling back.
--   **Parameters**:
-    -   `action` (string, required): The action to perform. Can be `install`, `update`, or `rollback`.
-    -   `repo_slug` (string, required): The repository slug of the package (e.g., `owner/repo`).
-    -   `version` (string, required): The version to install or roll back to.
--   **Example Request**:
-    ```json
-    {
-      "action": "update",
-      "repo_slug": "owner/my-awesome-plugin",
-      "version": "1.1.0"
-    }
-    ```
--   **Example Response**:
-    ```json
-    {
-      "success": true,
-      "data": {
-        "message": "Package managed successfully."
-      }
-    }
-    ```
+| Resource      | Method | Endpoint                       | Description                                                                |
+|---------------|--------|-------------------------------|----------------------------------------------------------------------------|
+| Manifest      | POST   | `/credentials/generate-manifest` | Initiates the GitHub App creation flow and returns the manifest setup URL.  |
+| Exchange Code | POST   | `/credentials/exchange-code`     | Exchanges the temporary GitHub code for permanent credentials (used after GitHub callback). |
+| Manual Setup  | POST   | `/credentials/manual-setup`      | Allows saving App ID, Installation ID, and Private Key manually.            |
 
 ---
 
-### Connection
+## Health & Logging (`/logs`)
 
-#### Get Connection Status
+| Resource      | Method | Endpoint         | Description                                                                |
+|---------------|--------|------------------|----------------------------------------------------------------------------|
+| Health Status | GET    | `/health`        | Runs all system, connectivity, and data integrity checks.                   |
+| Live Stream   | GET    | `/logs/stream`   | Server-Sent Events (SSE) endpoint providing real-time, incremental log messages. |
 
--   **Endpoint**: `GET /wp2-update/v1/connection-status`
--   **Description**: Checks the connection status to GitHub for the configured app.
--   **Parameters**: None.
--   **Example Response**:
-    ```json
-    {
-      "success": true,
-      "data": {
-        "status": "installed",
-        "message": "Connection to GitHub succeeded."
-      }
-    }
-    ```

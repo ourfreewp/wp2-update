@@ -1,52 +1,35 @@
 # Troubleshooting Common Issues
 
-This guide provides solutions to some of the most common issues you might encounter while using the WP2 Update plugin.
+The **Health** tab provides the primary tools for diagnostics. Use the system checks and the **Live Log Stream** to identify issues related to connectivity, file operations, and security.
 
-### Connection to GitHub is failing.
+## Live Log Stream (Health Tab)
 
-If you're having trouble connecting to GitHub, here are a few things to check:
+This stream displays real-time activity, providing crucial context for errors:
 
--   **Incorrect Encryption Key**: If you've had to manually re-enter your credentials, make sure you're using the exact same encryption key you created when you first set up the app.
--   **GitHub App Permissions**: Ensure that your GitHub App has the necessary permissions. It needs read-access to "Contents" and "Metadata" for the repositories it manages.
--   **Webhook Issues**: Go to your GitHub App's settings on GitHub and check the "Webhooks" tab. Make sure the webhook URL is correct and that there are no recent delivery errors.
+- **[SECURITY]**: Failed webhook signature checks, unauthorized REST API access, or invalid nonce use.
+- **[ERROR]**: Indicates API connection failures, issues decrypting keys, or failed file system operations during an update/rollback.
+- **[INFO]**: Shows successful synchronization, processed webhooks, and completed actions.
 
-### A plugin or theme isn't showing up in the dashboard.
+## Common Issues
 
-For a plugin or theme to be managed by WP2 Update, it must have a specific header in its main file.
+| Issue                   | Cause & Solution                                                                                                                                                                                                 |
+|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Package Not Showing** | **Missing Header**: The plugin/theme main file must have an `Update URI: owner/repository-name` header pointing to the GitHub repository slug.<br>After adding, click **Sync All**.                             |
+| **Update Not Appearing**| **Caching/Release Format**: Click **Sync All** to force transient clearing.<br>Ensure the GitHub release is **Published** (not a draft) and has a version tag higher than the installed version.                |
+| **Connection Failed**   | **App Permissions**: Verify your GitHub App has read-access to "Contents" and "Metadata" for all managed repositories.<br>Check the **Webhooks** tab on GitHub for recent delivery failures.                     |
+| **Rollback Failed (File Error)** | **Server Permissions**: The WordPress server often lacks write permissions for file operations.<br>Ensure the WordPress install can create/modify files.<br>Check the `[ERROR]` logs for specific file operation failures. |
+| **API Requests Fail**   | **Nonce Issue**: If multiple tabs are open, your nonce may expire.<br>Try navigating between tabs, or check the console for nonce errors.<br>(Note: Our internal API check handles generic REST nonces, but external tools may require action-specific ones). |
 
--   **For plugins**: The main plugin file (e.g., `my-plugin.php`) must have an `Update URI` header that points to the GitHub repository slug.
-    ```php
-    /*
-     * Plugin Name: My Awesome Plugin
-     * ...
-     * Update URI: owner/my-awesome-plugin
-     */
-    ```
--   **For themes**: The `style.css` file must have an `Update URI` header.
-    ```css
-    /*
-     * Theme Name: My Awesome Theme
-     * ...
-     * Update URI: owner/my-awesome-theme
-     */
-    ```
+## WP-CLI Debugging
 
-After adding the header, go to the WP2 Updates dashboard and click the **Sync All** button to force a refresh.
+Use the following commands for quick diagnostics:
 
-### An update is available on GitHub, but it's not showing in WordPress.
+```sh
+wp wp2-update sync
+```
+_Forces a scan of all local packages and synchronizes their status with GitHub._
 
-This can happen for a few reasons:
-
--   **Caching**: WordPress caches update information in transients. While the plugin's webhooks should clear this cache automatically, you can force it by clicking the **Sync All** button.
--   **Release Format**: Make sure your new release on GitHub is published (not a draft) and that it includes a ZIP file of the installable plugin or theme as a release asset.
--   **Version Numbers**: Ensure that the version number in your new release is higher than the currently installed version, following standard versioning practices (e.g., `1.1.0` is higher than `1.0.0`).
-
-### Understanding the Debug Log
-
-The "Debug" tab in the WP2 Update dashboard provides a log of all actions taken by the plugin. This can be very helpful for troubleshooting. Here are some common log entries and what they mean:
-
--   `[INFO] Webhook event received: release`: The plugin has successfully received a webhook from GitHub.
--   `[SECURITY] Webhook validation failed: Invalid signature`: The webhook signature was incorrect. This could indicate a misconfiguration of the webhook secret.
--   `[ERROR] Failed to fetch release data`: The plugin was unable to connect to the GitHub API to get release information. This could be due to a network issue or an invalid API token.
-
-If you're still having trouble, the debug log is the best place to start. It will often provide a specific error message that can help you diagnose the problem.
+```sh
+wp wp2-update update owner/repo
+```
+_Forces an update on a specific package._

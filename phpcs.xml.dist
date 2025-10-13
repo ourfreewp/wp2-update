@@ -13,6 +13,14 @@
     <!-- Exclude vendor directory -->
     <exclude-pattern>vendor/*</exclude-pattern>
 
+    <!-- Exclude additional directories and files -->
+    <exclude-pattern>node_modules/*</exclude-pattern>
+    <exclude-pattern>dist/*</exclude-pattern>
+    <exclude-pattern>*.md</exclude-pattern>
+    <exclude-pattern>*.json</exclude-pattern>
+    <exclude-pattern>*.lock</exclude-pattern>
+    <exclude-pattern>*.dist</exclude-pattern>
+
     <!-- Include all PHP files in the project -->
     <file>./</file>
 

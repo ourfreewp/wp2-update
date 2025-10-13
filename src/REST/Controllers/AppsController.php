@@ -2,275 +2,112 @@
 
 namespace WP2\Update\REST\Controllers;
 
-use WP2\Update\Core\API\ConnectionService;
-use WP2\Update\Core\API\CredentialService;
-use WP2\Update\Utils\Logger;
+use WP2\Update\REST\AbstractController;
+use WP2\Update\Services\Github\ConnectionService;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
-use function __;
-use function sanitize_text_field;
 
 /**
- * REST controller responsible for CRUD operations on GitHub Apps.
+ * REST controller for managing GitHub App connections (CRUD operations).
  */
-final class AppsController extends AbstractRestController {
-	private CredentialService $credentialService;
-	private ConnectionService $connectionService;
+final class AppsController extends AbstractController {
+    private ConnectionService $connectionService;
 
-	public function __construct(
-		CredentialService $credentialService,
-		ConnectionService $connectionService,
-		?string $namespace = null
-	) {
-		parent::__construct( $namespace );
-		$this->credentialService = $credentialService;
-		$this->connectionService = $connectionService;
-	}
+    public function __construct(ConnectionService $connectionService) {
+        parent::__construct();
+        $this->connectionService = $connectionService;
+    }
 
-	/**
-	 * {@inheritdoc}
-	 */
-	public function register_routes(): void {
-		register_rest_route(
-			$this->namespace,
-			'/apps',
-			[
-				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'list_apps' ],
-				'permission_callback' => $this->permission_callback(),
-			]
-		);
+    /**
+     * Registers the routes for this controller.
+     */
+    public function register_routes(): void {
+        register_rest_route($this->namespace, '/apps', [
+            [
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => [$this, 'list_apps'],
+                'permission_callback' => $this->permission_callback('wp2_list_apps'),
+            ],
+            [
+                'methods'             => WP_REST_Server::CREATABLE,
+                'callback'            => [$this, 'create_app'],
+                'permission_callback' => $this->permission_callback('wp2_create_app'),
+            ],
+        ]);
 
-		register_rest_route(
-			$this->namespace,
-			'/apps',
-			[
-				'methods'             => WP_REST_Server::CREATABLE,
-				'callback'            => [ $this, 'create_app' ],
-				'permission_callback' => $this->permission_callback(),
-				'args'                => [
-					'name' => [
-						'required'    => true,
-						'type'        => 'string',
-						'description' => __( 'The display name for the GitHub App.', 'wp2-update' ),
-					],
-					'manifest' => [
-						'required'    => false,
-						'type'        => 'string',
-						'description' => __( 'Optional manifest JSON to seed the app wizard.', 'wp2-update' ),
-					],
-				],
-			]
-		);
+        register_rest_route($this->namespace, '/apps/(?P<id>[\w-]+)', [
+            'args' => [
+                'id' => [
+                    'description' => __('The unique identifier for the app.', \WP2\Update\Config::TEXT_DOMAIN),
+                    'type'        => 'string',
+                    'required'    => true,
+                ],
+            ],
+            [
+                'methods'             => WP_REST_Server::EDITABLE,
+                'callback'            => [$this, 'update_app'],
+                'permission_callback' => $this->permission_callback('wp2_update_app'),
+            ],
+            [
+                'methods'             => WP_REST_Server::DELETABLE,
+                'callback'            => [$this, 'delete_app'],
+                'permission_callback' => $this->permission_callback('wp2_delete_app'),
+            ],
+        ]);
+    }
 
-		register_rest_route(
-			$this->namespace,
-			'/apps/(?P<app_uid>[a-zA-Z0-9_-]+)',
-			[
-				'methods'             => WP_REST_Server::EDITABLE,
-				'callback'            => [ $this, 'update_app' ],
-				'permission_callback' => $this->permission_callback(),
-				'args'                => [
-					'name' => [
-						'required'    => false,
-						'type'        => 'string',
-						'description' => __( 'Optional new display name.', 'wp2-update' ),
-					],
-					'status' => [
-						'required'    => false,
-						'type'        => 'string',
-						'description' => __( 'Optional status for the app.', 'wp2-update' ),
-					],
-					'organization' => [
-						'required'    => false,
-						'type'        => 'string',
-						'description' => __( 'Optional organization slug.', 'wp2-update' ),
-					],
-				],
-			]
-		);
+    /**
+     * Retrieves a list of all configured apps.
+     */
+    public function list_apps(): WP_REST_Response {
+        $apps = $this->connectionService->get_app_summaries();
+        return $this->respond($apps);
+    }
 
-		register_rest_route(
-			$this->namespace,
-			'/apps/(?P<app_uid>[a-zA-Z0-9_-]+)',
-			[
-				'methods'             => WP_REST_Server::DELETABLE,
-				'callback'            => [ $this, 'delete_app' ],
-				'permission_callback' => $this->permission_callback(),
-			]
-		);
-	}
+    /**
+     * Creates a new, empty app record before connecting to GitHub.
+     */
+    public function create_app(WP_REST_Request $request): WP_REST_Response {
+        $name = sanitize_text_field($request->get_param('name'));
+        if (empty($name)) {
+            return $this->respond(__('App name is required.', \WP2\Update\Config::TEXT_DOMAIN), 400);
+        }
 
-	/**
-	 * Fetch configured apps.
-	 */
-	public function list_apps( WP_REST_Request $request ): WP_REST_Response {
-		try {
-			$apps = $this->credentialService->get_all_apps();
+        try {
+            $app = $this->connectionService->create_placeholder_app($name);
+            return $this->respond($app, 201);
+        } catch (\Exception $e) {
+            return $this->respond(__('Failed to create app: ', \WP2\Update\Config::TEXT_DOMAIN) . $e->getMessage(), 500);
+        }
+    }
 
-			return new WP_REST_Response(
-				[
-					'apps' => $apps,
-				],
-				200
-			);
-		} catch ( \Throwable $exception ) {
-			Logger::log( 'ERROR', 'Failed to list apps: ' . $exception->getMessage() );
+    /**
+     * Updates an existing app's data.
+     */
+    public function update_app(WP_REST_Request $request): WP_REST_Response {
+        $id = $request->get_param('id');
+        $params = $request->get_json_params();
 
-			return new WP_REST_Response(
-				[
-					'error'   => true,
-					'message' => esc_html__( 'Unable to retrieve apps.', 'wp2-update' ),
-				],
-				500
-			);
-		}
-	}
+        try {
+            $updated_app = $this->connectionService->update_app_credentials($id, $params);
+            return $this->respond($updated_app);
+        } catch (\Exception $e) {
+            return $this->respond($e->getMessage(), 404);
+        }
+    }
 
-	/**
-	 * Create a new app record.
-	 */
-	public function create_app( WP_REST_Request $request ): WP_REST_Response {
-		try {
-			$name = sanitize_text_field( (string) $request->get_param( 'name' ) );
-			if ( '' === $name ) {
-				return $this->respond(
-					[
-						'error' => __( 'App name is required.', 'wp2-update' ),
-					],
-					400
-				);
-			}
+    /**
+     * Deletes an app record.
+     */
+    public function delete_app(WP_REST_Request $request): WP_REST_Response {
+        $id = $request->get_param('id');
 
-			$manifest = $request->get_param( 'manifest' );
-			if ( ! empty( $manifest ) ) {
-				// Sanitize and validate the manifest
-				$manifest = wp_kses_post( $manifest );
-				$decoded_manifest = json_decode( $manifest, true );
-				if ( json_last_error() !== JSON_ERROR_NONE ) {
-					return $this->respond(
-						[
-							'error' => __( 'Invalid manifest JSON.', 'wp2-update' ),
-						],
-						400
-					);
-				}
-			}
-
-			$app = $this->connectionService->save_app(
-				[
-					'name'       => $name,
-					'manifest'   => $manifest,
-					'created_at' => current_time( 'mysql' ),
-				]
-			);
-
-			return $this->respond(
-				[
-					'message' => __( 'App created successfully.', 'wp2-update' ),
-					'app'     => $app,
-				],
-				201
-			);
-		} catch ( \Throwable $error ) {
-			Logger::log( 'CRITICAL', 'Failed to create app: ' . $error->getMessage() );
-
-			return $this->respond(
-				[
-					'error' => __( 'Unable to create the app at this time.', 'wp2-update' ),
-				],
-				500
-			);
-		}
-	}
-
-	/**
-	 * Update an existing app.
-	 */
-	public function update_app( WP_REST_Request $request ): WP_REST_Response {
-		$appUid = (string) $request->get_param( 'app_uid' );
-		if ( '' === $appUid ) {
-			return $this->respond(
-				[
-					'error' => __( 'An app identifier is required.', 'wp2-update' ),
-				],
-				400
-			);
-		}
-
-		try {
-			$payload = array_filter(
-				[
-					'name'         => $request->get_param( 'name' ),
-					'status'       => $request->get_param( 'status' ),
-					'organization' => $request->get_param( 'organization' ),
-				],
-				static fn( $value ) => null !== $value && $value !== ''
-			);
-
-			if ( empty( $payload ) ) {
-				return $this->respond(
-					[
-						'error' => __( 'No changes supplied.', 'wp2-update' ),
-					],
-					400
-				);
-			}
-
-			$app = $this->connectionService->update_app( $appUid, $payload );
-
-			return $this->respond(
-				[
-					'message' => __( 'App updated successfully.', 'wp2-update' ),
-					'app'     => $app,
-				]
-			);
-		} catch ( \Throwable $error ) {
-			Logger::log( 'CRITICAL', sprintf( 'Failed to update app %s: %s', $appUid, $error->getMessage() ) );
-
-			return $this->respond(
-				[
-					'error' => __( 'Unable to update the app.', 'wp2-update' ),
-				],
-				500
-			);
-		}
-	}
-
-	/**
-	 * Delete an app by its UID.
-	 */
-	public function delete_app( WP_REST_Request $request ): WP_REST_Response {
-		$appUid = (string) $request->get_param( 'app_uid' );
-
-		if ( '' === $appUid ) {
-			return $this->respond(
-				[
-					'error' => __( 'An app identifier is required.', 'wp2-update' ),
-				],
-				400
-			);
-		}
-
-		try {
-			$this->connectionService->delete_app( $appUid );
-
-			return $this->respond(
-				[
-					'message' => __( 'App deleted successfully.', 'wp2-update' ),
-				]
-			);
-		} catch ( \Throwable $error ) {
-			Logger::log( 'CRITICAL', sprintf( 'Failed to delete app %s: %s', $appUid, $error->getMessage() ) );
-
-			return $this->respond(
-				[
-					'error' => __( 'Unable to delete the app.', 'wp2-update' ),
-				],
-				500
-			);
-		}
-	}
+        try {
+            $this->connectionService->clear_stored_credentials($id);
+            return $this->respond(['message' => __('App deleted successfully.', \WP2\Update\Config::TEXT_DOMAIN)]);
+        } catch (\Exception $e) {
+            return $this->respond($e->getMessage(), 500);
+        }
+    }
 }
-

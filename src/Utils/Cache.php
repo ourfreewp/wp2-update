@@ -3,17 +3,17 @@
 namespace WP2\Update\Utils;
 
 /**
- * Utility class for managing WordPress transients.
+ * A simple, static wrapper for the WordPress Transients API.
  */
 class Cache
 {
     /**
-     * Sets a transient with a given key and value.
+     * Sets a transient (cache) value.
      *
-     * @param string $key The transient key.
+     * @param string $key The transient key. Must be 172 characters or fewer.
      * @param mixed $value The value to store.
-     * @param int $expiration Expiration time in seconds.
-     * @return bool True if the transient was set, false otherwise.
+     * @param int $expiration Time until expiration in seconds. 0 means no expiration.
+     * @return bool True if the value was set, false otherwise.
      */
     public static function set(string $key, $value, int $expiration = 0): bool
     {
@@ -21,10 +21,10 @@ class Cache
     }
 
     /**
-     * Retrieves a transient by its key.
+     * Retrieves a transient value.
      *
      * @param string $key The transient key.
-     * @return mixed The value of the transient, or false if not found.
+     * @return mixed The value of the transient, or false if it does not exist or has expired.
      */
     public static function get(string $key)
     {
@@ -32,7 +32,7 @@ class Cache
     }
 
     /**
-     * Deletes a transient by its key.
+     * Deletes a transient value.
      *
      * @param string $key The transient key.
      * @return bool True if the transient was deleted, false otherwise.
@@ -40,43 +40,5 @@ class Cache
     public static function delete(string $key): bool
     {
         return delete_transient($key);
-    }
-
-    /**
-     * Invalidates cache for a specific repository.
-     *
-     * @param string $repository The repository identifier (e.g., owner/repo).
-     */
-    public static function invalidate_repository_cache(string $repository): void
-    {
-        $prefix = "repo_" . md5($repository);
-        self::clear_all($prefix);
-    }
-
-    /**
-     * Clears all transients related to the plugin.
-     *
-     * @param string $prefix The prefix for plugin-related transients.
-     */
-    public static function clear_all(string $prefix): void
-    {
-        global $wpdb;
-
-        if (!is_object($wpdb)) {
-            error_log('Database connection is not available. Unable to clear transients.');
-            return;
-        }
-
-        $sql = $wpdb->prepare(
-            "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
-            $wpdb->esc_like("_transient_{$prefix}") . '%'
-        );
-
-        $results = $wpdb->get_col($sql);
-
-        foreach ($results as $option_name) {
-            $transient_key = str_replace('_transient_', '', $option_name);
-            delete_transient($transient_key);
-        }
     }
 }

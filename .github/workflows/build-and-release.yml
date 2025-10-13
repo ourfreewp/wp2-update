@@ -118,6 +118,8 @@ jobs:
 
       - name: Build Assets (Guarded)
         if: steps.check_release.outputs.exists == 'false' && hashFiles('**/package.json') != ''
+        env:
+          SASS_PATH: node_modules
         run: npm run build
 
       - name: Build Plugin Package (Using .distignore)

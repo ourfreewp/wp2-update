@@ -1,8 +1,11 @@
 <?php
 
+namespace Tests\Unit\Webhook;
+
 use Tests\Helpers\WordPressStubs;
+use Tests\Helpers\WP_REST_Request;
 use WP2\Update\Webhook\Controller;
-use WP2\Update\Core\API\CredentialService;
+use WP2\Update\Core\GitHub\CredentialService; // Corrected namespace for CredentialService
 
 class StubCredentialService extends CredentialService
 {
@@ -32,7 +35,7 @@ class StubCredentialService extends CredentialService
     }
 }
 
-class StubRestRequest extends WP_REST_Request
+class StubRestRequest extends \WP_REST_Request
 {
     public function __construct(array $headers, string $body)
     {

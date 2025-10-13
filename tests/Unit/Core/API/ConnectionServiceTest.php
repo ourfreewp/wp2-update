@@ -7,7 +7,7 @@ use WP2\Update\Config;
 use WP2\Update\Core\AppRepository;
 use WP2\Update\Core\API\ConnectionService;
 use WP2\Update\Core\API\CredentialService;
-use WP2\Update\Core\API\GitHubClientFactory;
+use WP2\Update\Services\Github\ClientService;
 use WP2\Update\Core\API\RepositoryService;
 use WP2\Update\Core\Updates\PackageFinder;
 
@@ -19,7 +19,7 @@ beforeEach(function () {
 it('assigns repositories to an app without duplicates', function () {
     $appRepository      = new AppRepository();
     $credentialService  = new CredentialService($appRepository);
-    $clientFactory      = new GitHubClientFactory();
+    $clientFactory      = new ClientService();
     $fakeClient         = new FakeGitHubClient([]);
     $repositoryService  = new RepositoryService($appRepository, new FakeGitHubClientFactory($fakeClient));
     $packageFinder      = new PackageFinder($repositoryService, static fn(string $repoSlug): array => []);
@@ -45,7 +45,7 @@ it('rejects invalid repository identifiers when assigning', function () {
     $credentialService  = new CredentialService($appRepository);
     $repositoryService = new RepositoryService($appRepository);
     $connectionService  = new ConnectionService(
-        new GitHubClientFactory(),
+        new ClientService(),
         $credentialService,
         new PackageFinder($repositoryService, static fn(string $repoSlug): array => []),
         $appRepository,
@@ -67,7 +67,7 @@ it('rejects invalid repository identifiers when assigning', function () {
 it('marks connection as not configured when credentials are missing', function () {
     $appRepository      = new AppRepository();
     $credentialService  = new CredentialService($appRepository);
-    $clientFactory      = new GitHubClientFactory();
+    $clientFactory      = new ClientService();
     $fakeClient         = new FakeGitHubClient([]);
     $repositoryService  = new RepositoryService($appRepository, new FakeGitHubClientFactory($fakeClient));
     $packageFinder      = new PackageFinder($repositoryService, static fn(string $repoSlug): array => []);

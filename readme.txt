@@ -1,13 +1,13 @@
 === WP2 Update ===
 Contributors: (your WordPress.org username)
 Tags: updates, GitHub, private plugins, private themes
-Requires at least: 5.8
+Requires at least: 6.0
 Tested up to: 6.8
-Stable tag: 1.0
+Stable tag: 0.0.30
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-WP2 Update is a modern solution for managing private WordPress theme and plugin updates directly from GitHub repositories. It leverages GitHub Apps for secure and automated workflows.
+WP2 Update is a modern solution for managing private WordPress theme and plugin updates directly from GitHub repositories.
 
 == Description ==
 

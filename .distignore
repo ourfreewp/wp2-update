@@ -7,3 +7,6 @@ composer.lock
 package-lock.json
 .env
 *.log
+
+# Exclude additional build/config files
+phpcs.xml.dist

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme and plugin updates.
- * Version:           0.0.30
+ * Version:           0.0.31
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -30,7 +30,7 @@ if ( ! file_exists( $autoloader ) ) {
     // Add a more informative admin notice for the missing autoloader.
     add_action( 'admin_notices', function() {
         echo '<div class="wp2-notice wp2-notice--error"><p>';
-        echo esc_html__( 'WP2 Update Error: Composer autoloader not found. Please run `composer install` in the plugin directory.', 'wp2-update' );
+        echo esc_html__( 'WP2 Update Error: Composer autoloader not found. Please run `composer install` in the plugin directory.', \WP2\Update\Config::TEXT_DOMAIN );
         echo '</p></div>';
     });
     return; // Stop execution if the autoloader is missing.
@@ -42,18 +42,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 // Ensure Action Scheduler is loaded
 if (class_exists('ActionScheduler')) {
-    add_action('init', function () {
-        // Example: Schedule a recurring action
-        if (!as_next_scheduled_action('wp2_update_example_task')) {
-            as_schedule_recurring_action(time(), 3600, 'wp2_update_example_task');
-        }
-    });
-
-    // Example: Hook into the scheduled action
-    add_action('wp2_update_example_task', function () {
-        // Task logic here
-        error_log('WP2 Update example task executed.');
-    });
+   
 } else {
     error_log('Action Scheduler is not available.');
 }
@@ -69,27 +58,16 @@ function wp2_update_run() {
 add_action( 'plugins_loaded', 'wp2_update_run');
 
 /**
- * Create the database table for logging on plugin activation.
+ * Register the activation hook to create the log table.
  */
-function wp2_update_create_log_table() {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'wp2_update_logs';
-    $charset_collate = $wpdb->get_charset_collate();
+use WP2\Update\Database\Schema;
 
-    $sql = "CREATE TABLE IF NOT EXISTS {$table_name} (
-        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        timestamp DATETIME NOT NULL,
-        level VARCHAR(20) NOT NULL,
-        message TEXT NOT NULL,
-        context TEXT NULL,
-        PRIMARY KEY (id)
-    ) {$charset_collate};";
-
-    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-    dbDelta($sql);
+// Ensure WordPress environment is loaded before invoking the activation hook
+if (function_exists('register_activation_hook')) {
+    register_activation_hook( __FILE__, [Schema::class, 'create_tables'] );
+} else {
+    throw new RuntimeException('WordPress environment is not fully loaded.');
 }
-// Register the activation hook to create the log table.
-register_activation_hook( __FILE__, 'wp2_update_create_log_table' );
 
 // Declare global $wpdb before usage
 if (!isset($wpdb)) {
