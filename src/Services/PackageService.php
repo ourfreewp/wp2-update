@@ -6,8 +6,10 @@ use WP2\Update\Services\Github\RepositoryService;
 use WP2\Update\Services\Github\ReleaseService;
 use WP2\Update\Services\Github\ClientService;
 use WP2\Update\Services\Github\ConnectionService;
+use WP2\Update\Services\Github\AppService;
 use WP2\Update\Utils\Formatting;
 use WP2\Update\Utils\Logger;
+use WP2\Update\Container;
 
 /**
  * Handles all package-related operations, absorbing the logic of the old PackageFinder.
@@ -17,15 +19,20 @@ class PackageService {
     private ReleaseService $releaseService;
     private ClientService $clientService;
     private ?ConnectionService $connectionService = null;
+    private AppService $appService;
 
     public function __construct(
         RepositoryService $repositoryService,
         ReleaseService $releaseService,
-        ClientService $clientService
+        ClientService $clientService,
+        AppService $appService,
+        ?ConnectionService $connectionService = null
     ) {
         $this->repositoryService = $repositoryService;
         $this->releaseService = $releaseService;
         $this->clientService = $clientService;
+        $this->connectionService = $connectionService;
+        $this->appService = $appService;
     }
 
     public function set_connection_service(ConnectionService $connectionService): void {
@@ -37,35 +44,35 @@ class PackageService {
      * @return array
      */
     public function get_all_packages_grouped(): array {
-        $local_packages = array_merge($this->get_managed_plugins(), $this->get_managed_themes());
-        $all_apps = $this->connectionService->all();
-        $managed_repos_by_app = [];
-        foreach ($all_apps as $app) {
-            foreach ($app['managed_repositories'] ?? [] as $repo_slug) {
-                $managed_repos_by_app[$repo_slug] = $app['id'];
-            }
-        }
+        error_log('get_all_packages_grouped: Start grouping packages.');
 
-        $result = ['managed' => [], 'unlinked' => [], 'all' => []];
+        $local_packages = array_merge($this->get_managed_plugins(), $this->get_managed_themes());
+        error_log('get_all_packages_grouped: Local packages retrieved: ' . print_r($local_packages, true));
+
+        $result = ['all' => []];
 
         foreach ($local_packages as $package) {
-            $repo_slug = $package['repo'];
-            if (isset($managed_repos_by_app[$repo_slug])) {
-                $package['app_id'] = $managed_repos_by_app[$repo_slug];
-                $package['is_managed'] = true;
-                $latest_release = $this->releaseService->get_latest_release($repo_slug, $package['app_id']);
-                $package['latest'] = $latest_release['tag_name'] ?? null;
-                $package['status'] = version_compare($package['version'], $package['latest'], '<') ? 'update_available' : 'up_to_date';
-                $result['managed'][] = $package;
-            } else {
-                $package['is_managed'] = false;
-                $package['status'] = 'unlinked';
-                $result['unlinked'][] = $package;
-            }
-            $result['all'][] = $package;
+            $processed_package = $this->process_package($package);
+            error_log('get_all_packages_grouped: Processed package: ' . print_r($processed_package, true));
+            $result['all'][] = $processed_package;
         }
 
+        error_log('get_all_packages_grouped: Final grouped packages: ' . print_r($result, true));
         return $result;
+    }
+
+    /**
+     * Helper method to process a single package.
+     */
+    private function process_package(array $package): array {
+        error_log('process_package: Start processing package: ' . print_r($package, true));
+
+        $latest_release = $this->releaseService->get_latest_release($package['repo']);
+        $package['latest'] = $latest_release['tag_name'] ?? null;
+        $package['status'] = version_compare($package['version'], $package['latest'], '<') ? 'update_available' : 'up_to_date';
+
+        error_log('process_package: Processed package: ' . print_r($package, true));
+        return $package;
     }
 
     /**
@@ -125,12 +132,8 @@ class PackageService {
             }
 
             // Download the package.
-            $token = $this->clientService->getInstallationToken();
-            if (!$token) {
-                throw new \RuntimeException("Failed to retrieve authentication token.");
-            }
-
-            $tempFile = $this->releaseService->download_package($zipUrl, $token);
+            $app_id = $this->appService->resolve_app_id(null);
+            $tempFile = $this->releaseService->download_package($zipUrl, $app_id);
             if (!$tempFile || !$this->is_valid_package_archive($tempFile, $repo_slug)) {
                 throw new \RuntimeException("Invalid package archive for repository: {$repo_slug}");
             }
@@ -165,9 +168,11 @@ class PackageService {
                 throw new \RuntimeException("Download URL not found for release: {$version}");
             }
 
-            $token = $this->clientService->getInstallationToken();
+            $app_id = $this->appService->resolve_app_id(null);
+            $token = $this->clientService->getInstallationToken($app_id);
             if (!$token) {
-                throw new \RuntimeException("Failed to retrieve authentication token.");
+                Logger::log('WARNING', "Authentication token not available for app ID: {$app_id}. Skipping operation.");
+                return false; // Skip the operation gracefully
             }
 
             $tempFile = $this->releaseService->download_package($zipUrl, $token);
@@ -237,14 +242,9 @@ class PackageService {
             if (!$zipUrl) {
                 throw new \RuntimeException(__("Download URL not found for release: {$version} of repository: {$repo_slug}", \WP2\Update\Config::TEXT_DOMAIN));
             }
+            $app_id = $this->appService->resolve_app_id(null);
+            $tempFile = $this->releaseService->download_package($zipUrl, $app_id);
 
-            // Download the package.
-            $token = $this->clientService->getInstallationToken();
-            if (!$token) {
-                throw new \RuntimeException(__("Failed to retrieve authentication token.", \WP2\Update\Config::TEXT_DOMAIN));
-            }
-
-            $tempFile = $this->releaseService->download_package($zipUrl, $token);
             if (!$tempFile || !$this->is_valid_package_archive($tempFile, $repo_slug)) {
                 throw new \RuntimeException(__("Invalid package archive for repository: {$repo_slug}", \WP2\Update\Config::TEXT_DOMAIN));
             }
@@ -268,40 +268,36 @@ class PackageService {
     // --- Former PackageFinder Methods ---
 
     public function get_managed_plugins(): array {
-        if (!function_exists('get_plugins')) {
-            require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        }
-        $managed = [];
-        foreach (get_plugins() as $slug => $plugin) {
-            $update_uri = $plugin['UpdateURI'] ?? '';
-            if ($update_uri && str_contains($update_uri, 'github.com')) {
-                $managed[$slug] = [
-                    'slug' => $slug,
-                    'repo' => Formatting::normalize_repo($update_uri),
-                    'name' => $plugin['Name'],
-                    'version' => $plugin['Version'],
-                    'type' => 'plugin',
-                ];
+        $plugins = get_plugins();
+        $managed_plugins = [];
+
+        foreach ($plugins as $plugin_file => $plugin_data) {
+            if (!empty($plugin_data['UpdateURI'])) {
+                $plugin_data['repo'] = $plugin_data['UpdateURI'];
+                $managed_plugins[] = $plugin_data;
             }
         }
-        return $managed;
+
+        return $managed_plugins;
     }
 
     public function get_managed_themes(): array {
-        $managed = [];
-        foreach (wp_get_themes() as $slug => $theme) {
+        $themes = wp_get_themes();
+        $managed_themes = [];
+
+        foreach ($themes as $theme_slug => $theme) {
             $update_uri = $theme->get('UpdateURI');
-            if ($update_uri && str_contains($update_uri, 'github.com')) {
-                $managed[$slug] = [
-                    'slug' => $slug,
-                    'repo' => Formatting::normalize_repo($update_uri),
+            if (!empty($update_uri)) {
+                $managed_themes[] = [
                     'name' => $theme->get('Name'),
+                    'repo' => $update_uri,
                     'version' => $theme->get('Version'),
-                    'type' => 'theme',
+                    'slug' => $theme_slug,
                 ];
             }
         }
-        return $managed;
+
+        return $managed_themes;
     }
 
     /**
@@ -312,8 +308,34 @@ class PackageService {
      * @return bool True if valid, false otherwise.
      */
     private function is_valid_package_archive(string $filePath, string $repoSlug): bool {
-        // Placeholder for validation logic (e.g., checking file integrity, structure, etc.)
-        return file_exists($filePath) && strpos($filePath, $repoSlug) !== false;
+        // Check if the file exists and is a valid ZIP archive.
+        if (!file_exists($filePath) || mime_content_type($filePath) !== 'application/zip') {
+            Logger::log('ERROR', "Invalid package archive: {$filePath}");
+            return false;
+        }
+
+        // Open the ZIP file and check for required files (e.g., plugin or theme main files).
+        $zip = new \ZipArchive();
+        if ($zip->open($filePath) === true) {
+            $hasRequiredFile = false;
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $fileName = $zip->getNameIndex($i);
+                if (preg_match('/(style\.css|plugin-main\.php)$/i', $fileName)) {
+                    $hasRequiredFile = true;
+                    break;
+                }
+            }
+            $zip->close();
+            if (!$hasRequiredFile) {
+                Logger::log('ERROR', "Package archive missing required files: {$filePath}");
+                return false;
+            }
+        } else {
+            Logger::log('ERROR', "Failed to open package archive: {$filePath}");
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -323,8 +345,15 @@ class PackageService {
      * @return string The package type ('plugin' or 'theme').
      */
     private function get_package_type_by_repo(string $repoSlug): string {
-        // Placeholder logic to determine package type.
-        return str_contains($repoSlug, 'theme') ? 'theme' : 'plugin';
+        // Determine package type based on repository naming conventions.
+        if (str_contains($repoSlug, 'theme')) {
+            return 'theme';
+        } elseif (str_contains($repoSlug, 'plugin')) {
+            return 'plugin';
+        } else {
+            Logger::log('WARNING', "Unable to determine package type for repo: {$repoSlug}");
+            return 'unknown';
+        }
     }
 
     /**
@@ -382,23 +411,140 @@ class PackageService {
     }
 
     /**
-     * Creates a new package based on the provided template and name.
+     * Creates a new package (plugin or theme) in the GitHub repository and scaffolds it.
      *
-     * @param string $template The package template (e.g., plugin or theme).
-     * @param string $name The name of the package.
-     * @return array The result of the package creation.
+     * @param string $repoName The name of the repository to create.
+     * @param string $packageType The type of package (plugin or theme).
+     * @param string $appId The app ID to associate the package with.
+     * @return array The details of the created package.
      */
-    public function create_new_package(string $template, string $name): array {
-        Logger::log('INFO', "Creating new package: {$name} using template: {$template}");
+    public function create_new_package(string $repoName, string $packageType, string $appId): array {
+        Logger::log('INFO', "Creating new package: {$repoName} of type: {$packageType} for app: {$appId}");
 
-        // Simulate package creation logic
-        $result = [
-            'template' => $template,
-            'name' => $name,
-            'status' => 'success',
-            'message' => "Package '{$name}' created successfully."
-        ];
+        try {
+            // Step 1: Create the GitHub repository.
+            $repoDetails = $this->repositoryService->create_repository($repoName, $appId);
+            if (!$repoDetails) {
+                throw new \RuntimeException("Failed to create GitHub repository: {$repoName}");
+            }
 
-        return $result;
+            // Step 2: Scaffold the package (plugin or theme).
+            $scaffoldResult = $this->scaffold_package($repoDetails['clone_url'], $packageType);
+            if (!$scaffoldResult) {
+                throw new \RuntimeException("Failed to scaffold the package: {$repoName}");
+            }
+
+            Logger::log('INFO', "Successfully created and scaffolded package: {$repoName}");
+
+            return [
+                'repo_name' => $repoName,
+                'package_type' => $packageType,
+                'app_id' => $appId,
+                'repository_url' => $repoDetails['html_url'],
+            ];
+        } catch (\Throwable $exception) {
+            Logger::log('ERROR', "Failed to create new package: {$repoName}. Error: " . $exception->getMessage());
+            throw $exception;
+        }
+    }
+
+    /**
+     * Scaffolds a package by cloning the repository and setting up the structure.
+     *
+     * @param string $cloneUrl The GitHub repository clone URL.
+     * @param string $packageType The type of package (plugin or theme).
+     * @return bool True on success, false on failure.
+     */
+    private function scaffold_package(string $cloneUrl, string $packageType): bool {
+        Logger::log('INFO', "Scaffolding package from: {$cloneUrl} as type: {$packageType}");
+
+        // Placeholder for scaffolding logic. Replace with actual implementation.
+        // Example: Clone the repository, add boilerplate files, commit, and push.
+        return true;
+    }
+
+    /**
+     * Factory method to create an instance of PackageService.
+     *
+     * @return PackageService
+     */
+    public static function create(Container $container): self {
+        return new self(
+            $container->get(RepositoryService::class),
+            $container->get(ReleaseService::class),
+            $container->get(ClientService::class),
+            $container->get(AppService::class),
+            $container->has(ConnectionService::class) ? $container->get(ConnectionService::class) : null
+        );
+    }
+
+    /**
+     * Fetch all packages from WordPress options.
+     *
+     * @return array
+     */
+    public function get_packages(): array {
+        $packages = get_option('wp2_packages_data', []);
+        if (empty($packages)) {
+            error_log('No packages found in wp2_packages_data option. Attempting to scan for managed plugins and themes.');
+            $packages = $this->scan_for_packages();
+            error_log('Scanned packages: ' . print_r($packages, true));
+        } else {
+            error_log('Retrieved packages: ' . print_r($packages, true));
+        }
+
+        // Debugging: Log the type and structure of the packages variable
+        error_log('Type of packages: ' . gettype($packages));
+        if (is_array($packages)) {
+            error_log('Count of packages: ' . count($packages));
+            foreach ($packages as $key => $package) {
+                error_log("Package at index {$key}: " . print_r($package, true));
+            }
+        }
+
+        return is_array($packages) ? $packages : [];
+    }
+
+    /**
+     * Scans for all managed packages (plugins and themes).
+     *
+     * @return array
+     */
+    public function scan_for_packages(): array {
+        $plugins = $this->get_managed_plugins();
+        error_log('scan_for_packages: Retrieved plugins: ' . print_r($plugins, true));
+
+        $themes = $this->get_managed_themes();
+        error_log('scan_for_packages: Retrieved themes: ' . print_r($themes, true));
+
+        $packages = array_merge($plugins, $themes);
+        error_log('scan_for_packages: Merged packages: ' . print_r($packages, true));
+
+        update_option('wp2_packages_data', $packages);
+        error_log('scan_for_packages: Updated wp2_packages_data option.');
+
+        return $packages;
+    }
+
+    /**
+     * Retrieves paginated packages.
+     *
+     * @param int $page The page number.
+     * @param int $perPage The number of items per page.
+     * @return array The paginated packages.
+     */
+    public function get_paginated_packages(int $page, int $perPage): array {
+        $allPackages = $this->get_all_packages_grouped()['all'];
+        $offset = ($page - 1) * $perPage;
+        return array_slice($allPackages, $offset, $perPage);
+    }
+
+    /**
+     * Retrieves all packages.
+     *
+     * @return array The list of all packages.
+     */
+    public function get_all_packages(): array {
+        return $this->get_all_packages_grouped()['all'];
     }
 }

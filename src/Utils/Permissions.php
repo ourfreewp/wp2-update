@@ -25,14 +25,24 @@ final class Permissions {
             return false;
         }
 
-        // 2. Check for a valid nonce for the specific action.
-        $nonce = $request->get_header('X-WP-Nonce');
-        if (!$nonce || !wp_verify_nonce($nonce, $action)) {
-            // Log the failure for security auditing if needed.
+        // 2. Validate nonce using the new validate_nonce method.
+        if (!self::validate_nonce($action, $request)) {
             Logger::log('SECURITY', "Invalid nonce provided for action: {$action}");
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Validates a nonce from both the `X-WP-Nonce` header and the `_wpnonce` URL parameter.
+     *
+     * @param string $action The nonce action to verify.
+     * @param WP_REST_Request $request The REST request object.
+     * @return bool True if the nonce is valid, false otherwise.
+     */
+    private static function validate_nonce(string $action, WP_REST_Request $request): bool {
+        $nonce = $request->get_header('X-WP-Nonce') ?: $request->get_param('_wpnonce');
+        return $nonce && wp_verify_nonce($nonce, $action);
     }
 }

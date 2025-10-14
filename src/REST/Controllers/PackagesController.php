@@ -20,6 +20,14 @@ final class PackagesController extends AbstractController {
     }
 
     /**
+     * Verifies the nonce for a given action.
+     */
+    private function verify_action_nonce(WP_REST_Request $request, string $action): bool {
+        $nonce = $request->get_header('X-WP-Nonce');
+        return wp_verify_nonce($nonce, $action);
+    }
+
+    /**
      * Registers routes for package management.
      */
     public function register_routes(): void {
@@ -71,14 +79,26 @@ final class PackagesController extends AbstractController {
             'callback'            => [$this, 'create_package'],
             'permission_callback' => $this->permission_callback('wp2_create_package'),
         ]);
+
+        // Route to refresh packages
+        register_rest_route($this->namespace, '/refresh-packages', [
+            'methods'  => 'POST',
+            'callback' => [$this, 'refresh_packages'],
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
+        ]);
     }
 
     /**
-     * Retrieves all packages, grouped by status.
+     * Retrieves paginated packages.
      */
     public function get_packages(WP_REST_Request $request): WP_REST_Response {
+        $page = max(1, (int) $request->get_param('page'));
+        $per_page = max(1, min(100, (int) $request->get_param('per_page')));
+
         try {
-            $packages = $this->packageService->get_all_packages_grouped();
+            $packages = $this->packageService->get_paginated_packages($page, $per_page);
             return $this->respond($packages);
         } catch (\Exception $e) {
             return $this->respond($e->getMessage(), 500);
@@ -195,14 +215,46 @@ final class PackagesController extends AbstractController {
         $params = $request->get_json_params();
         $template = $params['template'] ?? '';
         $name = $params['name'] ?? '';
+        $app_id = $params['app_id'] ?? '';
 
-        if (empty($template) || empty($name)) {
-            return $this->respond(__('Invalid parameters.', \WP2\Update\Config::TEXT_DOMAIN), 400);
+        if (empty($template) || empty($name) || empty($app_id)) {
+            return $this->respond(__('Invalid parameters. The app_id is required.', \WP2\Update\Config::TEXT_DOMAIN), 400);
         }
 
         try {
-            $result = $this->packageService->create_new_package($template, $name);
+            $result = $this->packageService->create_new_package($template, $name, $app_id); // Pass app_id explicitly
             return $this->respond($result);
+        } catch (\Exception $e) {
+            return $this->respond($e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Refreshes the package data by scanning for plugins and themes.
+     */
+    public function refresh_packages(): WP_REST_Response {
+        try {
+            $this->packageService->scan_for_packages();
+
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => __('Packages refreshed successfully.', \WP2\Update\Config::TEXT_DOMAIN),
+            ], 200);
+        } catch (\Exception $e) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Retrieves all packages, including unlinked ones.
+     */
+    public function get_all_packages(WP_REST_Request $request): WP_REST_Response {
+        try {
+            $packages = $this->packageService->get_all_packages();
+            return $this->respond($packages);
         } catch (\Exception $e) {
             return $this->respond($e->getMessage(), 500);
         }

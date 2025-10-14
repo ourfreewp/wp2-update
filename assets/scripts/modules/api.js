@@ -20,15 +20,40 @@ const build_url = (endpoint, query) => {
 };
 
 /**
- * Makes a request to the backend API.
+ * Fetches a unique nonce for a specific action.
+ * @param {string} action - The action for which to fetch the nonce.
+ * @returns {Promise<string>} The nonce string.
+ */
+const fetch_nonce = async (action) => {
+    const url = build_url('/nonce', { action });
+    try {
+        const response = await fetch(url, { method: 'GET' });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch nonce for action: ${action}`);
+        }
+        const data = await response.json();
+        return data.nonce;
+    } catch (error) {
+        logger.error(`Failed to fetch nonce for action ${action}:`, error);
+        throw error;
+    }
+};
+
+/**
+ * Makes a request to the backend API with action-specific nonce.
  * @param {string} endpoint - The API endpoint to call.
  * @param {object} options - Fetch options (method, body, etc.).
+ * @param {string} action - The action for which to fetch the nonce.
  * @returns {Promise<any>} The JSON response from the API.
  */
-export const api_request = async (endpoint, options = {}) => {
+export const api_request = async (endpoint, options = {}, action = null) => {
     const { params, headers: headerOverrides, ...restOptions } = options;
     const url = build_url(endpoint, params);
     const appId = window.wp2UpdateData?.selectedAppId;
+
+    if (action) {
+        current_nonce = await fetch_nonce(action);
+    }
 
     const init = {
         method: 'GET',

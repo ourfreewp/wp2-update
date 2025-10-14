@@ -22,6 +22,9 @@ final class Menu {
      * This method hooks into WordPress's 'admin_menu' action.
      */
     public function register_menu(): void {
+        error_log('WP2 Update: register_menu method called.');
+        error_log('register_menu method is running.');
+
         add_menu_page(
             __('WP2 Updates', \WP2\Update\Config::TEXT_DOMAIN), // Page Title
             __('WP2 Updates', \WP2\Update\Config::TEXT_DOMAIN), // Menu Title

@@ -27,7 +27,10 @@ class ConnectivityCheck extends AbstractCheck {
         $message = __('Successfully connected to GitHub.', \WP2\Update\Config::TEXT_DOMAIN);
 
         try {
-            $connection_status = $this->connectionService->get_connection_status();
+            // Retrieve the app ID (this is a placeholder; replace with actual logic to get the app ID)
+            $app_id = 'default_app_id';
+
+            $connection_status = $this->connectionService->get_connection_status($app_id);
 
             switch ($connection_status['status']) {
                 case 'not_configured':

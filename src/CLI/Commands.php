@@ -25,29 +25,48 @@ class Commands extends \WP_CLI_Command {
     }
 
     /**
-     * Forces a synchronization of all managed packages with their GitHub repositories.
+     * Forces a synchronization of all packages, including unlinked ones.
+     * Optionally applies updates to managed packages.
+     *
+     * ## OPTIONS
+     *
+     * [--apply-updates]
+     * : Automatically apply updates to managed packages.
      *
      * ## EXAMPLES
      *
-     * wp wp2-update sync
+     * wp wp2-update sync --apply-updates
      *
      * @when after_wp_load
      */
-    public function sync(): void {
+    public function sync(array $args, array $assoc_args): void {
+        $apply_updates = isset($assoc_args['apply-updates']);
+
         WP_CLI::line('Starting package synchronization...');
         try {
-            $result = $this->packageService->get_all_packages_grouped();
-            $managed_count = count($result['managed']);
-            $unlinked_count = count($result['unlinked']);
+            $packages = $this->packageService->get_all_packages();
+            $total_count = count($packages);
 
-            WP_CLI::success("Synchronization complete. Found {$managed_count} managed and {$unlinked_count} unlinked packages.");
+            WP_CLI::success("Synchronization complete. Found {$total_count} packages.");
 
-            if (!empty($result['unlinked'])) {
-                WP_CLI::warning('The following packages have a GitHub Update URI but could not be matched to a repository in your connected apps:');
-                $unlinked_items = array_map(function($pkg) {
-                    return ['name' => $pkg['name'], 'repo' => $pkg['repo']];
-                }, $result['unlinked']);
-                WP_CLI\Utils\format_items('table', $unlinked_items, ['name', 'repo']);
+            if (!empty($packages)) {
+                WP_CLI::line('The following packages were found:');
+                $items = array_map(function($pkg) {
+                    return ['name' => $pkg['name'], 'repo' => $pkg['repo'], 'status' => $pkg['status']];
+                }, $packages);
+                WP_CLI\Utils\format_items('table', $items, ['name', 'repo', 'status']);
+            }
+
+            if ($apply_updates) {
+                WP_CLI::line('Applying updates to managed packages...');
+                foreach ($packages as $package) {
+                    $success = $this->packageService->update_package($package['repo']);
+                    if ($success) {
+                        WP_CLI::success("Package '{$package['name']}' updated successfully.");
+                    } else {
+                        WP_CLI::warning("Failed to update package '{$package['name']}'. Check logs for details.");
+                    }
+                }
             }
         } catch (\Exception $e) {
             WP_CLI::error('Failed to sync packages: ' . $e->getMessage());
@@ -80,6 +99,9 @@ class Commands extends \WP_CLI_Command {
             WP_CLI::error("Failed to update package '{$repo_slug}'. Check logs for details.");
         }
     }
+
+
+    
 
     /**
      * Rolls back a package to a specific version.

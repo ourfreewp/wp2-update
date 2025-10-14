@@ -1,4 +1,4 @@
-import { fetchReleaseNotes, switchReleaseChannel } from './services/PackageService';
+import { fetchReleaseNotes, switchReleaseChannel } from './PackageService.js';
 import { escapeHtml } from '../utils/string.js';
 
 /**

@@ -5,6 +5,9 @@ namespace WP2\Update\REST\Controllers;
 use WP2\Update\Health\Checks\ConnectivityCheck;
 use WP2\Update\Health\Checks\DataIntegrityCheck;
 use WP2\Update\Health\Checks\EnvironmentCheck;
+use WP2\Update\Health\Checks\DatabaseCheck;
+use WP2\Update\Health\Checks\RESTCheck; // New
+use WP2\Update\Health\Checks\AssetCheck; // New
 use WP2\Update\REST\AbstractController;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -22,13 +25,19 @@ final class HealthController extends AbstractController {
     public function __construct(
         ConnectivityCheck $connectivityCheck,
         DataIntegrityCheck $dataIntegrityCheck,
-        EnvironmentCheck $environmentCheck
+        EnvironmentCheck $environmentCheck,
+        DatabaseCheck $databaseCheck,
+        RESTCheck $restCheck, // New dependency
+        AssetCheck $assetCheck // New dependency
     ) {
         parent::__construct();
         $this->healthChecks = [
             'environment' => $environmentCheck,
-            'connectivity' => $connectivityCheck,
+            'database' => $databaseCheck,
             'data_integrity' => $dataIntegrityCheck,
+            'connectivity' => $connectivityCheck,
+            'rest_endpoints' => $restCheck,
+            'assets_loaded' => $assetCheck,
         ];
     }
 
@@ -44,28 +53,35 @@ final class HealthController extends AbstractController {
     }
 
     /**
-     * Runs all registered health checks and returns the results.
+     * Runs all registered health checks and returns the results, grouped for troubleshooting.
      */
     public function get_health_status(WP_REST_Request $request): WP_REST_Response {
-        $results = [
-            'Environment' => $this->healthChecks['environment']->run(),
-            'GitHub Connectivity' => $this->healthChecks['connectivity']->run(),
-            'Database' => $this->healthChecks['data_integrity']->run(),
-        ];
+        $results = [];
+        foreach ($this->healthChecks as $key => $checkInstance) {
+             $results[$key] = $checkInstance->run();
+        }
 
-        // Group checks by a title for better UI presentation
+        // Group checks by a title for better UI presentation and operational clarity
         $grouped_results = [
             [
-                'title' => 'System Checks',
+                'title' => __('System Environment', \WP2\Update\Config::TEXT_DOMAIN),
                 'checks' => [
-                    $results['Environment'],
-                    $results['Database'],
+                    $results['environment'],
+                    $results['database'],
                 ],
             ],
             [
-                'title' => 'Integration Checks',
+                'title' => __('Application Integrity & Front-end', \WP2\Update\Config::TEXT_DOMAIN),
                 'checks' => [
-                    $results['GitHub Connectivity'],
+                    $results['data_integrity'],
+                    $results['assets_loaded'],
+                    $results['rest_endpoints'],
+                ],
+            ],
+            [
+                'title' => __('Integration & Connectivity', \WP2\Update\Config::TEXT_DOMAIN),
+                'checks' => [
+                    $results['connectivity'],
                 ],
             ],
         ];

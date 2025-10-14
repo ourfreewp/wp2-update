@@ -5,6 +5,7 @@ use WP2\Update\Utils\Logger;
 use WP2\Update\Utils\HttpClient;
 use WP2\Update\Utils\Cache;
 use WP2\Update\Config;
+use WP2\Update\Data\AppData;
 
 /**
  * Handles all interactions with the GitHub Releases API.
@@ -12,10 +13,12 @@ use WP2\Update\Config;
 class ReleaseService
 {
     private ClientService $clientService;
+    private AppData $appData;
 
-    public function __construct(ClientService $clientService)
+    public function __construct(ClientService $clientService, AppData $appData)
     {
         $this->clientService = $clientService;
+        $this->appData = $appData;
     }
 
     /**
@@ -35,6 +38,9 @@ class ReleaseService
         }
 
         try {
+            // Ensure $app_id is retrieved or validated
+            $app_id = $app_id ?? $this->appData->find_active_app()['id'] ?? null;
+
             $client = $this->clientService->getInstallationClient($app_id);
             if (!$client) {
                 return null;
@@ -42,7 +48,7 @@ class ReleaseService
             $release = $client->repository()->releases()->latest($owner, $repo);
             Cache::set($cache_key, $release, HOUR_IN_SECONDS);
             return $release;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Logger::log('ERROR', "Failed to fetch latest release for {$repo_slug}: " . $e->getMessage());
             return null;
         }
@@ -83,7 +89,7 @@ class ReleaseService
             $releases = $client->repository()->releases()->all($owner, $repo);
             Cache::set($cache_key, $releases, HOUR_IN_SECONDS);
             return $releases;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Logger::log('ERROR', "Failed to fetch all releases for {$repo_slug}: " . $e->getMessage());
             return [];
         }
@@ -94,7 +100,7 @@ class ReleaseService
      */
     public function download_package(string $url, ?string $app_id = null): ?string
     {
-        $token = $this->clientService->getInstallationToken($this->clientService->getConnectionService()->resolve_app_id($app_id));
+        $token = $this->clientService->getInstallationToken($app_id);
         if (!$token) {
             Logger::log('ERROR', 'Cannot download package without an authentication token.');
             return null;
@@ -130,14 +136,14 @@ class ReleaseService
      * @param string $repo_slug The repository slug (e.g., 'owner/repo').
      * @return array The release notes data.
      */
-    public function get_release_notes(string $repo_slug): array
+    public function get_release_notes(string $repo_slug, ?string $app_id = null): array
     {
         [$owner, $repo] = explode('/', $repo_slug);
 
         try {
-            $client = $this->clientService->getInstallationClient();
+            $client = $this->clientService->getInstallationClient($app_id);
             if (!$client) {
-                throw new \RuntimeException(__("Failed to authenticate with GitHub.", \WP2\Update\Config::TEXT_DOMAIN));
+                throw new \RuntimeException(__("Failed to authenticate with GitHub.", Config::TEXT_DOMAIN));
             }
 
             $releases = $client->repository()->releases()->all($owner, $repo);
@@ -152,9 +158,9 @@ class ReleaseService
             }
 
             return $release_notes;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Logger::log('ERROR', "Failed to fetch release notes for {$repo_slug}: " . $e->getMessage());
-            throw new \RuntimeException(__("Failed to fetch release notes.", \WP2\Update\Config::TEXT_DOMAIN));
+            throw new \RuntimeException(__("Failed to fetch release notes.", Config::TEXT_DOMAIN));
         }
     }
 
@@ -167,5 +173,39 @@ class ReleaseService
     public function get_zip_url_from_release(array $release): string
     {
         return $release['zipball_url'] ?? '';
+    }
+
+    /**
+     * Fetches all releases for a repository.
+     * @param string $repo_slug The repository slug (e.g., 'owner/repo').
+     * @return array The list of releases.
+     */
+    public function get_releases_for_package(string $repo_slug): array
+    {
+        [$owner, $repo] = explode('/', $repo_slug);
+        $cache_key = sprintf(Config::TRANSIENT_ALL_RELEASES, $owner, $repo);
+        $cached = Cache::get($cache_key);
+
+        if ($cached !== false) {
+            return $cached;
+        }
+
+        try {
+            $client = $this->clientService->getInstallationClient(null);
+            if (!$client) {
+                return [];
+            }
+
+            $response = $client->get("/repos/{$owner}/{$repo}/releases");
+            $releases = json_decode((string) $response->getBody(), true);
+
+            // Cache the releases for future use
+            Cache::set($cache_key, $releases, Config::CACHE_EXPIRATION);
+
+            return $releases;
+        } catch (\Exception $e) {
+            Logger::log('ERROR', "Failed to fetch releases for {$repo_slug}: " . $e->getMessage());
+            return [];
+        }
     }
 }

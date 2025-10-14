@@ -1,5 +1,5 @@
-import { escapeHtml } from '../utils/string.js';
-import { ActionButton } from './ActionButton.js';
+import { escapeHtml } from '../../utils/string.js';
+import { ActionButton } from '../ui/Button.js';
 
 /**
  * Renders a single row for the apps table.

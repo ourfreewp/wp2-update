@@ -9,44 +9,55 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+
 ?>
-<div class="wp2-table-wrapper" role="region" aria-labelledby="packages-table-title">
-    <h2 id="packages-table-title" class="screen-reader-text"><?php esc_html_e('Packages', \WP2\Update\Config::TEXT_DOMAIN); ?></h2>
-    <table class="wp2-table" role="table">
-        <thead>
-            <tr role="row">
-                <th role="columnheader"><?php esc_html_e('Package Name', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
-                <th role="columnheader"><?php esc_html_e('Status', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
-                <th role="columnheader"><?php esc_html_e('Installed Version', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
-                <th role="columnheader"><?php esc_html_e('Latest Release', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
-                <th role="columnheader"><?php esc_html_e('Actions', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
-            </tr>
-        </thead>
-        <tbody>
-             <?php if (empty($packages)) : ?>
+<div class="card mt-4">
+    <div class="card-body">
+        <h2 id="packages-table-title" class="card-title">
+            <?php esc_html_e('Packages', \WP2\Update\Config::TEXT_DOMAIN); ?>
+        </h2>
+        <div class="mb-3 text-end">
+            <button id="wp2-refresh-packages" class="btn btn-secondary">
+                <i class="bi bi-arrow-clockwise me-1"></i> <?php esc_html_e('Refresh', \WP2\Update\Config::TEXT_DOMAIN); ?>
+            </button>
+        </div>
+        <table class="table table-hover" role="table">
+            <thead>
                 <tr role="row">
-                    <td colspan="5" class="wp2-empty-state"><?php esc_html_e('No packages found. Check your plugin and theme headers for a valid "Update URI".', \WP2\Update\Config::TEXT_DOMAIN); ?></td>
+                    <th scope="col"><?php esc_html_e('Package', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
+                    <th scope="col"><?php esc_html_e('Installed Version', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
+                    <th scope="col"><?php esc_html_e('Status', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
+                    <th scope="col"><?php esc_html_e('Release Channel', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
+                    <th scope="col" class="text-end"><?php esc_html_e('Actions', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
                 </tr>
-            <?php else : ?>
+            </thead>
+            <tbody>
                 <?php foreach ($packages as $package) : ?>
-                    <tr role="row" data-repo-slug="<?php echo esc_attr($package['repo'] ?? ''); ?>">
-                        <td role="cell" data-wp2-label="<?php esc_attr_e('Package Name', \WP2\Update\Config::TEXT_DOMAIN); ?>">
-                            <div class="wp2-package-name"><?php echo esc_html($package['name'] ?? 'N/A'); ?></div>
-                            <div class="wp2-package-repo"><?php echo esc_html($package['repo'] ?? 'N/A'); ?></div>
+                    <tr data-repo-slug="<?php echo esc_attr($package['repo']); ?>">
+                        <td>
+                            <strong><?php echo esc_html($package['name']); ?></strong>
+                            <div class="text-muted small"><?php echo esc_html($package['repo']); ?></div>
                         </td>
-                        <td role="cell" data-wp2-label="<?php esc_attr_e('Status', \WP2\Update\Config::TEXT_DOMAIN); ?>"><?php echo esc_html($package['status'] ?? 'Unknown'); ?></td>
-                        <td role="cell" data-wp2-label="<?php esc_attr_e('Installed Version', \WP2\Update\Config::TEXT_DOMAIN); ?>"><?php echo esc_html($package['version'] ?? 'N/A'); ?></td>
-                        <td role="cell" data-wp2-label="<?php esc_attr_e('Latest Release', \WP2\Update\Config::TEXT_DOMAIN); ?>">
-                            <?php echo esc_html($package['latest_label'] ?? 'N/A'); ?>
+                        <td><?php echo esc_html($package['version']); ?></td>
+                        <td>
+                            <span class="badge rounded-pill bg-<?php echo $package['status'] === 'Up to date' ? 'success' : 'warning'; ?>">
+                                <?php echo esc_html($package['status']); ?>
+                            </span>
                         </td>
-                        <td role="cell" class="wp2-table-actions" data-wp2-label="<?php esc_attr_e('Actions', \WP2\Update\Config::TEXT_DOMAIN); ?>">
-                            <button type="button" class="wp2-btn wp2-btn--ghost" data-wp2-action="view-details">
-                                <?php esc_html_e('Details', \WP2\Update\Config::TEXT_DOMAIN); ?>
-                            </button>
+                        <td><?php echo esc_html($package['release_channel']); ?></td>
+                        <td class="text-end">
+                            <div class="btn-group">
+                                <button class="btn btn-primary btn-sm">Update</button>
+                                <button class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"></button>
+                                <ul class="dropdown-menu">
+                                    <li><button class="dropdown-item">Rollback</button></li>
+                                    <li><button class="dropdown-item">Assign</button></li>
+                                </ul>
+                            </div>
                         </td>
                     </tr>
                 <?php endforeach; ?>
-            <?php endif; ?>
-        </tbody>
-    </table>
+            </tbody>
+        </table>
+    </div>
 </div>

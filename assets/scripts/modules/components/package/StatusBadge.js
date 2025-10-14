@@ -1,4 +1,4 @@
-import { escapeHtml } from '../utils/string.js';
+import { escapeHtml } from '../../utils/string.js';
 
 /**
  * Renders a status badge for a package.

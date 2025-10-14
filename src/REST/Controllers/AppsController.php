@@ -105,6 +105,10 @@ final class AppsController extends AbstractController {
 
         try {
             $this->connectionService->clear_stored_credentials($id);
+
+            // Invalidate cache for the deleted app
+            \WP2\Update\Utils\Cache::delete(\WP2\Update\Config::TRANSIENT_REPOSITORIES_CACHE . '_' . $id);
+
             return $this->respond(['message' => __('App deleted successfully.', \WP2\Update\Config::TEXT_DOMAIN)]);
         } catch (\Exception $e) {
             return $this->respond($e->getMessage(), 500);

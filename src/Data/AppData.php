@@ -9,7 +9,7 @@ use WP2\Update\Utils\Logger;
  * Handles all CRUD operations for GitHub App connection data,
  * abstracting the underlying WordPress options storage mechanism.
  */
-final class ConnectionData
+final class AppData
 {
     /**
      * In-memory cache of connection records to reduce database reads.
@@ -106,7 +106,7 @@ final class ConnectionData
      */
     private function persist(): void
     {
-        update_option(Config::OPTION_APPS, $this->cache, 'no'); // Do not autoload
+        update_option(Config::OPTION_APPS, $this->cache, false); // Corrected third argument
     }
 
     /**
@@ -144,5 +144,34 @@ final class ConnectionData
             }
         }
         return null;
+    }
+
+    /**
+     * Get all GitHub apps from the cache.
+     *
+     * @return array
+     */
+    public function getApps(): array
+    {
+        if (empty($this->cache)) {
+            $this->load();
+        }
+        return $this->cache;
+    }
+
+    /**
+     * Resolve the app ID.
+     *
+     * @param string|null $app_id
+     * @return string|null
+     */
+    public function resolve_app_id(?string $app_id): ?string
+    {
+        if ($app_id === null) {
+            $active_app = $this->find_active_app();
+            return $active_app['id'] ?? null;
+        }
+
+        return $app_id;
     }
 }

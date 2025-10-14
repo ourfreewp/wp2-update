@@ -89,4 +89,22 @@ final class Logger
 
         return $wpdb->get_results($query, ARRAY_A);
     }
+
+    /**
+     * Prunes logs older than a specified retention period.
+     */
+    public static function prune_logs(): void
+    {
+        global $wpdb;
+        $table_name = $wpdb->prefix . Config::LOGS_TABLE_NAME;
+
+        // Define retention period (e.g., 30 days)
+        $retention_period = apply_filters('wp2_update_log_retention_days', 30);
+        $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM {$table_name} WHERE timestamp < DATE_SUB(NOW(), INTERVAL %d DAY)",
+                $retention_period
+            )
+        );
+    }
 }

@@ -60,10 +60,6 @@ abstract class AbstractController implements ControllerInterface {
      */
     protected function permission_callback(string $action): callable {
         return function (WP_REST_Request $request) use ($action) {
-            $nonce = $request->get_header('X-WP-Nonce');
-            if (!$nonce || !wp_verify_nonce($nonce, 'wp_rest')) {
-                return false;
-            }
             return Permissions::current_user_can_manage($action, $request);
         };
     }

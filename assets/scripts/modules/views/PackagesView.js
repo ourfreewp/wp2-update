@@ -1,34 +1,37 @@
-import { __ } from '@wordpress/i18n';
-import { PackageRow } from '../components/PackageRow.js';
+import { PackageRow } from '../components/package/PackageRow.js';
 import { store } from '../state/store.js';
 
-export class PackagesView {
-    /**
-     * Renders the packages table.
-     * @param {HTMLElement} rootElement - The element to render into.
-     */
-    render(rootElement) {
-        const { packages } = store.get();
-        rootElement.innerHTML = `
-            <header class="wp2-panel-header">
-                <h2>${__("Packages", "wp2-update")}</h2>
-            </header>
-			<div class="wp2-table-wrapper">
-				<table class="wp2-table">
-					<thead>
-						<tr>
-							<th>${__("Package", "wp2-update")}</th>
-							<th>${__("Status", "wp2-update")}</th>
-							<th>${__("Installed Version", "wp2-update")}</th>
-							<th>${__("Latest Release", "wp2-update")}</th>
-							<th class="wp2-table-cell__actions">${__("Actions", "wp2-update")}</th>
-						</tr>
-					</thead>
-					<tbody>
-                        ${packages.length > 0 ? packages.map(PackageRow).join('') : `<tr><td colspan="5">${__("No packages found. Sync with GitHub to see your packages.", "wp2-update")}</td></tr>`}
-					</tbody>
-				</table>
-			</div>
-		`;
-    }
-}
+const { __ } = wp.i18n;
+
+// This file is now focused solely on interactions for the Packages tab.
+
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('Packages interactions initialized.');
+
+    const packagesTableBody = document.querySelector('#packages-table tbody');
+
+    // Function to render packages dynamically
+    const renderPackages = () => {
+        const packages = store.get().packages;
+        packagesTableBody.innerHTML = packages.map(PackageRow).join('');
+    };
+
+    // Initial render
+    renderPackages();
+
+    // Listen for state updates
+    store.subscribe(renderPackages);
+
+    document.addEventListener('click', (event) => {
+        if (event.target && event.target.dataset.wp2Action === 'view-package-details') {
+            const packageSlug = event.target.closest('tr').dataset.packageSlug;
+            console.log(`View package details interaction triggered for: ${packageSlug}`);
+
+            // Trigger a custom event for viewing package details
+            const viewPackageEvent = new CustomEvent('wp2ViewPackageDetails', {
+                detail: { packageSlug },
+            });
+            document.dispatchEvent(viewPackageEvent);
+        }
+    });
+});

@@ -2,16 +2,29 @@
 
 namespace WP2\Update\Utils;
 
+use WP2\Update\Config;
+
 /**
  * Handles symmetric encryption and decryption of sensitive data using OpenSSL.
  */
 class Encryption
 {
     private const CIPHER_METHOD = 'aes-256-cbc';
-    private string $key;
+    private ?string $key;
 
-    public function __construct(string $key)
+    public function __construct(?string $key = null)
     {
+        if ($key === null) {
+            $key = get_option(Config::OPTION_ENCRYPTION_SALT);
+        }
+
+        if (!$key) {
+            // Log a warning and allow the plugin to continue operating.
+            \WP2\Update\Utils\Logger::log('WARNING', 'Encryption key not found. Certain features may not work as expected.');
+            $this->key = null; // No encryption key available.
+            return;
+        }
+
         // Ensure the key is of a sufficient length for the chosen cipher.
         if (mb_strlen($key, '8bit') < 32) {
             // Pad the key if it's not long enough.
@@ -28,6 +41,10 @@ class Encryption
      */
     public function encrypt(string $data)
     {
+        if ($this->key === null) {
+            return false; // Encryption key is not available.
+        }
+
         $iv_length = openssl_cipher_iv_length(self::CIPHER_METHOD);
         $iv = openssl_random_pseudo_bytes($iv_length);
 
@@ -49,6 +66,10 @@ class Encryption
      */
     public function decrypt(string $data)
     {
+        if ($this->key === null) {
+            return false; // Encryption key is not available.
+        }
+
         $decoded = base64_decode($data, true);
         if ($decoded === false) {
             return false;

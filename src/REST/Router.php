@@ -27,4 +27,19 @@ final class Router {
             $controller->register_routes();
         }
     }
+
+    /**
+     * Retrieves a controller instance by its class name.
+     *
+     * @param string $className The fully qualified class name of the controller.
+     * @return ControllerInterface|null The controller instance, or null if not found.
+     */
+    public function get_controller(string $className): ?ControllerInterface {
+        foreach ($this->controllers as $controller) {
+            if ($controller instanceof $className) {
+                return $controller;
+            }
+        }
+        return null;
+    }
 }

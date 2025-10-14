@@ -28,6 +28,35 @@ final class CredentialsController extends AbstractController {
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'generate_manifest'],
             'permission_callback' => $this->permission_callback('wp2_generate_manifest'),
+            'args' => [
+                'app_id' => [
+                    'description' => __('The GitHub App ID.', \WP2\Update\Config::TEXT_DOMAIN),
+                    'type'        => 'string',
+                    'required'    => true,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function ($param) {
+                        return preg_match('/^[a-zA-Z0-9_-]+$/', $param);
+                    },
+                ],
+                'name' => [
+                    'description' => __('The name of the GitHub App.', \WP2\Update\Config::TEXT_DOMAIN),
+                    'type'        => 'string',
+                    'required'    => true,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+                'account_type' => [
+                    'description' => __('The account type (user or organization).', \WP2\Update\Config::TEXT_DOMAIN),
+                    'type'        => 'string',
+                    'required'    => false,
+                    'sanitize_callback' => 'sanitize_key',
+                ],
+                'organization' => [
+                    'description' => __('The organization slug.', \WP2\Update\Config::TEXT_DOMAIN),
+                    'type'        => 'string',
+                    'required'    => false,
+                    'sanitize_callback' => 'sanitize_title',
+                ],
+            ],
         ]);
 
         register_rest_route($this->namespace, '/credentials/exchange-code', [

@@ -1,28 +1,35 @@
-import { api_request } from '../api.js';
-import { escapeHtml } from '../utils/string.js';
-import { NotificationService } from '../services/NotificationService.js';
-import { __ } from '@wordpress/i18n';
+import { HealthService } from '../services/HealthService.js';
+import { store } from '../state/store.js';
 
-export class HealthView {
-    /**
-     * Renders the health status view.
-     * @param {HTMLElement} rootElement - The element to render into.
-     */
-    async render(rootElement) {
-        rootElement.innerHTML = `<h3>${__("Loading Health Status...", "wp2-update")}</h3>`;
-        try {
-            const response = await api_request('health', { method: 'GET' });
-            const healthData = response.data || {};
-            rootElement.innerHTML = `
-                <header class="wp2-panel-header"><h2>${__("System Health", "wp2-update")}</h2></header>
-                <dl class="wp2-detail-grid">
-                    <dt>${__("PHP Version", "wp2-update")}</dt><dd>${escapeHtml(healthData.php_version || __("N/A", "wp2-update"))}</dd>
-                    <dt>${__("Database Status", "wp2-update")}</dt><dd>${escapeHtml(healthData.db_status || __("N/A", "wp2-update"))}</dd>
-                </dl>
-            `;
-        } catch (error) {
-            rootElement.innerHTML = `<h3>${__("Could not load health status.", "wp2-update")}</h3>`;
-            NotificationService.showError(__("Failed to fetch health status.", "wp2-update"));
-        }
-    }
-}
+// This file is now focused solely on interactions for the Health tab.
+
+export const HealthView = {
+    initialize: () => {
+        console.log('Health interactions initialized.');
+
+        const healthContainer = document.querySelector('#health-container');
+
+        // Function to render health data dynamically
+        const renderHealthData = () => {
+            const healthData = store.get().health;
+            healthContainer.innerHTML = healthData
+                ? `<pre>${JSON.stringify(healthData, null, 2)}</pre>`
+                : '<p>No health data available.</p>';
+        };
+
+        // Initial fetch and render
+        HealthService.fetchHealthStatus().then(renderHealthData);
+
+        // Listen for state updates
+        store.subscribe(renderHealthData);
+
+        document.addEventListener('click', (event) => {
+            if (event.target && event.target.dataset.wp2Action === 'refresh-health') {
+                console.log('Refresh health checks interaction triggered.');
+
+                // Fetch and render health data on refresh
+                HealthService.fetchHealthStatus();
+            }
+        });
+    },
+};

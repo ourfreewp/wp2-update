@@ -40,10 +40,18 @@ abstract class AbstractUpdater {
     }
 
     /**
-     * Checks for updates for all managed packages of this type.
+     * Checks for updates for all managed packages of this type with caching.
      */
     public function check_for_updates($transient) {
         if (empty($transient->checked)) {
+            return $transient;
+        }
+
+        $cache_key = 'wp2_update_' . $this->type . '_updates';
+        $cached_updates = get_transient($cache_key);
+
+        if ($cached_updates !== false) {
+            $transient->response = array_merge($transient->response ?? [], $cached_updates);
             return $transient;
         }
 
@@ -51,23 +59,30 @@ abstract class AbstractUpdater {
             ? $this->packageService->get_managed_plugins()
             : $this->packageService->get_managed_themes();
 
+        $updates = [];
         foreach ($packages as $slug => $package) {
             if (isset($transient->checked[$slug])) {
                 $update = $this->get_update_data($package, $transient->checked[$slug]);
                 if ($update) {
-                    $transient->response[$slug] = (object) $update;
+                    $updates[$slug] = (object) $update;
                 }
             }
+        }
+
+        if (!empty($updates)) {
+            set_transient($cache_key, $updates, 5 * MINUTE_IN_SECONDS);
+            $transient->response = array_merge($transient->response ?? [], $updates);
         }
 
         return $transient;
     }
 
     /**
-     * Gets update data for a single package if an update is available.
+     * Gets update data for a single package if an update is available, considering the release channel.
      */
     private function get_update_data(array $package, string $installed_version): ?array {
-        $latest_release = $this->releaseService->get_latest_release($package['repo']);
+        $release_channel = $package['release_channel'] ?? 'stable'; // Default to stable if not set
+        $latest_release = $this->releaseService->get_latest_release($package['repo'], $release_channel);
 
         if (!$latest_release || version_compare($installed_version, $latest_release['tag_name'], '>=')) {
             return null;

@@ -35,6 +35,15 @@ class Schema {
             require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         }
 
-        dbDelta($sql);
+        error_log('Schema::create_tables() called.');
+        error_log('Attempting to create table: ' . $table_name);
+
+        // Check if the table already exists before attempting to create it.
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") !== $table_name) {
+            dbDelta($sql);
+            error_log('Table creation SQL executed.');
+        } else {
+            error_log('Table already exists: ' . $table_name);
+        }
     }
 }

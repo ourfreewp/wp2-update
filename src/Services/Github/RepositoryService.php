@@ -2,7 +2,7 @@
 
 namespace WP2\Update\Services\Github;
 
-use WP2\Update\Data\ConnectionData;
+use WP2\Update\Data\AppData;
 use WP2\Update\Utils\Cache;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Config;
@@ -11,11 +11,11 @@ use WP2\Update\Config;
  * Handles operations related to GitHub repositories.
  */
 class RepositoryService {
-    private ConnectionData $connectionData;
+    private AppData $appData;
     private ClientService $clientService;
 
-    public function __construct(ConnectionData $connectionData, ClientService $clientService) {
-        $this->connectionData = $connectionData;
+    public function __construct(AppData $appData, ClientService $clientService) {
+        $this->appData = $appData;
         $this->clientService = $clientService;
     }
 
@@ -25,7 +25,7 @@ class RepositoryService {
      * @return array List of repositories.
      */
     public function get_all_repositories(?string $app_id = null): array {
-        $app_id = $this->connectionData->resolve_app_id($app_id);
+        $app_id = $this->appData->resolve_app_id($app_id);
         if (!$app_id) {
             return [];
         }
@@ -57,10 +57,10 @@ class RepositoryService {
      * @return array List of managed repositories with their details.
      */
     public function get_managed_repositories(?string $app_id = null): array {
-        $app_id = $this->connectionData->resolve_app_id($app_id);
+        $app_id = $this->appData->resolve_app_id($app_id);
         if (!$app_id) return [];
 
-        $app = $this->connectionData->find($app_id);
+        $app = $this->appData->find($app_id);
         $managed_slugs = $app['managed_repositories'] ?? [];
         if (empty($managed_slugs)) return [];
 
@@ -75,4 +75,45 @@ class RepositoryService {
 
         return $managed_repos;
     }
+
+    /**
+     * Creates a new GitHub repository under the specified app context.
+     *
+     * @param string $repoName The name of the repository to create.
+     * @param string $appId The app context under which the repository will be created.
+     * @return array Details of the created repository.
+     */
+    public function create_repository(string $repoName, string $appId): array {
+        Logger::log('INFO', "Creating repository: {$repoName} under app: {$appId}");
+
+        try {
+            $client = $this->clientService->getInstallationClient($appId);
+            if (!$client) {
+                throw new \RuntimeException("Failed to retrieve GitHub client for app: {$appId}");
+            }
+
+            $response = $client->repositories()->create(
+                $repoName, // Repo Name
+                '', // Repo Description
+                // string $homepage = '',
+                // bool $public = true,
+                // string|null $organization = null,
+                // bool $hasIssues = false,
+                // bool $hasWiki = false,
+                // bool $hasDownloads = false,
+                // int $teamId = null,
+                // bool $autoInit = false,
+                // bool $hasProjects = true,
+                // string|null $visibility = null
+            );
+
+            Logger::log('INFO', "Repository created successfully: {$repoName}");
+
+            return $response;
+        } catch (\Throwable $exception) {
+            Logger::log('ERROR', "Failed to create repository: {$repoName}. Error: " . $exception->getMessage());
+            throw $exception;
+        }
+    }
 }
+

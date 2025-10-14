@@ -3,11 +3,16 @@
  */
 export function startLogStream() {
     const apiRoot = window.wp2UpdateData?.apiRoot || '';
+    // Ensure the API root is defined
+    if (!apiRoot) {
+        console.error('API Root is undefined. Cannot start log stream.');
+        return;
+    }
     const eventSource = new EventSource(`${apiRoot}/logs/stream`);
-    const logContainer = document.getElementById('log-stream-container');
+    const logContainer = document.getElementById('log-viewer');
 
     if (!logContainer) {
-        console.error('Log container not found in the DOM.');
+        console.error('Log viewer container not found in the DOM.');
         return;
     }
 
@@ -20,8 +25,13 @@ export function startLogStream() {
 
             const logEntry = document.createElement('div');
             logEntry.className = `log-entry level-${log.level.toLowerCase()}`;
-            logEntry.textContent = `[${log.timestamp}] ${log.message}`;
-            logContainer.prepend(logEntry);
+            logEntry.innerHTML = `
+                <span class="log-timestamp">[${log.timestamp}]</span>
+                <span class="log-level level-${log.level.toLowerCase()}">${log.level}</span>
+                <span class="log-message">${log.message}</span>
+            `;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight; // Auto-scroll to the bottom
         } catch (error) {
             console.error('Failed to process log entry:', error);
         }

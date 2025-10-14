@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme and plugin updates.
- * Version:           0.0.31
+ * Version:           0.0.32
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -41,10 +41,12 @@ require_once $autoloader;
 require_once __DIR__ . '/vendor/autoload.php';
 
 // Ensure Action Scheduler is loaded
-if (class_exists('ActionScheduler')) {
-   
-} else {
-    error_log('Action Scheduler is not available.');
+if (!class_exists('ActionScheduler')) {
+    error_log('ActionScheduler class exists: ' . (class_exists('ActionScheduler') ? 'true' : 'false'));
+    error_log('ActionScheduler namespace exists: ' . (class_exists('\ActionScheduler') ? 'true' : 'false'));
+    require_once __DIR__ . '/vendor/woocommerce/action-scheduler/action-scheduler.php';
+    error_log('Action Scheduler forced load executed.');
+    error_log('ActionScheduler class exists after force load: ' . (class_exists('ActionScheduler') ? 'true' : 'false'));
 }
 
 /**
@@ -52,6 +54,7 @@ if (class_exists('ActionScheduler')) {
  * This is the single entry point that fires when all plugins are loaded.
  */
 function wp2_update_run() {
+    error_log('wp2_update_run function is running.');
     \WP2\Update\Init::boot();
 }
 // Hook the single entry point to 'plugins_loaded'.
@@ -61,10 +64,17 @@ add_action( 'plugins_loaded', 'wp2_update_run');
  * Register the activation hook to create the log table.
  */
 use WP2\Update\Database\Schema;
+use WP2\Update\Utils\Encryption;
 
 // Ensure WordPress environment is loaded before invoking the activation hook
 if (function_exists('register_activation_hook')) {
-    register_activation_hook( __FILE__, [Schema::class, 'create_tables'] );
+    register_activation_hook( __FILE__, function () {
+        // Generate and store a unique encryption key if it doesn't exist
+        if (!get_option('wp2_encryption_key')) {
+            $key = bin2hex(random_bytes(32));
+            add_option('wp2_encryption_key', $key);
+        }
+    });
 } else {
     throw new RuntimeException('WordPress environment is not fully loaded.');
 }
@@ -73,3 +83,5 @@ if (function_exists('register_activation_hook')) {
 if (!isset($wpdb)) {
     global $wpdb;
 }
+
+error_log('WP2 Update plugin is loading.');

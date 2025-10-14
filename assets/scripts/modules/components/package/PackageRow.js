@@ -1,8 +1,8 @@
-import { escapeHtml } from '../utils/string.js';
+import { escapeHtml } from '../../utils/string.js';
 import { StatusBadge } from './StatusBadge.js';
 import { ReleaseDropdown } from './ReleaseDropdown.js';
 import { PackageActions } from './PackageActions.js';
-import { Dropdown } from './Dropdown.js';
+import { Dropdown } from '../Dropdown.js';
 
 /**
  * Renders a single row for the packages table.

@@ -1,5 +1,8 @@
 import { escapeHtml } from '../../utils/string.js';
 import { apiDelete } from '../../api.js';
+import { NotificationService } from '../../services/NotificationService.js';
+import { AppService } from '../../services/AppService.js';
+import { modalManager } from '../../utils/modal.js';
 
 export const AppDetailsModal = (app) => `
     <div class="wp2-modal-header">

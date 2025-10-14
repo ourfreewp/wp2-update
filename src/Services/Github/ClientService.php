@@ -8,45 +8,39 @@ use Github\Exception\ExceptionInterface;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Utils\Cache;
 use WP2\Update\Utils\JWT as JwtService;
+use WP2\Update\Data\AppData;
+use WP2\Update\Utils\Encryption;
 
 /**
  * Manages the GitHub API client, including authentication and token management.
  */
 class ClientService {
-    private ?ConnectionService $connectionService = null;
     private JwtService $jwtService;
+    private AppData $appData;
+    private Encryption $encryption;
     private array $installationClients = [];
 
-    public function __construct(JwtService $jwtService) {
+    public function __construct(JwtService $jwtService, AppData $appData, Encryption $encryption) {
         $this->jwtService = $jwtService;
-    }
-
-    /**
-     * Sets the ConnectionService dependency.
-     * This is done post-construction to resolve a circular dependency.
-     */
-    public function setConnectionService(ConnectionService $connectionService): void {
-        $this->connectionService = $connectionService;
-    }
-
-    /**
-     * Retrieves the ConnectionService instance.
-     *
-     * @return ConnectionService|null The ConnectionService instance or null if not set.
-     */
-    public function getConnectionService(): ?ConnectionService {
-        return $this->connectionService;
+        $this->appData = $appData;
+        $this->encryption = $encryption;
     }
 
     /**
      * Gets an authenticated GitHub API client for a specific app installation.
-     * @param string|null $app_id The ID of the app. If null, uses the first active app.
+     * @param string $app_id The ID of the app.
      * @return GitHubClient|null An authenticated client or null on failure.
      */
-    public function getInstallationClient(?string $app_id = null): ?GitHubClient {
-        $app_id = $this->connectionService->resolve_app_id($app_id);
+    public function getInstallationClient(string $app_id): ?GitHubClient {
         if (!$app_id) {
-            Logger::log('WARNING', 'Could not resolve an app ID to create a GitHub client.');
+            Logger::log('WARNING', 'App ID is required to create a GitHub client.');
+            return null;
+        }
+
+        // Fetch credentials directly without relying on ConnectionService
+        $credentials = $this->fetchStoredCredentials($app_id);
+        if (!$credentials) {
+            Logger::log('ERROR', 'No credentials found for the provided app ID.', ['app_id' => $app_id]);
             return null;
         }
 
@@ -81,7 +75,7 @@ class ClientService {
             return $cached_token;
         }
 
-        $credentials = $this->connectionService->get_stored_credentials($app_id);
+        $credentials = $this->fetchStoredCredentials($app_id);
         if (empty($credentials['app_id']) || empty($credentials['private_key']) || empty($credentials['installation_id'])) {
             Logger::log('WARNING', "Missing credentials to generate installation token for app {$app_id}.");
             return null;
@@ -126,5 +120,27 @@ class ClientService {
             Logger::log('ERROR', 'Failed to create installation token: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Fetches stored credentials for a given app ID.
+     * @param string $app_id The ID of the app.
+     * @return array|null The credentials or null if not found.
+     */
+    private function fetchStoredCredentials(string $app_id): ?array {
+        $credentials = $this->appData->find($app_id);
+        if (!$credentials) {
+            Logger::log('ERROR', 'No credentials found for the provided app ID.', ['app_id' => $app_id]);
+            return null;
+        }
+
+        // Decrypt the private key
+        $privateKey = $this->encryption->decrypt($credentials['private_key']);
+
+        return [
+            'app_id' => $app_id,
+            'private_key' => $privateKey,
+            'other_data' => $credentials['other_data'] ?? null,
+        ];
     }
 }

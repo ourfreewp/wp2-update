@@ -1,83 +1,58 @@
 # AI Coding Agent Instructions for WP2 Update
 
-Welcome to the WP2 Update codebase! This document provides essential guidelines for AI coding agents to be productive and effective contributors to this project.
+Welcome to the WP2 Update codebase! This document provides essential guidelines for AI coding agents to be productive and effective contributors to this project. Your adherence to these principles is critical for maintaining the project's architectural integrity.
 
 ## Project Overview
 
-WP2 Update is a WordPress plugin designed to manage updates for plugins and themes hosted in GitHub repositories. It features:
-- **Hybrid SPA Admin Interface**: A JavaScript-driven admin dashboard communicating with a REST API.
-- **Webhook-Driven Updates**: GitHub webhooks trigger update checks.
-- **Centralized Package Management**: Unified dashboard for managing GitHub-hosted plugins and themes.
-- **Detailed Logging**: Logs for debugging and monitoring plugin activity.
+WP2 Update is a WordPress plugin designed to manage updates for plugins and themes hosted in GitHub repositories.
 
-## Key Components
+The core architectural principle is **server-side rendering with client-side enhancement**. The PHP backend is responsible for rendering the initial HTML structure for all admin views. Client-side JavaScript then "hydrates" this static markup to add interactivity, handle user actions, and perform targeted DOM updates via a REST API. JavaScript should never replace entire views.
 
-### 1. **Back-End (PHP)**
-- **REST API**: Located in `src/REST/`. Controllers like `HealthController` handle API endpoints.
-- **Admin Screens**: Managed in `src/Admin/Screens/`. The `Manager.php` file renders the admin dashboard.
-- **Core Services**: Found in `src/Core/`. These include `ConnectionService`, `CredentialService`, and `ReleaseService`.
-- **Logging**: Implemented in `src/Utils/Logger.php`. Logs are stored in the database table `wp2_update_logs`.
+## Architecture & Key Components
 
-### 2. **Front-End (JavaScript)**
-- **Modules**: JavaScript modules are in `assets/scripts/modules/`.
-- **Views**: UI components like `HealthView.js` are in `assets/scripts/modules/ui/views/`.
-- **State Management**: Centralized state is managed in `assets/scripts/modules/state/store.js`.
+### 1. Back-End (PHP) - `src/`
 
-### 3. **Database**
-- The plugin creates and manages the `wp2_update_logs` table for logging.
-- Database interactions use the WordPress `$wpdb` object.
+- **REST API (`src/REST/`)**: The communication layer. Controllers in `src/REST/Controllers/` define all endpoints. All data and actions are exposed through this layer.
+- **Admin Views (`src/Admin/`)**: `Screens.php` and the files in `src/Admin/Views/` are responsible for rendering the initial HTML sent to the browser. This is the foundation of the UI.
+- **Core Services (`src/Services/`)**: This is the business logic layer.
+  - `PackageService.php` orchestrates all package-related actions.
+  - Services in `src/Services/Github/` handle all direct communication with the GitHub API (e.g., `ClientService.php`, `ReleaseService.php`).
+- **Update Integration (`src/Updates/`)**: `AbstractUpdater.php` and its concrete implementations hook into WordPress's update transients to provide update information.
+- **Logging (`src/Utils/Logger.php`)**: A centralized utility for logging to the custom `wp2_update_logs` database table.
 
-### 4. **Webhooks**
-- GitHub webhooks trigger update checks. The endpoint is `/wp-json/wp2-update/v1/webhook`.
+### 2. Front-End (JavaScript) - `assets/`
 
-## Development Workflow
+- **Main Entry Point (`assets/scripts/admin-main.js`)**: Initializes the application, hydrates the server-rendered HTML, and attaches global event listeners.
+- **State Management (`assets/scripts/modules/state/store.js`)**: A central nanostores atom holds the application's client-side state. This is the single source of truth for the UI's dynamic aspects.
+- **API Services (`assets/scripts/modules/services/`)**: Client-side counterparts to the REST controllers. They handle making API requests and updating the central state store (e.g., `PackageService.js`).
+- **Event Handlers (`assets/scripts/modules/handlers/`)**: These modules contain the logic that runs in response to user interactions (e.g., button clicks), delegating tasks to the API services.
+- **DOM Initializers (`assets/scripts/modules/views/`)**: These files do not render views. Their role is to find specific elements within the server-rendered DOM and attach the appropriate event handlers from the `handlers/` directory.
 
-### Setup
-1. Clone the repository: `git clone https://github.com/ourfreewp/wp2-update.git`
-2. Install PHP dependencies: `composer install`
-3. Install JavaScript dependencies: `npm install`
+## Guiding Principles & Conventions (Mandatory)
 
-### Build
-- **Development**: `npm run dev` (Vite development server with hot-reloading)
-- **Production**: `npm run build` (Optimized assets)
-
-### Testing
-- **PHP Unit Tests**: Located in `tests/`. Run with:
-  ```sh
-  composer run test
-  ```
-- **JavaScript Linting**: Check compliance with:
-  ```sh
-  npm run lint
-  ```
-
-## Project-Specific Conventions
-
-1. **Hybrid Rendering**: Admin views are server-rendered (PHP) and hydrated with JavaScript for interactivity.
-2. **REST API Design**: Follow WordPress REST API conventions. Use `WP_REST_Request` and `WP_REST_Response`.
-3. **Logging**: Use `Logger::log()` for consistent logging. Ensure the `wp2_update_logs` table exists before writing logs.
-4. **Coding Standards**:
-   - PHP: WordPress Coding Standards (`composer run lint`)
-   - JavaScript: ESLint with WordPress configuration (`npm run lint`)
-
-## Integration Points
-
-- **GitHub API**: Interactions are managed via `CredentialService` and `ConnectionService`.
-- **Database**: Use `$wpdb` for queries. Ensure tables are created during plugin activation.
-- **Admin UI**: Extend `Manager.php` for new tabs or panels. Use JavaScript views for dynamic content.
+- **Respect the Server-First Architecture**: Do not write JavaScript that renders large structural DOM elements. The initial HTML is always generated by PHP in `src/Admin/Views/`. Your JavaScript should only manipulate this existing structure.
+- **Perform Targeted DOM Updates**: When the state changes, do not re-render entire tables or views. Write specific functions that find the relevant element (e.g., a `<tr>` with a `data-repo` attribute) and update only the necessary child elements (e.g., a status badge or version number).
+- **Ensure Services are Decoupled**: As per issue ARC-01, avoid creating circular dependencies between services. Pass dependencies or required data as method arguments rather than injecting entire service instances where not needed.
+- **Prioritize Performance**:
+  - *Backend*: Use caching (transients) for expensive operations, especially in the update-checking process (PERF-01).
+  - *Frontend*: For non-critical UI changes, use optimistic updates to make the interface feel faster (UX-03).
+- **Implement Full Accessibility (A11Y)**:
+  - All custom interactive components (like dropdowns) must be fully keyboard-operable (A11Y-01).
+  - Use ARIA attributes (`aria-live`, `aria-label`, etc.) to communicate dynamic state changes to assistive technologies (A11Y-02).
+- **Internationalize All Frontend Strings (I18N)**: All user-facing strings in JavaScript files must be wrapped in the `__()` function from `@wordpress/i18n` for translation (I18N-01).
 
 ## Examples
 
 ### Adding a New REST Endpoint
-1. Create a new controller in `src/REST/Controllers/`.
-2. Register the route in `register_routes()`.
+
+1. Create or modify a controller in `src/REST/Controllers/`.
+2. Register the route in the controller's `register_routes()` method.
 3. Implement the callback method using `WP_REST_Request` and return a `WP_REST_Response`.
 
-### Adding a New Admin Tab
-1. Update `src/Admin/Screens/Manager.php` to include the tab in the navigation.
-2. Create a corresponding view in `assets/scripts/modules/ui/views/`.
-3. Hydrate the view with JavaScript in `admin-main.js`.
+### Adding a New Interactive Feature to a View
 
----
-
-For more details, refer to the `README.md` and `CONTRIBUTING.md` files. If you encounter any issues, consult the logs or the `troubleshooting.md` file in the `docs/` directory.
+1. **Modify the PHP View**: Add the required HTML elements (e.g., a new button) to the appropriate file in `src/Admin/Views/`. Ensure it has a unique ID or `data-*` attribute for selection.
+2. **Create a JS Handler**: In the relevant file in `assets/scripts/modules/handlers/`, create a function to handle the interaction.
+3. **Update the API Service**: Add a method to the appropriate service in `assets/scripts/modules/services/` to call the new REST endpoint.
+4. **Attach the Event Listener**: In the view's initializer file (e.g., `assets/scripts/modules/views/PackagesView.js`), find the new element and attach the event listener, which calls your handler function.
+5. **Perform a Targeted DOM Update**: On a successful API response, update the central state and call a function to make the minimal required change to the DOM.

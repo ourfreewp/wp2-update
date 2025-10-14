@@ -9,7 +9,9 @@ import { DashboardView } from './modules/views/DashboardView.js';
 import { HealthView } from './modules/views/HealthView.js';
 import { logger } from './modules/utils/logger.js';
 import { NotificationService } from './modules/services/NotificationService.js';
-import { __ } from '@wordpress/i18n';
+const { __ } = wp.i18n;
+import { handleRefreshPackages } from './modules/handlers/refreshPackagesHandler';
+import { Modal } from 'bootstrap';
 
 /**
  * Initializes the application state from localized data provided by WordPress.
@@ -63,15 +65,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     registerPackageHandlers(packageService);
     registerFormHandlers();
 
-    // Render initial view based on the current state
-    const rootElement = document.getElementById('wp2-update-dashboard');
-    if (rootElement) {
+    // Enhance the dashboard view if the element exists
+    const dashboardElement = document.getElementById('wp2-update-dashboard');
+    if (dashboardElement) {
         const dashboardView = new DashboardView();
-        dashboardView.render(rootElement);
+        dashboardView.enhance(dashboardElement);
     }
 
+    // Enhance the health view if the element exists
+    const healthElement = document.getElementById('wp2-update-health');
+    if (healthElement) {
+        const healthView = new HealthView();
+        healthView.enhance(healthElement);
+    }
+
+    // Replaced standalone spinner functions with state-based logic
+    const setProcessingState = (isProcessing) => {
+        updateState({ isProcessing });
+        const spinner = document.getElementById('global-spinner');
+        if (spinner) {
+            spinner.style.display = isProcessing ? 'block' : 'none';
+        }
+    };
+
     // Perform initial data fetch and sync
-    show_global_spinner();
+    setProcessingState(true);
     try {
         await connectionService.fetchConnectionStatus();
         if (store.get().status === STATUS.INSTALLED) {
@@ -82,37 +100,50 @@ document.addEventListener('DOMContentLoaded', async () => {
         logger.error(__("Failed during initial data synchronization:", "wp2-update"), error);
         NotificationService.showError(__("Failed to load initial data.", "wp2-update"));
     } finally {
-        hide_global_spinner();
+        setProcessingState(false);
     }
 
-    // Centralized state management for SPA tabs
-    const state = {
-        activeTab: new URLSearchParams(window.location.search).get('tab') || 'dashboard',
-    };
-
-    // Initialize views
-    const views = {
-        dashboard: new DashboardView(),
-        health: new HealthView(),
-    };
-
-    // Render the active tab dynamically
-    const renderActiveTab = () => {
-        const rootElement = document.getElementById('wp2-update-dashboard');
-        if (rootElement && views[state.activeTab]) {
-            views[state.activeTab].render(rootElement);
-        }
-    };
-
-    // Initial render
-    renderActiveTab();
-
-    // Listen for tab changes
+    // Attach event handlers to server-rendered tabs
     document.querySelectorAll('[data-tab]').forEach(tab => {
         tab.addEventListener('click', (event) => {
             event.preventDefault();
-            state.activeTab = tab.getAttribute('data-tab');
-            renderActiveTab();
+            const targetTab = tab.getAttribute('data-tab');
+            document.querySelectorAll('[data-tab-content]').forEach(content => {
+                content.style.display = content.getAttribute('data-tab-content') === targetTab ? 'block' : 'none';
+            });
+        });
+    });
+
+    // Handle package refresh on load
+    handleRefreshPackages();
+
+    // Attach event listeners to buttons that trigger modals
+    const modalButtons = document.querySelectorAll('[data-bs-toggle="modal"]');
+
+    modalButtons.forEach(button => {
+        button.addEventListener('click', (event) => {
+            const targetModalId = button.getAttribute('data-bs-target');
+            const modalElement = document.querySelector(targetModalId);
+
+            if (modalElement) {
+                const modalInstance = new Modal(modalElement, {
+                    backdrop: true, // Ensure backdrop dismissal is enabled
+                    keyboard: true  // Allow dismissal with the ESC key
+                });
+                modalInstance.show();
+            } else {
+                console.error(`Modal with ID ${targetModalId} not found.`);
+            }
         });
     });
 });
+
+// Ensure wp.i18n is available before executing dependent code
+if (typeof wp === 'undefined' || !wp.i18n) {
+    console.error('wp.i18n is not available.');
+} else {
+    console.log('wp.i18n is loaded.');
+    // Logging to confirm script load and check wp.i18n availability
+    console.log('Admin script loaded successfully.');
+    console.log('wp.i18n:', typeof wp !== 'undefined' && wp.i18n ? 'Loaded' : 'Not Loaded');
+}

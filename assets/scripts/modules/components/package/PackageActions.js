@@ -1,4 +1,4 @@
-import { Dropdown } from './Dropdown.js';
+import { Dropdown } from '../ui/Dropdown.js';
 
 /**
  * Renders the action buttons for a package row.
@@ -10,14 +10,14 @@ export const PackageActions = (pkg) => {
 
     dropdownItems.push({
         id: 'open-package-details',
-        label: 'Details',
+        label: __('Details', 'wp2-update'),
         icon: 'ℹ️',
     });
 
     if (pkg.has_update) {
         dropdownItems.push({
             id: 'update-package',
-            label: 'Update',
+            label: __('Update', 'wp2-update'),
             icon: '🔄',
         });
     }
@@ -25,13 +25,13 @@ export const PackageActions = (pkg) => {
     if (pkg.is_installed) {
         dropdownItems.push({
             id: 'open-rollback',
-            label: 'Rollback',
+            label: __('Rollback', 'wp2-update'),
             icon: '↩️',
         });
     } else {
         dropdownItems.push({
             id: 'install-package',
-            label: 'Install',
+            label: __('Install', 'wp2-update'),
             icon: '⬇️',
         });
     }
@@ -39,7 +39,7 @@ export const PackageActions = (pkg) => {
     if (!pkg.is_managed) {
         dropdownItems.push({
             id: 'open-assign-app',
-            label: 'Assign App',
+            label: __('Assign App', 'wp2-update'),
             icon: '🔗',
         });
     }

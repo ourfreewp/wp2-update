@@ -3,6 +3,8 @@
 namespace WP2\Update\Webhooks;
 
 use WP2\Update\Services\Github\ConnectionService;
+use WP2\Update\Services\Github\ClientService;
+use WP2\Update\Services\Github\ReleaseService;
 use WP2\Update\Utils\Logger;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -12,9 +14,13 @@ use WP_REST_Response;
  */
 final class WebhookController {
     private ConnectionService $connectionService;
+    private ClientService $clientService;
+    private ReleaseService $releaseService;
 
-    public function __construct(ConnectionService $connectionService) {
+    public function __construct(ConnectionService $connectionService, ClientService $clientService, ReleaseService $releaseService) {
         $this->connectionService = $connectionService;
+        $this->clientService = $clientService;
+        $this->releaseService = $releaseService;
     }
 
     /**
@@ -60,13 +66,14 @@ final class WebhookController {
             return new WP_REST_Response(['message' => 'Invalid request.'], 400);
         }
 
+        // Ensure secrets are mapped to their respective app IDs
         $secrets = $this->connectionService->get_all_webhook_secrets();
         if (empty($secrets)) {
             Logger::log('SECURITY', 'Webhook received but no secrets are configured.');
             return new WP_REST_Response(['message' => 'Webhook not configured.'], 401);
         }
 
-        // Find the correct secret by validating the signature against all configured apps.
+        // Validate the signature against all configured apps
         $valid_app_id = null;
         foreach ($secrets as $app_id => $secret) {
             $expected_hash = 'sha256=' . hash_hmac('sha256', $payload, $secret);
@@ -106,11 +113,18 @@ final class WebhookController {
         if ($event === 'release' && ($data['action'] ?? '') === 'published') {
             $repository = $data['repository']['full_name'] ?? null;
             if ($repository) {
-                Logger::log('INFO', "Release published webhook received for repository {$repository}. Clearing specific update transient.");
-                // Delete only the specific repository's cache key.
+                Logger::log('INFO', "Release published webhook received for repository {$repository}. Pre-fetching and caching new release data.");
+
                 [$owner, $repo] = explode('/', $repository);
-                $cacheKey = sprintf(\WP2\Update\Config::TRANSIENT_LATEST_RELEASE, $owner, $repo);
-                \WP2\Update\Utils\Cache::delete($cacheKey);
+                $latestRelease = $this->releaseService->get_latest_release($repository, 'stable');
+
+                if ($latestRelease) {
+                    $cacheKey = sprintf(\WP2\Update\Config::TRANSIENT_LATEST_RELEASE, $owner, $repo);
+                    \WP2\Update\Utils\Cache::set($cacheKey, $latestRelease, 5 * MINUTE_IN_SECONDS);
+                    Logger::log('INFO', "Cached latest release for repository {$repository}.");
+                } else {
+                    Logger::log('WARNING', "Failed to fetch latest release for repository {$repository}.");
+                }
             } else {
                 Logger::log('WARNING', "Release published webhook received but repository information is missing.");
             }

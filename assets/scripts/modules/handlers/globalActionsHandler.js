@@ -1,4 +1,4 @@
-import { syncAllPackages, createPackage } from './services/PackageService';
+import { syncAllPackages, createPackage } from '../services/PackageService';
 
 /**
  * Handles the "Sync All" action.
