@@ -54,7 +54,7 @@ final class WebhookController {
     }
 
     /**
-     * Handles the incoming webhook request from GitHub.
+     * Handles the incoming webhook request from GitHub asynchronously.
      */
     public function handle(WP_REST_Request $request): WP_REST_Response {
         $payload = $request->get_body();
@@ -88,9 +88,17 @@ final class WebhookController {
             return new WP_REST_Response(['message' => 'Invalid signature.'], 403);
         }
 
-        // Process the validated webhook payload.
-        $data = json_decode($payload, true);
-        $this->process_event($event, $data, $valid_app_id);
+        // Schedule an async action instead of processing synchronously
+        as_schedule_single_action(
+            time(),
+            'wp2_update_handle_webhook',
+            [
+                'event'   => $event,
+                'payload' => json_decode($payload, true),
+                'app_id'  => $valid_app_id,
+            ],
+            'wp2-update'
+        );
 
         return new WP_REST_Response(['message' => 'Webhook received.'], 200);
     }

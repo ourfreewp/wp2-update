@@ -63,36 +63,36 @@ class LogController extends AbstractController
     }
 
     /**
-     * Streams logs in real-time with safeguards to prevent infinite loops.
+     * Streams logs in real-time using Server-Sent Events (SSE).
      */
-    public function stream_logs(WP_REST_Request $request): void
+    public function stream_logs(): void
     {
         header('Content-Type: text/event-stream');
         header('Cache-Control: no-cache');
         header('Connection: keep-alive');
 
+        $lastId = isset($_GET['last_id']) ? (int) $_GET['last_id'] : null;
         $startTime = time();
-        $maxExecutionTime = 30; // Maximum execution time in seconds
-        $lastId = $request->get_param('last_id') ? (int) $request->get_param('last_id') : null;
+        $timeout = 300; // 5 minutes
 
         while (true) {
-            // Check if the maximum execution time has been reached
-            if ((time() - $startTime) >= $maxExecutionTime) {
-                echo "event: end\n";
-                echo "data: Stream closed due to timeout.\n\n";
-                ob_flush();
-                flush();
+            if ((time() - $startTime) > $timeout) {
                 break;
             }
 
-            $logs = Logger::get_recent_logs($lastId); // Fetch recent logs incrementally
-            foreach ($logs as $log) {
-                echo "data: " . json_encode($log) . "\n\n";
-                $lastId = $log['id']; // Update lastId to the most recent log ID
+            $logs = Logger::get_recent_logs($lastId);
+
+            if (!empty($logs)) {
+                foreach ($logs as $log) {
+                    echo "id: {$log['id']}\n";
+                    echo "data: " . json_encode($log) . "\n\n";
+                    $lastId = $log['id'];
+                }
+                ob_flush();
+                flush();
             }
-            ob_flush();
-            flush();
-            sleep(1); // Adjust the interval as needed
+
+            sleep(2); // Poll every 2 seconds
         }
     }
 }

@@ -12,7 +12,7 @@ use WP2\Update\Utils\Logger;
 final class Screens {
 	private HealthController $healthController;
 	private Data             $data;
-	private $container;
+	private                  $container;
 
 	public function __construct( HealthController $healthController, Data $data, $container ) {
 		$this->healthController = $healthController;
@@ -31,7 +31,8 @@ final class Screens {
 			<div class="wp2-header d-flex flex-column flex-md-row align-items-md-center justify-content-md-between mb-4">
 				<div>
 					<h1 class="wp2-main-title"><?php esc_html_e( 'WP2 Update', \WP2\Update\Config::TEXT_DOMAIN ); ?></h1>
-					<p><?php esc_html_e( 'Manage your GitHub-hosted plugins and themes with clarity, confidence, and control.', \WP2\Update\Config::TEXT_DOMAIN ); ?></p>
+					<p><?php esc_html_e( 'Manage your GitHub-hosted plugins and themes with clarity, confidence, and control.', \WP2\Update\Config::TEXT_DOMAIN ); ?>
+					</p>
 				</div>
 				<div class="d-flex gap-2 mt-2 mt-md-0">
 					<button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createPackageModal">
@@ -72,8 +73,8 @@ final class Screens {
 				</li>
 				<li class="nav-item" role="presentation">
 					<a class="nav-link <?php echo 'health' === $activeTab ? 'active' : ''; ?>"
-						href="<?php echo esc_url( add_query_arg( 'tab', 'health' ) ); ?>" role="tab" aria-controls="health-panel"
-						aria-selected="<?php echo 'health' === $activeTab ? 'true' : 'false'; ?>">
+						href="<?php echo esc_url( add_query_arg( 'tab', 'health' ) ); ?>" role="tab"
+						aria-controls="health-panel" aria-selected="<?php echo 'health' === $activeTab ? 'true' : 'false'; ?>">
 						<?php esc_html_e( 'Health', \WP2\Update\Config::TEXT_DOMAIN ); ?>
 					</a>
 				</li>
@@ -120,47 +121,28 @@ final class Screens {
 	}
 
 	/**
-	 * Renders basic modal containers for all client-side rendered modals.
+	 * Renders individual modal containers for each modal type.
 	 * The actual content is populated by the JavaScript components.
 	 */
 	private function render_all_modals(): void {
 		$modals = [
-			// Corresponds to AppDetailsModal.js
-			'appDetailsModal'        => __('App Details', \WP2\Update\Config::TEXT_DOMAIN),
-			// Corresponds to AssignAppModal.js
-			'assignAppModal'         => __('Assign Package to App', \WP2\Update\Config::TEXT_DOMAIN),
-			// Corresponds to CreatePackageModal.js (Used by header button)
-			'createPackageModal'     => __('Create New Package', \WP2\Update\Config::TEXT_DOMAIN),
-			// Corresponds to ManualCredentialsModal.js
-			'manualCredentialsModal' => __('Manual App Setup', \WP2\Update\Config::TEXT_DOMAIN),
-			// Corresponds to PackageDetailsModal.js
-			'packageDetailsModal'    => __('Package Details', \WP2\Update\Config::TEXT_DOMAIN),
-			// Corresponds to RollbackModal.js
-			'rollbackModal'          => __('Rollback Package', \WP2\Update\Config::TEXT_DOMAIN),
-			// Corresponds to WizardModal.js (Used by header button)
-			'addAppModal'            => __('Add GitHub App Wizard', \WP2\Update\Config::TEXT_DOMAIN), 
+			'createPackageModal' => __( 'Create Package', 'wp2-update' ),
+			'addAppModal' => __( 'Add GitHub App', 'wp2-update' ),
+			'rollbackModal' => __( 'Rollback Package', 'wp2-update' ),
+			'assignAppModal' => __( 'Assign App', 'wp2-update' ),
+			'packageDetailsModal' => __( 'Package Details', 'wp2-update' ),
 		];
 
-		foreach ($modals as $id => $title) :
-			// Use 'modal-xl' for the wizard and 'modal-lg' for others where more space might be needed.
-			$size_class = ($id === 'addAppModal') ? 'modal-xl' : 'modal-lg';
+		foreach ( $modals as $id => $title ) {
 			?>
-			<div class="modal fade" id="<?php echo esc_attr($id); ?>" tabindex="-1" aria-labelledby="<?php echo esc_attr($id); ?>Label" aria-hidden="true">
-				<div class="modal-dialog <?php echo esc_attr($size_class); ?>">
+			<div class="modal fade" id="<?php echo esc_attr( $id ); ?>" tabindex="-1" aria-labelledby="<?php echo esc_attr( $id ); ?>Label" aria-hidden="true">
+				<div class="modal-dialog modal-dialog-centered modal-lg">
 					<div class="modal-content">
-						<div class="modal-header">
-							<h5 class="modal-title" id="<?php echo esc_attr($id); ?>Label"><?php echo esc_html($title); ?></h5>
-							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?php esc_html_e('Close', \WP2\Update\Config::TEXT_DOMAIN); ?>"></button>
-						</div>
-						<div class="modal-body">
-							<p class="text-center text-muted">
-								<?php esc_html_e('Loading content from JavaScript...', \WP2\Update\Config::TEXT_DOMAIN); ?>
-							</p>
-						</div>
-						</div>
+						<!-- Content dynamically injected by JavaScript -->
+					</div>
 				</div>
 			</div>
 			<?php
-		endforeach;
+		}
 	}
 }

@@ -53,6 +53,26 @@ final class HealthController extends AbstractController {
     }
 
     /**
+     * Retrieves all registered REST routes.
+     *
+     * @return array
+     */
+    private function get_rest_routes(): array {
+        $routes = rest_get_server()->get_routes();
+        $formattedRoutes = [];
+
+        foreach ($routes as $route => $details) {
+            $methods = array_map(fn($method) => $method, $details[0]['methods'] ?? []);
+            $formattedRoutes[] = [
+                'route' => $route,
+                'methods' => implode(', ', $methods),
+            ];
+        }
+
+        return $formattedRoutes;
+    }
+
+    /**
      * Runs all registered health checks and returns the results, grouped for troubleshooting.
      */
     public function get_health_status(WP_REST_Request $request): WP_REST_Response {
@@ -60,6 +80,12 @@ final class HealthController extends AbstractController {
         foreach ($this->healthChecks as $key => $checkInstance) {
              $results[$key] = $checkInstance->run();
         }
+
+        // Add REST endpoints to the health check results
+        $results['rest_endpoints'] = [
+            'title' => __('Registered REST Endpoints', \WP2\Update\Config::TEXT_DOMAIN),
+            'data' => $this->get_rest_routes(),
+        ];
 
         // Group checks by a title for better UI presentation and operational clarity
         $grouped_results = [

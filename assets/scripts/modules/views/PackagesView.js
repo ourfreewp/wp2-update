@@ -5,22 +5,22 @@ const { __ } = wp.i18n;
 
 // This file is now focused solely on interactions for the Packages tab.
 
-document.addEventListener('DOMContentLoaded', () => {
+export const initializePackagesView = () => {
     console.log('Packages interactions initialized.');
 
     const packagesTableBody = document.querySelector('#packages-table tbody');
 
     // Function to render packages dynamically
-    const renderPackages = () => {
-        const packages = store.get().packages;
+    const renderPackages = (packages) => {
         packagesTableBody.innerHTML = packages.map(PackageRow).join('');
     };
 
-    // Initial render
-    renderPackages();
-
     // Listen for state updates
-    store.subscribe(renderPackages);
+    // Decoupled rendering from state subscription
+    store.subscribe(() => {
+        const packages = store.get().packages;
+        renderPackages(packages);
+    });
 
     document.addEventListener('click', (event) => {
         if (event.target && event.target.dataset.wp2Action === 'view-package-details') {
@@ -34,4 +34,4 @@ document.addEventListener('DOMContentLoaded', () => {
             document.dispatchEvent(viewPackageEvent);
         }
     });
-});
+};

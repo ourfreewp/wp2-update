@@ -1,58 +1,40 @@
 import { updateState } from '../state/store.js';
 
-const MODAL_OPEN_CLASS = 'wp2-modal-open';
+const getBootstrapModalInstance = (modalId) => {
+    const modalElement = document.querySelector(`#${modalId}`);
+    if (!modalElement || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+        console.error(`Bootstrap Modal is not available or target element #${modalId} not found.`);
+        return null;
+    }
+    return bootstrap.Modal.getOrCreateInstance(modalElement, {
+        keyboard: true,
+        focus: true
+    });
+};
+
+document.addEventListener('hidden.bs.modal', (event) => {
+    const modalId = event.target.id;
+    updateState({ modal: { id: modalId, isOpen: false, content: null } });
+    document.body.classList.remove('wp2-modal-open');
+});
 
 export const modalManager = {
-    /**
-     * Opens a modal with the given content and optional submission logic.
-     * @param {string} content - The HTML content for the modal.
-     * @param {Function} [onSubmit] - Optional callback for handling form submission.
-     */
-    open(content, onSubmit) {
-        updateState({ modal: { isOpen: true, content } });
-        document.body.classList.add(MODAL_OPEN_CLASS);
+    open(modalId, content, onSubmit) {
+        const modalInstance = getBootstrapModalInstance(modalId);
+        const modalContent = document.querySelector(`#${modalId} .modal-content`);
 
-        const modalContainer = document.querySelector('.wp2-modal-container');
-        if (modalContainer) {
-            modalContainer.setAttribute('role', 'dialog');
-            modalContainer.setAttribute('aria-modal', 'true');
-            modalContainer.setAttribute('aria-labelledby', 'wp2-modal-title');
-        }
+        if (!modalInstance || !modalContent) return;
 
-        setTimeout(() => {
-            const overlay = document.querySelector('.wp2-modal-overlay');
-            overlay?.addEventListener('click', (e) => {
-                if (e.target === overlay) {
-                    this.close();
-                }
-            });
-        }, 0);
+        modalContent.innerHTML = content;
+        modalInstance.show();
 
-        const focusableElements = modalContainer?.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-        if (focusableElements && focusableElements.length > 0) {
-            const firstElement = focusableElements[0];
-            const lastElement = focusableElements[focusableElements.length - 1];
-
-            modalContainer?.addEventListener('keydown', (e) => {
-                if (e.key === 'Tab') {
-                    if (e.shiftKey) {
-                        if (document.activeElement === firstElement) {
-                            e.preventDefault();
-                            lastElement.focus();
-                        }
-                    } else {
-                        if (document.activeElement === lastElement) {
-                            e.preventDefault();
-                            firstElement.focus();
-                        }
-                    }
-                }
-            });
-        }
+        updateState({ modal: { id: modalId, isOpen: true, content } });
+        document.body.classList.add('wp2-modal-open');
 
         if (onSubmit) {
-            const submitButton = modalContainer?.querySelector('.wp2-modal-submit');
-            submitButton?.addEventListener('click', async () => {
+            const submitButton = modalContent.querySelector('.wp2-modal-submit');
+            submitButton?.addEventListener('click', async (e) => {
+                e.preventDefault();
                 submitButton.disabled = true;
                 submitButton.innerHTML = '<span class="spinner"></span> Submitting...';
 
@@ -68,11 +50,8 @@ export const modalManager = {
         }
     },
 
-    /**
-     * Closes the currently open modal.
-     */
-    close() {
-        updateState({ modal: { isOpen: false, content: null } });
-        document.body.classList.remove(MODAL_OPEN_CLASS);
-    },
+    close(modalId) {
+        const modalInstance = getBootstrapModalInstance(modalId);
+        modalInstance?.hide();
+    }
 };

@@ -3,6 +3,7 @@ import { PackageDetailsModal } from '../components/modals/PackageDetailsModal.js
 import { AssignAppModal } from '../components/modals/AssignAppModal.js';
 import { RollbackModal } from '../components/modals/RollbackModal.js';
 import { store } from '../state/store.js';
+import { api_request } from '../api.js';
 
 export function registerPackageHandlers(packageService) {
     document.addEventListener('click', (event) => {
@@ -20,13 +21,61 @@ export function registerPackageHandlers(packageService) {
 
         switch (action) {
             case 'open-package-details':
-                modalManager.open(PackageDetailsModal(pkg));
+                modalManager.open('packageDetailsModal', PackageDetailsModal(pkg));
                 break;
             case 'open-assign-app':
-                modalManager.open(AssignAppModal(pkg));
+                const onSubmitAssignApp = async (appId, repoSlug) => {
+                    try {
+                        await api_request('packages/assign', {
+                            method: 'POST',
+                            body: JSON.stringify({ app_id: appId, repo_slug: repoSlug })
+                        }, 'wp2_assign_package');
+
+                        NotificationService.showSuccess(__('App assigned successfully!', 'wp2-update')); // Ensure proper toast integration
+
+                        // Update the state to reflect the assignment
+                        store.update(state => {
+                            const updatedPackages = state.packages.map(p =>
+                                p.repo === repo ? { ...p, appId } : p
+                            );
+                            return { ...state, packages: updatedPackages };
+                        });
+                    } catch (error) {
+                        console.error(`Failed to assign app to ${repo}:`, error);
+                        NotificationService.showError(__('Failed to assign app. Please try again.', 'wp2-update')); // Ensure proper toast integration
+                    }
+                };
+
+                modalManager.open('assignAppModal', AssignAppModal(pkg, onSubmitAssignApp));
                 break;
             case 'open-rollback':
-                modalManager.open(RollbackModal(pkg));
+                const onSubmitRollback = async (selectedVersion) => {
+                    try {
+                        await api_request('packages/action', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                repo_slug: repo,
+                                action: 'rollback',
+                                version: selectedVersion
+                            })
+                        }, 'wp2_package_action');
+
+                        NotificationService.showSuccess(__('Rollback successful!', 'wp2-update')); // Ensure proper toast integration
+
+                        // Update the state to reflect the rollback
+                        store.update(state => {
+                            const updatedPackages = state.packages.map(p =>
+                                p.repo === repo ? { ...p, version: selectedVersion } : p
+                            );
+                            return { ...state, packages: updatedPackages };
+                        });
+                    } catch (error) {
+                        console.error(`Failed to rollback ${repo}:`, error);
+                        NotificationService.showError(__('Failed to rollback. Please try again.', 'wp2-update'));
+                    }
+                };
+
+                modalManager.open('rollbackModal', RollbackModal(pkg, onSubmitRollback));
                 break;
             case 'toggle-auto-update':
                 const isEnabled = !pkg.autoUpdate;

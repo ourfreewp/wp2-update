@@ -7,6 +7,7 @@ use WP2\Update\Services\PackageService;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
+use WP_Error;
 
 /**
  * REST controller for all package-related actions.
@@ -28,6 +29,31 @@ final class PackagesController extends AbstractController {
     }
 
     /**
+     * Validates the nonce for REST requests.
+     *
+     * @return bool
+     */
+    private function validate_nonce(): bool {
+        $nonce = $_REQUEST['_wpnonce'] ?? '';
+        return wp_verify_nonce($nonce, 'wp_rest') !== false;
+    }
+
+    /**
+     * Wrapper for permission callbacks with nonce validation.
+     *
+     * @param callable $callback The original permission callback.
+     * @return callable
+     */
+    private function permission_callback_with_nonce(callable $callback): callable {
+        return function () use ($callback) {
+            if (!$this->validate_nonce()) {
+                return new WP_Error('rest_nonce_invalid', __('Invalid nonce.', 'wp2-update'), ['status' => 403]);
+            }
+            return call_user_func($callback);
+        };
+    }
+
+    /**
      * Registers routes for package management.
      */
     public function register_routes(): void {
@@ -35,14 +61,14 @@ final class PackagesController extends AbstractController {
         register_rest_route($this->namespace, '/packages', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_packages'],
-            'permission_callback' => $this->permission_callback('wp2_get_packages'),
+            'permission_callback' => $this->permission_callback_with_nonce($this->permission_callback('wp2_get_packages')),
         ]);
 
         // Route to force a sync
         register_rest_route($this->namespace, '/packages/sync', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'sync_packages'],
-            'permission_callback' => $this->permission_callback('wp2_sync_packages'),
+            'permission_callback' => $this->permission_callback_with_nonce($this->permission_callback('wp2_sync_packages')),
         ]);
 
         // Route to assign a package to an app

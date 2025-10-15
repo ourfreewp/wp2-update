@@ -1,4 +1,5 @@
 import { store } from '../state/store.js';
+import { api_request } from '../api.js';
 
 /**
  * Service for fetching health status data.
@@ -6,12 +7,7 @@ import { store } from '../state/store.js';
 export const HealthService = {
     async fetchHealthStatus() {
         try {
-            const response = await fetch('/wp-json/wp2/v1/health');
-            if (!response.ok) {
-                throw new Error('Failed to fetch health status');
-            }
-
-            const healthData = await response.json();
+            const healthData = await api_request('health', {}, 'wp2_get_health_status');
             store.update((state) => ({
                 ...state,
                 health: healthData,

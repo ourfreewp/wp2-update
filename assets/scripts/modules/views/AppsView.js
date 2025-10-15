@@ -41,3 +41,11 @@ document.addEventListener('click', (event) => {
         });
     }
 });
+
+// Add event listener for the "Setup Wizard" button
+document.addEventListener('click', (event) => {
+    if (event.target && event.target.dataset.wp2Action === 'setup-wizard') {
+        const modal = new bootstrap.Modal(document.getElementById('github-app-wizard-modal'));
+        modal.show();
+    }
+});

@@ -56,8 +56,8 @@ abstract class AbstractUpdater {
         }
 
         $packages = ($this->type === 'plugin')
-            ? $this->packageService->get_managed_plugins()
-            : $this->packageService->get_managed_themes();
+            ? $this->packageService->getManagedPlugins()
+            : $this->packageService->getManagedThemes();
 
         $updates = [];
         foreach ($packages as $slug => $package) {

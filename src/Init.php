@@ -233,6 +233,9 @@ final class Init {
         } else {
             error_log('WP_CLI is not defined during execution.');
         }
+
+        // Register webhook async handler
+        add_action('wp2_update_handle_webhook', [$this, 'run_webhook_task'], 10, 3);
     }
 
     /**
@@ -261,6 +264,44 @@ final class Init {
         add_action('wp2_update_prune_logs', function() {
             $this->container->get(Logger::class)->prune_logs();
         });
+    }
+
+    /**
+     * Executes the scheduled webhook task.
+     *
+     * @param string $event The GitHub event name.
+     * @param array  $payload The webhook payload.
+     * @param string $app_id The app ID associated with the webhook.
+     */
+    public function run_webhook_task(string $event, array $payload, string $app_id): void {
+        $logger = $this->container->get(Logger::class);
+        $packageService = $this->container->get(PackageService::class);
+
+        $logger->log("Processing async webhook task for event: {$event}");
+
+        switch ($event) {
+            case 'push':
+                $repoSlug = $payload['repository']['full_name'] ?? null;
+                if ($repoSlug) {
+                    $packageService->clear_release_cache($repoSlug);
+                    $logger->log("Cleared release cache for {$repoSlug} due to push event.");
+                }
+                break;
+
+            case 'release':
+                $action = $payload['action'] ?? '';
+                if ($action === 'published') {
+                    $repoSlug = $payload['repository']['full_name'] ?? null;
+                    if ($repoSlug) {
+                        $packageService->clear_release_cache($repoSlug);
+                        $logger->log("Cleared release cache for {$repoSlug} due to new release.");
+                    }
+                }
+                break;
+
+            default:
+                $logger->log("Unhandled webhook event: {$event}");
+        }
     }
 }
 

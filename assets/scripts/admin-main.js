@@ -9,6 +9,7 @@ import { DashboardView } from './modules/views/DashboardView.js';
 import { HealthView } from './modules/views/HealthView.js';
 import { logger } from './modules/utils/logger.js';
 import { NotificationService } from './modules/services/NotificationService.js';
+import { initializePackagesView } from './modules/views/PackagesView.js';
 const { __ } = wp.i18n;
 import { handleRefreshPackages } from './modules/handlers/refreshPackagesHandler';
 import { Modal } from 'bootstrap';
@@ -40,6 +41,19 @@ const bootstrapInitialState = () => {
     });
 };
 
+// Centralized state initialization
+function initializeState() {
+    const initialState = {
+        ...store.get(),
+        packages: store.get().packages.map(pkg => ({
+            ...pkg,
+            isUpdating: false,
+            isRollingBack: false
+        }))
+    };
+    store.set(initialState);
+}
+
 /**
  * Main application initialization function.
  */
@@ -54,6 +68,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Bootstrap initial state from WP localized data
     bootstrapInitialState();
+    initializeState();
 
     // Initialize services
     const connectionService = new ConnectionService();
@@ -79,17 +94,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         healthView.enhance(healthElement);
     }
 
-    // Replaced standalone spinner functions with state-based logic
-    const setProcessingState = (isProcessing) => {
-        updateState({ isProcessing });
+    // Refactored spinner logic to subscribe to `isProcessing` state
+    store.subscribe(() => {
+        const { isProcessing } = store.get();
         const spinner = document.getElementById('global-spinner');
         if (spinner) {
             spinner.style.display = isProcessing ? 'block' : 'none';
         }
-    };
+    });
 
     // Perform initial data fetch and sync
-    setProcessingState(true);
+    updateState({ isProcessing: true });
     try {
         await connectionService.fetchConnectionStatus();
         if (store.get().status === STATUS.INSTALLED) {
@@ -98,10 +113,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch (error) {
         logger.error(__("Failed during initial data synchronization:", "wp2-update"), error);
-        NotificationService.showError(__("Failed to load initial data.", "wp2-update"));
+        NotificationService.showError(__("Failed to load initial data.", "wp2-update")); // Ensure proper toast integration
     } finally {
-        setProcessingState(false);
+        updateState({ isProcessing: false });
     }
+
+    // Initialize the Packages view
+    initializePackagesView();
 
     // Attach event handlers to server-rendered tabs
     document.querySelectorAll('[data-tab]').forEach(tab => {
@@ -123,16 +141,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     modalButtons.forEach(button => {
         button.addEventListener('click', (event) => {
             const targetModalId = button.getAttribute('data-bs-target');
-            const modalElement = document.querySelector(targetModalId);
 
-            if (modalElement) {
-                const modalInstance = new Modal(modalElement, {
-                    backdrop: true, // Ensure backdrop dismissal is enabled
-                    keyboard: true  // Allow dismissal with the ESC key
-                });
-                modalInstance.show();
+            // Special handling for the GitHub App Wizard modal
+            if (targetModalId === '#addAppModal') {
+                event.preventDefault(); // Prevent default Bootstrap behavior
+
+                // Initialize and open the wizard modal
+                initializeWizardModal();
             } else {
-                console.error(`Modal with ID ${targetModalId} not found.`);
+                const modalElement = document.querySelector(targetModalId);
+
+                if (modalElement) {
+                    const modalInstance = new Modal(modalElement, {
+                        backdrop: true, // Ensure backdrop dismissal is enabled
+                        keyboard: true  // Allow dismissal with the ESC key
+                    });
+                    modalInstance.show();
+                } else {
+                    console.error(`Modal with ID ${targetModalId} not found.`);
+                }
             }
         });
     });

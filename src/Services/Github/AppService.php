@@ -216,13 +216,14 @@ class AppService {
         $encryption_service = new Encryption();
         $client_service = new \WP2\Update\Services\Github\ClientService($jwt_service, $app_data, $encryption_service);
         $repository_service = new \WP2\Update\Services\Github\RepositoryService($app_data, $client_service);
-        $release_service = new \WP2\Update\Services\Github\ReleaseService($client_service);
+        $release_service = new \WP2\Update\Services\Github\ReleaseService($client_service, $app_data);
 
-        $package_service_resolver = function () use ($repository_service, $release_service, $client_service) {
+        $package_service_resolver = function () use ($repository_service, $release_service, $client_service, $app_data) {
             return new PackageService(
                 $repository_service,
                 $release_service,
-                $client_service
+                $client_service,
+                $this // Corrected to pass the AppService instance
             );
         };
 

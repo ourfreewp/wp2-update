@@ -80,7 +80,7 @@ export class ConnectionService {
         } catch (error) {
             logger.error('Failed to fetch connection status:', error);
             if (!silent) {
-                NotificationService.showError('Could not connect to the server.', error.message);
+                NotificationService.showError('Could not connect to the server.', error.message); // Ensure proper toast integration
                 updateState({
                     status: STATUS.ERROR,
                     message: error.message || 'An unexpected error occurred.',

@@ -25,7 +25,7 @@ export class PackageService {
         try {
             await api_request('packages/sync', { method: 'POST' }, 'wp2_sync_packages');
             await this.fetchPackages();
-            NotificationService.showSuccess('Packages synced successfully.');
+            NotificationService.showSuccess('Packages synced successfully.'); // Ensure proper toast integration
         } catch (error) {
             logger.error('Failed to sync packages:', error);
         } finally {
@@ -59,7 +59,7 @@ export class PackageService {
                 method: 'POST',
                 body: JSON.stringify({ auto_update: isEnabled }),
             }, 'wp2_toggle_auto_update');
-            NotificationService.showSuccess(`Auto-update ${isEnabled ? 'enabled' : 'disabled'}.`);
+            NotificationService.showSuccess(`Auto-update ${isEnabled ? 'enabled' : 'disabled'}.`); // Ensure proper toast integration
         } catch (error) {
             logger.error(`Error toggling auto-update for ${packageRepo}:`, error);
         }
@@ -77,10 +77,10 @@ export class PackageService {
                 body: JSON.stringify({ channel }),
             }, 'wp2_switch_release_channel');
             logger.info(`Switched to channel ${channel} for package ${packageId}:`, response);
-            NotificationService.showSuccess(`Successfully switched to the ${channel} channel.`);
+            NotificationService.showSuccess(`Successfully switched to the ${channel} channel.`); // Ensure proper toast integration
         } catch (error) {
             logger.error(`Error switching channel for package ${packageId}:`, error);
-            NotificationService.showError('Failed to switch release channel.', error.message);
+            NotificationService.showError('Failed to switch release channel.', error.message); // Ensure proper toast integration
         }
     }
 
