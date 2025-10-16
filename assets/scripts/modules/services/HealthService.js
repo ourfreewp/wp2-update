@@ -1,5 +1,5 @@
 import { store } from '../state/store.js';
-import { apiFetch } from '@wordpress/api-fetch';
+import { apiFetch } from '../utils/apiFetch.js';
 
 /**
  * Service for fetching health status data.

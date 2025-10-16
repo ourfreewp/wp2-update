@@ -58,7 +58,19 @@ final class AppData
     public function all(): array
     {
         $this->load();
-        return array_map(fn($data) => AppDTO::fromArray($data), array_values($this->cache));
+        return array_values(array_filter(array_map(function ($data) {
+            try {
+                // Ensure installation_id is valid
+                if (empty($data['installation_id']) || !is_string($data['installation_id'])) {
+                    $data['installation_id'] = 'unknown'; // Provide a default value
+                }
+                return AppDTO::fromArray($data);
+            } catch (\InvalidArgumentException $e) {
+                // Log the invalid entry for debugging
+                error_log('Invalid app data: ' . json_encode($data));
+                return null; // Skip invalid entries
+            }
+        }, array_values($this->cache))));
     }
 
     /**

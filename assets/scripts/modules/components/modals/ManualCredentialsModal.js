@@ -1,6 +1,5 @@
 import { StandardModal } from './StandardModal.js';
-import { apiFetch } from '@wordpress/api-fetch';
-import { AppService } from '../../services/AppService.js';
+import { apiFetch } from '../../utils/apiFetch.js';
 
 export const ManualCredentialsModal = () => {
     const bodyContent = `

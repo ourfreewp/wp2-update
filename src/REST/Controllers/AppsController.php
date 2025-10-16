@@ -120,6 +120,12 @@ final class AppsController extends AbstractController {
             'callback'            => [$this, 'get_connection_status'],
             'permission_callback' => $this->permission_callback('wp2_get_connection_status'),
         ]);
+
+        register_rest_route($this->namespace, '/apps/connection-status', [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => [$this, 'get_connection_status'],
+            'permission_callback' => $this->permission_callback('wp2_view_connection_status'),
+        ]);
     }
 
     /**
@@ -323,17 +329,32 @@ final class AppsController extends AbstractController {
         }
     }
 
+    /**
+     * Retrieves the connection status for GitHub Apps.
+     *
+     * @param WP_REST_Request $request The REST request object.
+     * @return WP_REST_Response The response containing the connection status.
+     */
     public function get_connection_status(WP_REST_Request $request): WP_REST_Response {
-        try {
-            $app_id = $request->get_param('app_id');
-            if (!$app_id) {
-                throw new \Exception(__('App ID is required.', Config::TEXT_DOMAIN));
-            }
+        $app_id = $request->get_param('id');
 
+        if (empty($app_id)) {
+            return new WP_REST_Response([
+                'code'    => 'wp2_missing_app_id',
+                'message' => 'The app ID is required.',
+                'data'    => ['status' => 400],
+            ], 400);
+        }
+
+        try {
             $status = $this->appService->get_connection_status($app_id);
-            return $this->respond($status);
-        } catch (\Exception $e) {
-            throw new CustomException(__('Unable to retrieve connection status.', Config::TEXT_DOMAIN) . ' ' . $e->getMessage(), 500);
+            return new WP_REST_Response($status, 200);
+        } catch (CustomException $e) {
+            return new WP_REST_Response([
+                'code'    => 'wp2_connection_error',
+                'message' => $e->getMessage(),
+                'data'    => ['status' => 500],
+            ], 500);
         }
     }
 

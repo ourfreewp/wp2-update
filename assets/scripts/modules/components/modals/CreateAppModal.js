@@ -2,7 +2,7 @@ const { __ } = wp.i18n;
 import { modalManager } from '../../utils/modal.js';
 import { StandardModal } from './StandardModal.js';
 import { ManualCredentialsModal } from './ManualCredentialsModal.js';
-import { apiFetch } from '@wordpress/api-fetch';
+import { apiFetch } from '../../utils/apiFetch.js';
 
 /**
  * Initializes the GitHub App Setup Wizard modal.

@@ -1,7 +1,7 @@
 const { __ } = wp.i18n;
 import { StandardModal } from './StandardModal.js';
 import { store } from '../../state/store.js';
-import { apiFetch } from '@wordpress/api-fetch';
+import { apiFetch } from '../../utils/apiFetch.js';
 
 export const CreatePackageModal = () => {
     const apps = Array.isArray(store.get().apps) ? store.get().apps : [];
@@ -53,23 +53,38 @@ export const CreatePackageModal = () => {
         footerActions,
     });
 
-    document.getElementById('create-package-btn').addEventListener('click', async () => {
-        const repoSlug = document.getElementById('repo-slug').value;
-        const appId = document.getElementById('app-selection').value;
-        const initialBranch = document.getElementById('initial-branch').value;
-        const visibility = document.getElementById('visibility').value;
+    const createPackageButton = document.getElementById('create-package-btn');
+    if (createPackageButton) {
+        createPackageButton.addEventListener('click', async () => {
+            const repoSlugElement = document.getElementById('repo-slug');
+            const appIdElement = document.getElementById('app-selection');
+            const initialBranchElement = document.getElementById('initial-branch');
+            const visibilityElement = document.getElementById('visibility');
 
-        try {
-            await apiFetch({
-                path: '/wp2-update/v1/packages',
-                method: 'POST',
-                data: { repo_slug: repoSlug, app_id: appId, initial_branch: initialBranch, visibility },
-            });
-            alert(__('Package created successfully!', 'wp2-update'));
-        } catch (error) {
-            alert(__('Failed to create package.', 'wp2-update'));
-        }
-    });
+            if (!repoSlugElement || !appIdElement || !initialBranchElement || !visibilityElement) {
+                console.error('One or more required input elements are missing in the Create Package Modal.');
+                return;
+            }
+
+            const repoSlug = repoSlugElement.value;
+            const appId = appIdElement.value;
+            const initialBranch = initialBranchElement.value;
+            const visibility = visibilityElement.value;
+
+            try {
+                await apiFetch({
+                    path: '/wp2-update/v1/packages',
+                    method: 'POST',
+                    data: { repo_slug: repoSlug, app_id: appId, initial_branch: initialBranch, visibility },
+                });
+                alert(__('Package created successfully!', 'wp2-update'));
+            } catch (error) {
+                alert(__('Failed to create package.', 'wp2-update'));
+            }
+        });
+    } else {
+        console.error('Create Package button not found in the DOM.');
+    }
 
     return modal;
 };

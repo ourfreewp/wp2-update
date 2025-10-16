@@ -1,4 +1,5 @@
 const { __ } = wp.i18n;
+import { apiFetch } from '../../utils/apiFetch.js';
 import { escapeHtml } from '../../utils/string.js';
 import { StandardModal } from './StandardModal.js';
 
@@ -68,6 +69,3 @@ export const PackageDetailsModal = (pkg) => {
 
     return modal;
 };
-
-// Update the import to use wp.apiFetch directly in the browser context
-const apiFetch = window.wp.apiFetch;

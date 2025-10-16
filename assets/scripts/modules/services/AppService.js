@@ -1,4 +1,3 @@
-import { apiFetch } from '@wordpress/api-fetch';
 import { updateState } from '../state/store.js';
 import { logger } from '../utils/logger.js';
 import { NotificationService } from '../services/NotificationService.js';
@@ -13,7 +12,7 @@ export class AppService {
             const apps = response?.data?.apps ?? [];
             updateState(state => ({
                 apps,
-                selectedAppId: state.selectedAppId ?? (apps[0]?.id ?? null),
+                selectedAppId: state.selectedAppId ?? (apps.length > 0 ? apps[0].id : null),
             }));
         } catch (error) {
             logger.error('Failed to fetch apps:', error);
@@ -54,7 +53,7 @@ export class AppService {
             const apps = response?.data?.apps ?? [];
             updateState(state => ({
                 apps: [...state.apps, ...apps], // Append new apps to the existing state
-                selectedAppId: state.selectedAppId ?? (apps[0]?.id ?? null),
+                selectedAppId: state.selectedAppId ?? (apps.length > 0 ? apps[0].id : null),
             }));
         } catch (error) {
             logger.error('Failed to fetch paginated apps:', error);

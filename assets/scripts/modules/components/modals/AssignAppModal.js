@@ -1,4 +1,5 @@
 const { __ } = wp.i18n;
+import { apiFetch } from '../../utils/apiFetch.js';
 import { escapeHtml } from '../../utils/string.js';
 import { store } from '../../state/store.js';
 import { StandardModal } from './StandardModal.js';

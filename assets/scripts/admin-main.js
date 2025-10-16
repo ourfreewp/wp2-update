@@ -226,8 +226,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (modalElement) {
                 if (activeModal === targetModalId) {
+                    const previouslyFocusedElement = document.activeElement;
+
                     modalElement.removeAttribute('aria-hidden');
                     modalElement.setAttribute('inert', '');
+                    modalElement.focus();
 
                     const modalInstance = new Modal(modalElement, {
                         backdrop: true,
@@ -240,6 +243,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                         setTimeout(() => {
                             modalElement.setAttribute('aria-hidden', 'true');
                             modalElement.removeAttribute('inert');
+                            if (previouslyFocusedElement) {
+                                previouslyFocusedElement.focus();
+                            }
                         }, 0);
                     });
                 }
@@ -258,13 +264,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
         const createPackageModalElement = CreatePackageModal();
-        const modalTarget = document.querySelector('#createPackageModal .modal-content');
+        const modalElement = document.querySelector('#createPackageModal');
+        if (modalElement) {
+            const modalTarget = modalElement.querySelector('.modal-content');
 
-        if (modalTarget) {
-            modalTarget.innerHTML = '';
-            modalTarget.appendChild(createPackageModalElement);
+            if (modalTarget) {
+                modalTarget.innerHTML = '';
+                modalTarget.appendChild(createPackageModalElement);
+            } else {
+                console.error('Create Package Modal content container not found inside #createPackageModal.');
+            }
         } else {
-            throw new Error('Create Package Modal container .modal-content not found.');
+            console.error('Create Package Modal element #createPackageModal not found in the DOM.');
         }
     } catch (error) {
         console.error('Failed to initialize Create Package Modal:', error);

@@ -1,6 +1,3 @@
-// Replace module import with direct usage of wp.apiFetch
-const apiFetch = wp.apiFetch;
-
 /**
  * Handles the refresh packages button click.
  */

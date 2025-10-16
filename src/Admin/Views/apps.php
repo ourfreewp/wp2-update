@@ -39,20 +39,20 @@ $apps = $appService->get_apps();
                     </tr>
                 <?php else : ?>
                     <?php foreach ($apps as $app) : ?>
-                        <tr data-app-id="<?php echo esc_attr($app['id']); ?>">
+                        <tr data-app-id="<?php echo esc_attr($app->id); ?>">
                             <td>
-                                <strong><?php echo esc_html($app['name']); ?></strong>
+                                <strong><?php echo esc_html($app->name); ?></strong>
                             </td>
-                            <td><?php echo esc_html($app['account_type']); ?></td>
+                            <td><?php echo esc_html($app->account_type); ?></td>
                             <td>
                                 <?php
                                 // Ensure packages is an array before calling implode
-                                echo esc_html(implode(', ', is_array($app['packages']) ? $app['packages'] : []));
+                                echo esc_html(implode(', ', is_array($app->packages) ? $app->packages : []));
                                 ?>
                             </td>
                             <td>
                                 <?php
-                                $status = $appService->test_connection($app['id']) ? 'Connected' : 'Error';
+                                $status = $appService->test_connection($app->id) ? 'Connected' : 'Error';
                                 $badge_class = $status === 'Connected' ? 'badge-success' : 'badge-danger';
                                 ?>
                                 <span class="badge <?php echo esc_attr($badge_class); ?>">

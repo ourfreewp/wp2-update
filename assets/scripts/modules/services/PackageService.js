@@ -1,4 +1,4 @@
-import { apiFetch } from '@wordpress/api-fetch';
+import { apiFetch } from '../utils/apiFetch.js';
 import { updateState } from '../state/store.js';
 import { logger } from '../utils/logger.js';
 import { NotificationService } from './NotificationService.js';

@@ -1,5 +1,5 @@
 import { store, updateState, STATUS } from '../state/store.js';
-import { apiFetch } from '@wordpress/api-fetch';
+import { apiFetch } from '../utils/apiFetch.js';
 import { logger } from '../utils/logger.js';
 import { NotificationService } from './NotificationService.js';
 

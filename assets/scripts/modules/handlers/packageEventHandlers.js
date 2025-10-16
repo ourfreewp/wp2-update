@@ -3,7 +3,7 @@ import { PackageDetailsModal } from '../components/modals/PackageDetailsModal.js
 import { AssignAppModal } from '../components/modals/AssignAppModal.js';
 import { RollbackModal } from '../components/modals/RollbackModal.js';
 import { store } from '../state/store.js';
-import { apiFetch } from '@wordpress/api-fetch';
+import { apiFetch } from '../utils/apiFetch.js';
 
 export function registerPackageHandlers(packageService) {
     document.addEventListener('click', (event) => {

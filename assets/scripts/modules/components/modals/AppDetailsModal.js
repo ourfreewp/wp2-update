@@ -1,8 +1,7 @@
 import { escapeHtml } from '../../utils/string.js';
-import { apiFetch } from '@wordpress/api-fetch';
+import { apiFetch } from '../../utils/apiFetch.js';
 import { NotificationService } from '../../services/NotificationService.js';
 import { AppService } from '../../services/AppService.js';
-import { modalManager } from '../../utils/modal.js';
 import { StandardModal } from './StandardModal.js';
 
 export const AppDetailsModal = (app) => {

@@ -1,4 +1,4 @@
-import apiFetch from '@wordpress/api-fetch';
+import { apiFetch } from '../utils/apiFetch.js';
 
 export const PollingService = {
     startPolling: (url, interval, callback) => {

@@ -43,6 +43,16 @@ final class AppDTO
      */
     public static function fromArray(array $data): self
     {
+        if (empty($data['installation_id']) || !is_string($data['installation_id'])) {
+            throw new \InvalidArgumentException('The installation_id must be a non-empty string.');
+        }
+
+        // Ensure webhook_secret is valid
+        $webhook_secret = $data['webhook_secret'] ?? '';
+        if (!is_string($webhook_secret)) {
+            $webhook_secret = '';
+        }
+
         return new self(
             $data['id'],
             $data['installation_id'],
@@ -50,7 +60,7 @@ final class AppDTO
             $data['updated_at'],
             $data['name'],
             $data['status'],
-            $data['webhook_secret'],
+            $webhook_secret,
             $data['metadata'] ?? []
         );
     }
