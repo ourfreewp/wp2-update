@@ -2,25 +2,77 @@
 
 namespace WP2\Update\Webhooks;
 
-use WP2\Update\Services\Github\ConnectionService;
 use WP2\Update\Services\Github\ClientService;
 use WP2\Update\Services\Github\ReleaseService;
-use WP2\Update\Utils\Logger;
 use WP_REST_Request;
 use WP_REST_Response;
+use WP2\Update\Utils\Logger;
 
 /**
+ * Class WebhookController
+ *
  * Handles incoming webhooks from GitHub to trigger plugin and theme update checks.
  */
 final class WebhookController {
-    private ConnectionService $connectionService;
+    /**
+     * @var ClientService Handles interactions with the GitHub client.
+     */
     private ClientService $clientService;
+
+    /**
+     * @var ReleaseService Handles operations related to GitHub releases.
+     */
     private ReleaseService $releaseService;
 
-    public function __construct(ConnectionService $connectionService, ClientService $clientService, ReleaseService $releaseService) {
-        $this->connectionService = $connectionService;
+    /**
+     * Constructor for WebhookController.
+     *
+     * @param ClientService $clientService Handles interactions with the GitHub client.
+     * @param ReleaseService $releaseService Handles operations related to GitHub releases.
+     */
+    public function __construct(ClientService $clientService, ReleaseService $releaseService) {
         $this->clientService = $clientService;
         $this->releaseService = $releaseService;
+    }
+
+    /**
+     * Retrieves the webhook secret for the given app ID.
+     *
+     * @param string $appId The GitHub App ID.
+     * @return string|null The webhook secret, or null if not found.
+     */
+    private function get_webhook_secret(string $appId): ?string {
+        $appData = new \WP2\Update\Data\AppData();
+        $app = $appData->resolve_app_id($appId);
+        return $app['webhook_secret'] ?? null;
+    }
+
+    /**
+     * Validates the webhook signature against all known secrets.
+     *
+     * @param string $payload The raw request body.
+     * @param string $signature The X-Hub-Signature-256 header value.
+     * @return bool True if the signature is valid, false otherwise.
+     */
+    private function validate_signature(string $payload, string $signature): bool {
+        $appData = new \WP2\Update\Data\AppData();
+        $apps = $appData->get_all_apps();
+
+        foreach ($apps as $app) {
+            $secret = $app['webhook_secret'] ?? null;
+
+            if (empty($secret)) {
+                continue;
+            }
+
+            $expectedSignature = 'sha256=' . hash_hmac('sha256', $payload, $secret);
+
+            if (hash_equals($expectedSignature, $signature)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -33,22 +85,9 @@ final class WebhookController {
             'permission_callback' => function (WP_REST_Request $request) {
                 $signature = $request->get_header('X-Hub-Signature-256');
                 $payload = $request->get_body();
-                $secrets = $this->connectionService->get_all_webhook_secrets();
+                $appId = $request->get_param('app_id');
 
-                if (empty($signature) || empty($payload)) {
-                    Logger::log('SECURITY', 'Webhook rejected: Missing signature or payload.');
-                    return false;
-                }
-
-                foreach ($secrets as $secret) {
-                    $expectedSignature = 'sha256=' . hash_hmac('sha256', $payload, $secret);
-                    if (hash_equals($expectedSignature, $signature)) {
-                        return true;
-                    }
-                }
-
-                Logger::log('SECURITY', 'Webhook rejected: Invalid signature.');
-                return false;
+                return $this->validate_signature($payload, $signature);
             },
         ]);
     }
@@ -60,33 +99,24 @@ final class WebhookController {
         $payload = $request->get_body();
         $signature = $request->get_header('X-Hub-Signature-256');
         $event = (string) $request->get_header('X-GitHub-Event');
+        $appId = $request->get_param('app_id');
+
+        Logger::info('Incoming webhook received.', ['event' => $event, 'signature' => $signature]);
+        Logger::debug('Webhook payload.', ['payload' => $payload]);
 
         if (empty($payload) || empty($signature) || empty($event)) {
-            Logger::log('SECURITY', 'Webhook rejected: Missing payload, signature, or event header.');
             return new WP_REST_Response(['message' => 'Invalid request.'], 400);
         }
 
-        // Ensure secrets are mapped to their respective app IDs
-        $secrets = $this->connectionService->get_all_webhook_secrets();
-        if (empty($secrets)) {
-            Logger::log('SECURITY', 'Webhook received but no secrets are configured.');
-            return new WP_REST_Response(['message' => 'Webhook not configured.'], 401);
-        }
+        // Validate the signature against the default secret
+        $valid = $this->validate_signature($payload, $signature, $appId);
 
-        // Validate the signature against all configured apps
-        $valid_app_id = null;
-        foreach ($secrets as $app_id => $secret) {
-            $expected_hash = 'sha256=' . hash_hmac('sha256', $payload, $secret);
-            if (hash_equals($expected_hash, $signature)) {
-                $valid_app_id = $app_id;
-                break;
-            }
-        }
-
-        if (!$valid_app_id) {
-            Logger::log('SECURITY', 'Webhook rejected: Invalid signature.');
+        if (!$valid) {
+            Logger::error('Webhook signature validation failed.', ['event' => $event]);
             return new WP_REST_Response(['message' => 'Invalid signature.'], 403);
         }
+
+        Logger::info('Webhook signature validated.', ['event' => $event]);
 
         // Schedule an async action instead of processing synchronously
         as_schedule_single_action(
@@ -95,52 +125,10 @@ final class WebhookController {
             [
                 'event'   => $event,
                 'payload' => json_decode($payload, true),
-                'app_id'  => $valid_app_id,
             ],
             'wp2-update'
         );
 
         return new WP_REST_Response(['message' => 'Webhook received.'], 200);
-    }
-
-    /**
-     * Processes the webhook event after validation.
-     * @param string $event The GitHub event name (e.g., 'release').
-     * @param array $data The payload data.
-     * @param string $app_id The ID of the app that received the webhook.
-     */
-    private function process_event(string $event, array $data, string $app_id): void {
-        // Handle installation events to automatically save the installation ID.
-        if ($event === 'installation' && isset($data['installation']['id'])) {
-            $this->connectionService->update_installation_id($app_id, (int)$data['installation']['id']);
-            Logger::log('INFO', "Processed installation event for app {$app_id}.");
-            return;
-        }
-
-        // Handle release events to trigger update checks.
-        if ($event === 'release' && ($data['action'] ?? '') === 'published') {
-            $repository = $data['repository']['full_name'] ?? null;
-            if ($repository) {
-                Logger::log('INFO', "Release published webhook received for repository {$repository}. Pre-fetching and caching new release data.");
-
-                [$owner, $repo] = explode('/', $repository);
-                $latestRelease = $this->releaseService->get_latest_release($repository, 'stable');
-
-                if ($latestRelease) {
-                    $cacheKey = sprintf(\WP2\Update\Config::TRANSIENT_LATEST_RELEASE, $owner, $repo);
-                    \WP2\Update\Utils\Cache::set($cacheKey, $latestRelease, 5 * MINUTE_IN_SECONDS);
-                    Logger::log('INFO', "Cached latest release for repository {$repository}.");
-                } else {
-                    Logger::log('WARNING', "Failed to fetch latest release for repository {$repository}.");
-                }
-            } else {
-                Logger::log('WARNING', "Release published webhook received but repository information is missing.");
-            }
-
-            do_action('wp2_update_release_published', $data, $app_id);
-            return;
-        }
-
-        Logger::log('DEBUG', "Webhook event '{$event}' received but not acted upon for app {$app_id}.");
     }
 }

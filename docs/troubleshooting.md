@@ -14,11 +14,27 @@ This stream displays real-time activity, providing crucial context for errors:
 
 | Issue                   | Cause & Solution                                                                                                                                                                                                 |
 |-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Package Not Showing** | **Missing Header**: The plugin/theme main file must have an `Update URI: owner/repository-name` header pointing to the GitHub repository slug.<br>After adding, click **Sync All**.                             |
+| **Package Not Showing** | **Missing Header**: Ensure the `Update URI` header is correctly added to the plugin/theme main file. Refer to the 'Getting Started' guide for details.<br>After adding, click **Sync All**.                             |
 | **Update Not Appearing**| **Caching/Release Format**: Click **Sync All** to force transient clearing.<br>Ensure the GitHub release is **Published** (not a draft) and has a version tag higher than the installed version.                |
 | **Connection Failed**   | **App Permissions**: Verify your GitHub App has read-access to "Contents" and "Metadata" for all managed repositories.<br>Check the **Webhooks** tab on GitHub for recent delivery failures.                     |
 | **Rollback Failed (File Error)** | **Server Permissions**: The WordPress server often lacks write permissions for file operations.<br>Ensure the WordPress install can create/modify files.<br>Check the `[ERROR]` logs for specific file operation failures. |
 | **API Requests Fail**   | **Nonce Issue**: If multiple tabs are open, your nonce may expire.<br>Try navigating between tabs, or check the console for nonce errors.<br>(Note: Our internal API check handles generic REST nonces, but external tools may require action-specific ones). |
+
+## New Troubleshooting Steps
+
+### Polling Service Issues
+
+#### Polling Not Running
+- **Cause**: The Polling Service may be disabled in the settings.
+- **Solution**: Navigate to the **Settings** tab and ensure the Polling Service is enabled. Adjust the polling interval if necessary.
+
+#### API Rate Limit Errors
+- **Cause**: Too many requests to the GitHub API within a short period.
+- **Solution**: Check the **Logs** tab for rate limit warnings. Consider increasing the polling interval or upgrading your GitHub App's API rate limit by authenticating with a higher-tier token.
+
+#### Polling Logs Not Updating
+- **Cause**: The logging system may be disabled or encountering errors.
+- **Solution**: Verify that logging is enabled in the **Settings** tab. Check the **wp2_update_logs** database table for recent entries.
 
 ## WP-CLI Debugging
 

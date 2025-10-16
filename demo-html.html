@@ -1,770 +1,549 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>WP2 Update - UI Demo & Simulator</title>
-	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-	<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
-	<style>
-		/* Custom Styles inspired by the WordPress Admin UI & your SCSS */
-		:root {
-			--wp2-color-primary: #2271b1;
-			--wp2-color-primary-dark: #1d5f96;
-			--wp2-color-success: #00a32a;
-			--wp2-color-warning: #dba617;
-			--wp2-color-error: #d63638;
-			--wp2-color-border: #ccd0d4;
-			--wp2-color-bg-card: #ffffff;
-			--wp2-color-bg-alt: #f6f7f7;
-			--wp2-color-bg-info: #eef4ff;
-			--wp2-color-bg-updating: #fefce8;
-			--wp2-color-text: #1d2327;
-			--wp2-color-text-subtle: #50575e;
-			--wp2-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
-		}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WP2 Update :: Demo UI</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-		body {
-			background-color: #f0f0f1;
-			font-family: var(--wp2-font-family);
-		}
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+        }
 
-		.wp2-container {
-			max-width: 1200px;
-			margin: 2rem auto;
-			padding: 1rem 2rem;
-		}
+        .wp2-wrap {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 2rem;
+        }
 
-		.wp2-header {
-			padding-bottom: 1rem;
-			border-bottom: 1px solid var(--wp2-color-border);
-			margin-bottom: 1.5rem;
-		}
+        .wp2-header {
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 1.5rem;
+        }
 
-		.wp2-header h1 {
-			font-size: 23px;
-			font-weight: 600;
-		}
+        .wp2-main-title {
+            font-weight: 700;
+            color: #212529;
+        }
 
-		.wp2-header p {
-			font-size: 14px;
-			color: var(--wp2-color-text-subtle);
-		}
+        .nav-tabs .nav-link {
+            font-weight: 600;
+            color: #6c757d;
+        }
 
-		.nav-tabs .nav-link {
-			color: var(--wp2-color-text-subtle);
-			font-weight: 600;
-			border-bottom-width: 4px;
-			border-color: transparent;
-		}
+        .nav-tabs .nav-link.active {
+            color: #0d6efd;
+            background-color: #f8f9fa;
+            border-color: #dee2e6 #dee2e6 #f8f9fa;
+        }
 
-		.nav-tabs .nav-link.active {
-			color: var(--wp2-color-primary);
-			border-color: var(--wp2-color-primary);
-			background-color: transparent;
-		}
+        .card {
+            border-radius: 0.5rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: 1px solid #e9ecef;
+        }
+        
+        .stat-card .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            opacity: 0.8;
+        }
+        
+        .stat-card .card-text {
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+        
+        .stat-card a {
+            text-decoration: none;
+        }
+        .stat-card a:hover {
+            text-decoration: underline;
+        }
 
-		.card {
-			border: 1px solid var(--wp2-color-border);
-			border-radius: 4px;
-			box-shadow: 0 1px 1px rgba(0,0,0,.04);
-		}
-
-		.table {
-			margin-top: 1rem;
-		}
-
-		.table th {
-			font-weight: 600;
-			color: #2c3338;
-		}
-
-		.table td {
-			vertical-align: middle;
-		}
-
-		.badge.bg-success-light {
-			background-color: #e6f7e9;
-			color: #006428;
-		}
-
-		.badge.bg-warning-light {
-			background-color: #fff8e5;
-			color: #744d00;
-		}
-
-		.badge.bg-secondary-light {
-			background-color: #f0f0f1;
-			color: var(--wp2-color-text-subtle);
-		}
-
-		.updating-row {
-			background-color: var(--wp2-color-bg-updating) !important;
-			opacity: 0.7;
-		}
-
-		.health-card .bi {
-			font-size: 1.2rem;
-		}
-
-		.health-card .pass { color: #28a745; }
-		.health-card .warn { color: #ffc107; }
-		.health-card .fail { color: #dc3545; }
-
-		.log-viewer {
-			background-color: #1e1e1e;
-			color: #d4d4d4;
-			font-family: 'Menlo', 'Consolas', monospace;
-			height: 300px;
-			overflow-y: scroll;
-			padding: 1rem;
-			border-radius: 4px;
-			font-size: 13px;
-			border: 1px solid #333;
-		}
-		.log-entry {
-			white-space: pre-wrap;
-			padding: 2px 0;
-		}
-		.log-entry .timestamp { color: #999; }
-		.log-entry .level-INFO { color: #6a9955; }
-		.log-entry .level-DEBUG { color: #569cd6; }
-		.log-entry .level-WARNING { color: #ce9178; }
-		.log-entry .level-ERROR { color: #f44747; }
-		.log-entry .level-SECURITY { color: #c586c0; }
-
-		.toast-container {
-			z-index: 1100;
-		}
-
-		.wizard-step { display: none; }
-		.wizard-step.active { display: block; }
-	</style>
+        .table-hover tbody tr:hover {
+            background-color: #f1f3f5;
+        }
+        
+        .log-viewer {
+            background-color: #212529;
+            color: #ced4da;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+            height: 250px;
+            overflow-y: scroll;
+        }
+        .log-entry.error { color: #f97171; }
+        .log-entry.warning { color: #ffca2c; }
+        .log-entry.info { color: #56b6c2; }
+        
+        .badge.bg-success { background-color: #198754 !important; }
+        .badge.bg-warning { background-color: #ffc107 !important; }
+        .badge.bg-danger { background-color: #dc3545 !important; }
+        .badge.bg-info { background-color: #0dcaf0 !important; }
+        
+        .modal-header {
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .modal-footer {
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .toast-container {
+            z-index: 1090;
+        }
+        
+        .form-label {
+            font-weight: 600;
+        }
+    </style>
 </head>
 <body>
-	<div class="wp2-container">
-		<!-- Header -->
-		<div class="wp2-header d-flex flex-wrap justify-content-between align-items-start">
-			<div>
-				<h1><i class="bi bi-cloud-arrow-up-fill me-2"></i>WP2 Update</h1>
-				<p>Manage your GitHub-hosted plugins and themes with clarity, confidence, and control.</p>
-			</div>
-			<div class="d-flex gap-2 mt-2 mt-md-0">
-				<button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createPackageModal">
-					<i class="bi bi-plus-lg me-1"></i> Create Package
-				</button>
-				<button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAppModal">
-					<i class="bi bi-github me-1"></i> Add GitHub App
-				</button>
-				<button id="sync-all-btn" class="btn btn-outline-secondary">
-					<i class="bi bi-arrow-repeat me-1"></i> Sync All
-				</button>
-			</div>
-		</div>
-		<!-- Tabs -->
-		<ul class="nav nav-tabs" id="main-tabs" role="tablist">
-			<li class="nav-item" role="presentation">
-				<button class="nav-link active" id="packages-tab" data-bs-toggle="tab" data-bs-target="#packages-panel" type="button" role="tab">Packages</button>
-			</li>
-			<li class="nav-item" role="presentation">
-				<button class="nav-link" id="apps-tab" data-bs-toggle="tab" data-bs-target="#apps-panel" type="button" role="tab">Apps</button>
-			</li>
-			<li class="nav-item" role="presentation">
-				<button class="nav-link" id="health-tab" data-bs-toggle="tab" data-bs-target="#health-panel" type="button" role="tab">Health</button>
-			</li>
-		</ul>
-		<!-- Tab Content -->
-		<div class="tab-content" id="myTabContent">
-			<!-- Packages Panel -->
-			<div class="tab-pane fade show active" id="packages-panel" role="tabpanel">
-				<div class="card mt-4">
-					<div class="card-body">
-						<table class="table table-hover">
-							<thead>
-								<tr>
-									<th>Package</th>
-									<th>Installed Version</th>
-									<th>Status</th>
-									<th>Release Channel</th>
-									<th class="text-end">Actions</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr id="package-row-1">
-									<td>
-										<strong>OTW Theme</strong>
-										<div class="text-muted small">On-The-Water-Media/otw-theme</div>
-									</td>
-									<td>1.0.2</td>
-									<td>
-										<span class="badge bg-warning-light rounded-pill">
-											<i class="bi bi-arrow-up-circle-fill me-1"></i>Update available (1.1.0)
-										</span>
-									</td>
-									<td>
-										<select class="form-select form-select-sm">
-											<option selected>Stable</option>
-											<option>Beta</option>
-										</select>
-									</td>
-									<td class="text-end">
-										<div class="btn-group">
-											<button class="btn btn-primary btn-sm update-btn" data-package-id="1">
-												<i class="bi bi-arrow-up-circle me-1"></i> Update
-											</button>
-											<button type="button" class="btn btn-primary btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
-												<span class="visually-hidden">Toggle Dropdown</span>
-											</button>
-											<ul class="dropdown-menu">
-												<li>
-													<a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#releaseNotesModal">
-														<i class="bi bi-card-text me-2"></i>View Release Notes
-													</a>
-												</li>
-												<li>
-													<a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#packageDetailsModal">
-														<i class="bi bi-eye me-2"></i>Details
-													</a>
-												</li>
-												<li>
-													<a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#rollbackModal">
-														<i class="bi bi-arrow-counterclockwise me-2"></i>Rollback
-													</a>
-												</li>
-											</ul>
-										</div>
-									</td>
-								</tr>
-								<tr id="package-row-2">
-									<td>
-										<strong>WP2 Update Plugin</strong>
-										<div class="text-muted small">ourfreewp/wp2-update</div>
-									</td>
-									<td>0.0.30</td>
-									<td>
-										<span class="badge bg-success-light rounded-pill">
-											<i class="bi bi-check-circle-fill me-1"></i>Up to date
-										</span>
-									</td>
-									<td>
-										<select class="form-select form-select-sm">
-											<option selected>Stable</option>
-											<option>Beta</option>
-										</select>
-									</td>
-									<td class="text-end">
-										<div class="btn-group">
-											<button class="btn btn-outline-secondary btn-sm disabled" disabled>
-												Update
-											</button>
-											<button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
-												<span class="visually-hidden">Toggle Dropdown</span>
-											</button>
-											<ul class="dropdown-menu">
-												<li>
-													<a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#packageDetailsModal">
-														<i class="bi bi-eye me-2"></i>Details
-													</a>
-												</li>
-												<li>
-													<a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#rollbackModal">
-														<i class="bi bi-arrow-counterclockwise me-2"></i>Rollback
-													</a>
-												</li>
-											</ul>
-										</div>
-									</td>
-								</tr>
-								<tr>
-									<td>
-										<strong>Legacy Widget Pack</strong>
-										<div class="text-muted small">client-org/legacy-widgets</div>
-									</td>
-									<td>2.1.5</td>
-									<td>
-										<span class="badge bg-secondary-light rounded-pill">
-											<i class="bi bi-exclamation-circle-fill me-1"></i>Unmanaged
-										</span>
-									</td>
-									<td>N/A</td>
-									<td class="text-end">
-										<button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#assignAppModal">
-											<i class="bi bi-link-45deg me-1"></i> Assign App
-										</button>
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-				</div>
-			</div>
-			<!-- Apps Panel -->
-			<div class="tab-pane fade" id="apps-panel" role="tabpanel">
-				<div class="card mt-4">
-					<div class="card-body">
-						<table class="table table-hover">
-							<thead>
-								<tr>
-									<th>App Name</th>
-									<th>Account</th>
-									<th>Managed Packages</th>
-									<th>Status</th>
-									<th class="text-end">Actions</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr>
-									<td>
-										<strong>OTW Production App</strong>
-										<div class="text-muted small">on-the-water-media-app</div>
-									</td>
-									<td>Organization</td>
-									<td>2</td>
-									<td>
-										<span class="badge bg-success-light rounded-pill">
-											<i class="bi bi-check-circle-fill me-1"></i>Connected
-										</span>
-									</td>
-									<td class="text-end">
-										<button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#appDetailsModal">
-											<i class="bi bi-eye me-1"></i> Details
-										</button>
-									</td>
-								</tr>
-								<tr>
-									<td>
-										<strong>Staging Updater</strong>
-										<div class="text-muted small">my-staging-updater</div>
-									</td>
-									<td>Personal</td>
-									<td>5</td>
-									<td>
-										<span class="badge bg-success-light rounded-pill"></span>
-											<i class="bi bi-check-circle-fill me-1"></i>Connected
-										</span>
-									</td>
-									<td class="text-end">
-										<button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#appDetailsModal">
-											<i class="bi bi-eye me-1"></i> Details
-										</button>
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-				</div>
-			</div>
-			<!-- Health Panel -->
-			<div class="tab-pane fade" id="health-panel" role="tabpanel">
-				<div class="row g-4 mt-3">
-					<div class="col-lg-6">
-						<div class="card h-100 health-card">
-							<div class="card-body">
-								<h5 class="card-title"><i class="bi bi-pc-display-horizontal me-2"></i>Server Environment</h5>
-								<ul class="list-group list-group-flush"></ul>
-									<li class="list-group-item d-flex justify-content-between align-items-center">PHP Version 8.3.1 <i class="bi bi-check-circle-fill pass"></i></li>
-									<li class="list-group-item d-flex justify-content-between align-items-center">WordPress Version 6.5.2 <i class="bi bi-check-circle-fill pass"></i></li>
-									<li class="list-group-item d-flex justify-content-between align-items-center">cURL Extension Loaded <i class="bi bi-check-circle-fill pass"></i></li>
-								</ul>
-							</div>
-						</div>
-					</div>
-					<div class="col-lg-6">
-						<div class="card h-100 health-card">
-							<div class="card-body">
-								<h5 class="card-title"><i class="bi bi-github me-2"></i>GitHub Connectivity</h5>
-								<ul class="list-group list-group-flush">
-									<li class="list-group-item d-flex justify-content-between align-items-center">API Connection <i class="bi bi-check-circle-fill pass"></i></li>
-									<li class="list-group-item d-flex justify-content-between align-items-center">Webhook Status <span class="text-muted small">2 of 2 apps responding</span> <i class="bi bi-check-circle-fill pass"></i></li>
-									<li class="list-group-item d-flex justify-content-between align-items-center">Rate Limit <span class="text-muted small">4987/5000 remaining</span> <i class="bi bi-check-circle-fill pass"></i></li>
-								</ul>
-							</div>
-						</div>
-					</div>
-					<div class="col-12">
-						<div class="card">
-							<div class="card-body">
-								<h5 class="card-title"><i class="bi bi-terminal me-2"></i>Live Log Stream</h5>
-								<div class="log-viewer" id="log-viewer">
-									<!-- Log entries will be added here by JS -->
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
-	<!-- Modals -->
-	<!-- Create Package Modal -->
-	<div class="modal fade" id="createPackageModal" tabindex="-1">
-		<div class="modal-dialog modal-lg modal-dialog-centered">
-			<div class="modal-content">
-				<div class="wizard-step active" id="wizard-create-1">
-					<div class="modal-header">
-						<h5 class="modal-title">Create New Package - Step 1 of 3</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-					</div>
-					<div class="modal-body">
-						<h6>Choose Package Type</h6>
-						<p class="text-muted">Start by creating a new Plugin or Theme from a template.</p>
-						<div class="d-grid gap-3">
-							<button class="btn btn-outline-primary p-3 text-start wizard-next-btn">
-								<i class="bi bi-plugin fs-4 me-3"></i>
-								<div><strong class="d-block">Plugin</strong>Create a new WordPress plugin from our starter template.</div>
-							</button>
-							<button class="btn btn-outline-primary p-3 text-start wizard-next-btn">
-								<i class="bi bi-palette fs-4 me-3"></i>
-								<div><strong class="d-block">Theme</strong>Create a new WordPress theme from our starter template.</div>
-							</button>
-						</div>
-					</div>
-				</div>
-				<div class="wizard-step" id="wizard-create-2">
-					<div class="modal-header">
-						<h5 class="modal-title">Create New Package - Step 2 of 3</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-					</div>
-					<div class="modal-body">
-						<h6>Configure Your Package</h6>
-						<div class="mb-3">
-							<label class="form-label">Package Name</label>
-							<input type="text" class="form-control" placeholder="e.g., My Awesome Plugin">
-						</div>
-						<div class="mb-3">
-							<label class="form-label">New Repository Name</label>
-							<input type="text" class="form-control" placeholder="e.g., my-awesome-plugin">
-						</div>
-						<div class="mb-3">
-							<label class="form-label">Managed By</label>
-							<select class="form-select">
-								<option>OTW Production App</option>
-								<option>Staging Updater</option>
-							</select>
-						</div>
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-outline-secondary wizard-back-btn">Back</button>
-						<button type="button" class="btn btn-primary wizard-next-btn">Create Repository</button>
-					</div>
-				</div>
-				<div class="wizard-step" id="wizard-create-3">
-					<div class="modal-header">
-						<h5 class="modal-title">Create New Package - Step 3 of 3</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-					</div>
-					<div class="modal-body text-center p-5">
-						<div class="spinner-border text-primary" role="status">
-							<span class="visually-hidden">Loading...</span>
-						</div>
-						<p class="mt-3 mb-0">Creating repository on GitHub...</p>
-						<p class="text-muted small">Installing and linking to app...</p>
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
-	<!-- Add App Modal -->
-	<div class="modal fade" id="addAppModal" tabindex="-1">
-		<div class="modal-dialog modal-lg">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title">Connect a New GitHub App</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-				</div>
-				<div class="modal-body">
-					<h6>Step 1: Name Your Connection</h6>
-					<p class="text-muted">Give your connection a memorable name for this site.</p>
-					<input type="text" class="form-control mb-4" placeholder="e.g., My Production Site Updater">
-					<h6>Step 2: Create on GitHub</h6>
-					<p class="text-muted">Follow the on-screen instructions on GitHub to create and install the secure app on your desired repositories.</p>
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-					<button type="button" class="btn btn-primary" id="create-app-btn">
-						<i class="bi bi-github me-1"></i> Create Secure App on GitHub
-					</button>
-				</div>
-			</div>
-		</div>
-	</div>
-	<!-- Other Modals (Rollback, Assign, Release Notes, Details) -->
-	<div class="modal fade" id="rollbackModal" tabindex="-1">
-		<div class="modal-dialog">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title">Rollback OTW Theme</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-				</div>
-				<div class="modal-body">
-					<p>Select a previous stable version to roll back to.</p>
-					<select class="form-select">
-						<option>1.0.1</option>
-						<option>1.0.0</option>
-					</select>
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-					<button type="button" class="btn btn-danger" id="confirm-rollback-btn">Rollback to 1.0.1</button>
-				</div>
-			</div>
-		</div>
-	</div>
-	<div class="modal fade" id="assignAppModal" tabindex="-1">
-		<div class="modal-dialog">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title">Assign App to "Legacy Widget Pack"</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-				</div>
-				<div class="modal-body">
-					<p>Choose which GitHub App should manage updates for this package.</p>
-					<select class="form-select">
-						<option>OTW Production App</option>
-						<option>Staging Updater</option>
-					</select>
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-					<button type="button" class="btn btn-primary" id="confirm-assign-btn">Assign App</button>
-				</div>
-			</div>
-		</div>
-	</div>
-	<div class="modal fade" id="releaseNotesModal" tabindex="-1">
-		<div class="modal-dialog modal-lg">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title">Release Notes for OTW Theme v1.1.0</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-				</div>
-				<div class="modal-body">
-					<h3>New Features ✨</h3>
-					<ul>
-						<li>Added a new "Hero" block for the block editor.</li>
-						<li>Integrated with the latest version of the Cool Framework.</li>
-					</ul>
-					<h3>Bug Fixes 🐛</h3>
-					<ul>
-						<li>Fixed a CSS issue on mobile devices.</li>
-						<li>Improved accessibility for screen readers.</li>
-					</ul>
-				</div>
-			</div>
-		</div>
-	</div>
 
-	<div class="modal fade" id="packageDetailsModal" tabindex="-1">
-		<div class="modal-dialog modal-lg">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title">Package Details: OTW Theme</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-				</div>
-				<div class="modal-body">
-					<h6><i class="bi bi-info-circle me-2"></i>Information</h6>
-					<p class="text-muted small">Managed By: OTW Production App<br>Last Synced: 2 minutes ago</p>
-					<h6><i class="bi bi-clock-history me-2"></i>Sync History</h6>
-					<div class="log-viewer" style="height: 150px;">
-						<div>[2025-10-12 17:59:07] [INFO] Sync complete. 1 update found.</div>
-						<div>[2025-10-12 11:55:21] [INFO] Webhook received. Clearing transients.</div>
-						<div>[2025-10-12 10:01:45] [INFO] Sync initiated by user.</div>
-					</div>
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-				</div>
-			</div>
-		</div>
-	</div>
+    <div id="wp2-update-app" class="wp2-wrap">
 
-	<div class="modal fade" id="appDetailsModal" tabindex="-1">
-		<div class="modal-dialog modal-lg">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title">App Details: OTW Production App</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-				</div>
-				<div class="modal-body">
-					<div class="row">
-						<div class="col-md-6">
-							<h6><i class="bi bi-key me-2"></i>Credentials</h6>
-							<p class="text-muted small">App ID: 12345<br>Installation ID: 67890</p>
-						</div>
-						<div class="col-md-6">
-							<h6><i class="bi bi-hdd-stack me-2"></i>Repositories (2)</h6>
-							<ul class="list-unstyled">
-								<li><small>On-The-Water-Media/otw-theme</small></li>
-								<li><small>On-The-Water-Media/otw-core-plugin</small></li>
-							</ul>
-						</div>
-					</div>
-				</div>
-				<div class="modal-footer justify-content-between">
-					<button type="button" class="btn btn-danger" id="disconnect-app-btn">Disconnect App</button>
-					<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-				</div>
-			</div>
-		</div>
-	</div>
-	<!-- Toast Container -->
-	<div class="toast-container position-fixed bottom-0 end-0 p-3">
-		<div id="action-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-			<div class="toast-header">
-				<strong class="me-auto">WP2 Update</strong>
-				<button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-			</div>
-			<div class="toast-body">This is a toast message.</div>
-		</div>
-	</div>
-	<!-- Bootstrap JS -->
-	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-	<script>
-		document.addEventListener('DOMContentLoaded', function () {
-			const toastEl = document.getElementById('action-toast');
-			const toast = new bootstrap.Toast(toastEl);
+        <!-- Header -->
+        <div class="wp2-header d-flex flex-column flex-md-row align-items-md-center justify-content-md-between mb-4">
+            <div>
+                <h1 class="wp2-main-title">WP2 Update</h1>
+                <p class="text-muted">Manage your GitHub-hosted plugins and themes with clarity, confidence, and control.</p>
+            </div>
+            <div class="d-flex gap-2 mt-3 mt-md-0">
+                <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createPackageModal">
+                    <i class="bi bi-plus-lg me-1"></i> Create Package
+                </button>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAppModal">
+                    <i class="bi bi-github me-1"></i> Add GitHub App
+                </button>
+                <button id="sync-all-btn" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-repeat me-1"></i> Sync All
+                </button>
+            </div>
+        </div>
 
-			function showToast(message, type = 'success') {
-				const toastBody = toastEl.querySelector('.toast-body');
-				toastBody.textContent = message;
-				toastEl.classList.remove('bg-success', 'bg-danger', 'bg-warning', 'text-white');
-				toastEl.classList.add(`bg-${type === 'error' ? 'danger' : type}`, 'text-white');
-				toast.show();
-			}
+        <!-- Tabs Navigation -->
+        <ul class="nav nav-tabs" id="mainTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard-panel" type="button" role="tab" aria-controls="dashboard-panel" aria-selected="true">Dashboard</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="packages-tab" data-bs-toggle="tab" data-bs-target="#packages-panel" type="button" role="tab" aria-controls="packages-panel" aria-selected="false">Packages</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="apps-tab" data-bs-toggle="tab" data-bs-target="#apps-panel" type="button" role="tab" aria-controls="apps-panel" aria-selected="false">Apps</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="health-tab" data-bs-toggle="tab" data-bs-target="#health-panel" type="button" role="tab" aria-controls="health-panel" aria-selected="false">Health</button>
+            </li>
+        </ul>
 
-			// --- Live Log Simulation ---
-			const logViewer = document.getElementById('log-viewer');
-			const logLevels = ['INFO', 'DEBUG', 'WARNING', 'ERROR', 'SECURITY'];
-			const logMessages = [
-				'Sync initiated by user.',
-				'Fetching releases for On-The-Water-Media/otw-theme...',
-				'Found new release: 1.1.0',
-				'Sync complete. 1 update found.',
-				'Webhook event received: release',
-				'Webhook signature validated successfully.',
-				'Cleared update transients.',
-				'API rate limit check: 4987 remaining.',
-				'User authentication successful for admin.',
-				'Checking database schema for wp2_update_logs.',
-				'Database schema is up to date.'
-			];
+        <!-- Tab Content -->
+        <div class="tab-content pt-4">
+            <!-- Dashboard Panel -->
+            <div class="tab-pane fade show active" id="dashboard-panel" role="tabpanel" aria-labelledby="dashboard-tab">
+                <div class="row">
+                    <div class="col-md-6 col-lg-3 mb-4">
+                        <div class="card stat-card text-white bg-primary h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Updates Available</h5>
+                                <p class="card-text">3</p>
+                                <a href="#" class="text-white stretched-link" data-tab-target="packages-tab">View Packages</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-3 mb-4">
+                        <div class="card stat-card text-white bg-warning h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Unmanaged Packages</h5>
+                                <p class="card-text">1</p>
+                                <a href="#" class="text-white stretched-link" data-tab-target="packages-tab">Assign Now</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-3 mb-4">
+                        <div class="card stat-card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title text-muted">Total Packages</h5>
+                                <p class="card-text">12</p>
+                                <a href="#" class="stretched-link" data-tab-target="packages-tab">Manage</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-3 mb-4">
+                        <div class="card stat-card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title text-muted">Connected Apps</h5>
+                                <p class="card-text">2</p>
+                                <a href="#" class="stretched-link" data-tab-target="apps-tab">Configure</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-			function addLogEntry() {
-				if (logViewer.children.length > 100) {
-					logViewer.removeChild(logViewer.firstChild);
-				}
-				const level = logLevels[Math.floor(Math.random() * logLevels.length)];
-				const message = logMessages[Math.floor(Math.random() * logMessages.length)];
-				const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+                <div class="card my-4">
+                    <div class="card-body">
+                        <h5 class="card-title d-flex justify-content-between align-items-center">
+                            System Status
+                            <a href="#" class="btn btn-sm btn-outline-secondary" data-tab-target="health-tab">View Details <i class="bi bi-arrow-right"></i></a>
+                        </h5>
+                        <p class="card-text">
+                            <span class="badge bg-danger me-2 fs-6">⚠️</span>
+                            Connection to GitHub App "WP-Internal-Tools" is failing.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Recent Activity</h5>
+                        <div class="log-viewer">
+                            <div class="log-entry info">[2025-10-15 17:45:10] Package sync initiated via REST API.</div>
+                            <div class="log-entry info">[2025-10-15 17:42:05] Package update successful. repo_slug: agency/site-plugin</div>
+                            <div class="log-entry error">[2025-10-15 17:41:50] Package update failed. repo_slug: client/project-theme, exception: Download failed: Not Found</div>
+                            <div class="log-entry info">[2025-10-15 17:40:00] Incoming webhook received. event: release</div>
+                            <div class="log-entry warning">[2025-10-15 17:35:12] Permission denied: Invalid nonce. action: wp2_assign_package, user_id: 1</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-				const entry = document.createElement('div');
-				entry.className = 'log-entry';
-				entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> <span class="level-${level}">[${level}]</span> ${message}`;
-				logViewer.appendChild(entry);
-				logViewer.scrollTop = logViewer.scrollHeight;
-			}
+            <!-- Packages Panel -->
+            <div class="tab-pane fade" id="packages-panel" role="tabpanel" aria-labelledby="packages-tab">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="mb-3 d-flex justify-content-between align-items-center">
+                            <div>
+                                <select id="bulk-action-selector" class="form-select form-select-sm d-inline-block w-auto">
+                                    <option value="" selected>Bulk Actions</option>
+                                    <option value="sync">Sync Selected</option>
+                                    <option value="update">Update Selected</option>
+                                    <option value="assign">Assign App to Selected</option>
+                                </select>
+                                <button id="apply-bulk-action" class="btn btn-primary btn-sm ms-2">Apply</button>
+                            </div>
+                            <input type="search" class="form-control form-control-sm w-auto" placeholder="Filter packages...">
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover" role="table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="select-all-packages"></th>
+                                        <th>Package</th>
+                                        <th>Installed Version</th>
+                                        <th>Latest Version</th>
+                                        <th>Status</th>
+                                        <th class="text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><input type="checkbox" class="package-checkbox"></td>
+                                        <td><strong>Agency Core Plugin</strong><div class="text-muted small">agency/core-plugin</div></td>
+                                        <td>1.5.2</td>
+                                        <td>1.6.0</td>
+                                        <td><span class="badge rounded-pill bg-warning">Update Available</span></td>
+                                        <td class="text-end">
+                                            <div class="btn-group">
+                                                <button class="btn btn-primary btn-sm">Update to 1.6.0</button>
+                                                <button class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#rollbackModal">Rollback</a></li>
+                                                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#assignAppModal">Assign App</a></li>
+                                                    <li><a class="dropdown-item" href="#">View Release Notes</a></li>
+                                                </ul>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <!-- Add more package rows as needed -->
+                                    <tr>
+                                        <td><input type="checkbox" class="package-checkbox"></td>
+                                        <td><strong>Client Project Theme</strong><div class="text-muted small">client/project-theme</div></td>
+                                        <td>2.1.0</td>
+                                        <td>2.1.0</td>
+                                        <td><span class="badge rounded-pill bg-success">Up to date</span></td>
+                                        <td class="text-end">
+                                            <div class="btn-group">
+                                                 <button class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#rollbackModal">Rollback</a></li>
+                                                </ul>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><input type="checkbox" class="package-checkbox"></td>
+                                        <td><strong>Unlinked Utility Plugin</strong><div class="text-muted small">agency/utility-plugin</div></td>
+                                        <td>1.0.0</td>
+                                        <td>-</td>
+                                        <td><span class="badge rounded-pill bg-secondary">Unmanaged</span></td>
+                                        <td class="text-end">
+                                            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#assignAppModal">Assign App</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-			// Start adding logs when the health tab is shown
-			const healthTab = document.getElementById('health-tab');
-			let logInterval;
-			healthTab.addEventListener('shown.bs.tab', () => {
-				if (!logInterval) {
-					addLogEntry(); // Add one immediately
-					logInterval = setInterval(addLogEntry, Math.random() * 3000 + 1000);
-				}
-			});
-			document.querySelector('[data-bs-target="#packages-panel"]').addEventListener('shown.bs.tab', () => clearInterval(logInterval));
-			document.querySelector('[data-bs-target="#apps-panel"]').addEventListener('shown.bs.tab', () => clearInterval(logInterval));
+            <!-- Apps Panel -->
+            <div class="tab-pane fade" id="apps-panel" role="tabpanel" aria-labelledby="apps-tab">
+                <div class="card">
+                    <div class="card-body">
+                        <h2 class="card-title">GitHub Apps</h2>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>App Name</th>
+                                        <th>Account</th>
+                                        <th>Managed Packages</th>
+                                        <th>Status</th>
+                                        <th class="text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>WP-Internal-Tools</strong></td>
+                                        <td>AgencyInc (Organization)</td>
+                                        <td>8</td>
+                                        <td><span class="badge rounded-pill bg-danger">Connection Failed</span></td>
+                                        <td class="text-end">
+                                            <button class="btn btn-outline-secondary btn-sm">Settings</button>
+                                            <button class="btn btn-danger btn-sm">Delete</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Client-Projects-Access</strong></td>
+                                        <td>johndoe (User)</td>
+                                        <td>4</td>
+                                        <td><span class="badge rounded-pill bg-success">Connected</span></td>
+                                        <td class="text-end">
+                                            <button class="btn btn-outline-secondary btn-sm">Settings</button>
+                                            <button class="btn btn-danger btn-sm">Delete</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-			// --- Wizard Logic ---
-			function setupWizard(modalId) {
-				const wizardModalEl = document.getElementById(modalId);
-				const wizardSteps = wizardModalEl.querySelectorAll('.wizard-step');
+            <!-- Health Panel -->
+            <div class="tab-pane fade" id="health-panel" role="tabpanel" aria-labelledby="health-tab">
+                <div class="row">
+                    <div class="col-lg-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">System Environment</h5>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item d-flex justify-content-between align-items-start"><div><strong>PHP Version</strong><p class="text-muted small mb-0">8.2.11 meets requirement of 8.0+.</p></div><span class="badge bg-success">✔</span></li>
+                                    <li class="list-group-item d-flex justify-content-between align-items-start"><div><strong>WordPress Version</strong><p class="text-muted small mb-0">6.4.1 meets requirement of 6.0+.</p></div><span class="badge bg-success">✔</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Application Integrity</h5>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item d-flex justify-content-between align-items-start"><div><strong>Database Schema</strong><p class="text-muted small mb-0">Required tables are correctly installed.</p></div><span class="badge bg-success">✔</span></li>
+                                    <li class="list-group-item d-flex justify-content-between align-items-start"><div><strong>REST API</strong><p class="text-muted small mb-0">Plugin endpoints are registered.</p></div><span class="badge bg-success">✔</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                     <div class="col-lg-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Connectivity</h5>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item d-flex justify-content-between align-items-start"><div><strong>GitHub App: WP-Internal-Tools</strong><p class="text-muted small mb-0">Could not connect to GitHub. The token may be invalid or expired.</p></div><span class="badge bg-danger">✖</span></li>
+                                     <li class="list-group-item d-flex justify-content-between align-items-start"><div><strong>GitHub App: Client-Projects-Access</strong><p class="text-muted small mb-0">Connection to GitHub succeeded.</p></div><span class="badge bg-success">✔</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-				wizardModalEl.addEventListener('click', function (e) {
-					if (e.target.classList.contains('wizard-next-btn')) {
-						const currentStep = e.target.closest('.wizard-step');
-						const nextStep = currentStep.nextElementSibling;
-						if (nextStep && nextStep.classList.contains('wizard-step')) {
-							currentStep.classList.remove('active');
-							nextStep.classList.add('active');
-							if (nextStep.id === 'wizard-create-3') {
-								// Fake the creation process
-								setTimeout(() => {
-									const modal = bootstrap.Modal.getInstance(wizardModalEl);
-									modal.hide();
-									showToast('New package created successfully!');
-									// Reset wizard for next time
-									wizardSteps.forEach(s => s.classList.remove('active'));
-									wizardSteps[0].classList.add('active');
-								}, 3000);
-							}
-						}
-					} else if (e.target.classList.contains('wizard-back-btn')) {
-						const currentStep = e.target.closest('.wizard-step');
-						const prevStep = currentStep.previousElementSibling;
-						if (prevStep && prevStep.classList.contains('wizard-step')) {
-							currentStep.classList.remove('active');
-							prevStep.classList.add('active');
-						}
-					}
-				});
-			}
-			setupWizard('createPackageModal');
+        </div>
+    </div>
+    
+    <!-- Modals -->
+    <div class="modal fade" id="addAppModal" tabindex="-1" aria-labelledby="addAppModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addAppModalLabel">Add GitHub App</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Connect a new GitHub App to manage your private packages.</p>
+                    <div class="d-grid gap-3">
+                         <button class="btn btn-primary btn-lg" type="button">Create New App with Manifest</button>
+                         <button class="btn btn-secondary btn-lg" type="button">Connect an Existing App Manually</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal fade" id="rollbackModal" tabindex="-1" aria-labelledby="rollbackModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="rollbackModalLabel">Rollback Agency Core Plugin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Select a version to roll back to. The current version is 1.5.2.</p>
+                    <select class="form-select">
+                        <option>1.5.1</option>
+                        <option>1.5.0</option>
+                        <option>1.4.8</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger">Confirm Rollback</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+     <div class="modal fade" id="assignAppModal" tabindex="-1" aria-labelledby="assignAppModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="assignAppModalLabel">Assign App to Unlinked Utility Plugin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Select a GitHub App to manage this package.</p>
+                    <select class="form-select">
+                        <option>WP-Internal-Tools</option>
+                        <option>Client-Projects-Access</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary">Save Assignment</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-			// --- Fake Interactions ---
-			document.getElementById('sync-all-btn').addEventListener('click', function () {
-				const btn = this;
-				const originalText = btn.innerHTML;
-				btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Syncing...`;
-				btn.disabled = true;
-				addLogEntry(); // Simulate a log entry on sync
+    <div class="modal fade" id="createPackageModal" tabindex="-1" aria-labelledby="createPackageModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="createPackageModalLabel">Create New Package</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form>
+              <div class="mb-3">
+                <label for="repoName" class="form-label">Repository Name</label>
+                <input type="text" class="form-control" id="repoName" placeholder="my-awesome-plugin">
+              </div>
+              <div class="mb-3">
+                <label for="packageType" class="form-label">Package Type</label>
+                <select id="packageType" class="form-select">
+                  <option selected>Choose...</option>
+                  <option value="plugin">Plugin</option>
+                  <option value="theme">Theme</option>
+                </select>
+              </div>
+               <div class="mb-3">
+                <label for="assignApp" class="form-label">Assign to App</label>
+                <select id="assignApp" class="form-select">
+                  <option selected>Choose...</option>
+                  <option>WP-Internal-Tools</option>
+                  <option>Client-Projects-Access</option>
+                </select>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary">Create Repository</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
-				setTimeout(() => {
-					btn.innerHTML = originalText;
-					btn.disabled = false;
-					showToast('All packages synced successfully.');
-				}, 2000);
-			});
+    <!-- Toast container for notifications -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="syncToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <strong class="me-auto">WP2 Update</strong>
+                <small>Just now</small>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body">
+                Syncing all packages...
+            </div>
+        </div>
+    </div>
 
-			document.querySelectorAll('.update-btn').forEach(button => {
-				button.addEventListener('click', function () {
-					const packageId = this.getAttribute('data-package-id');
-					const row = document.getElementById(`package-row-${packageId}`);
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // Handle tab switching for stretched links in stat cards
+            document.querySelectorAll('[data-tab-target]').forEach(function(link) {
+                link.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    var targetTabId = this.getAttribute('data-tab-target');
+                    var targetTab = document.getElementById(targetTabId);
+                    if (targetTab) {
+                        var tab = new bootstrap.Tab(targetTab);
+                        tab.show();
+                    }
+                });
+            });
 
-					this.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Updating...`;
-					this.disabled = true;
-					row.classList.add('updating-row');
+            // Handle "Sync All" button with toast notification
+            var syncButton = document.getElementById('sync-all-btn');
+            var syncToastEl = document.getElementById('syncToast');
+            var syncToast = new bootstrap.Toast(syncToastEl);
 
-					setTimeout(() => {
-						row.classList.remove('updating-row');
-						const statusCell = row.querySelector('td:nth-child(3)');
-						const versionCell = row.querySelector('td:nth-child(2)');
-						statusCell.innerHTML = `<span class="badge bg-success-light rounded-pill"><i class="bi bi-check-circle-fill me-1"></i>Up to date</span>`;
-						versionCell.textContent = '1.1.0';
-						this.closest('.btn-group').innerHTML = `<button class="btn btn-outline-secondary btn-sm disabled" disabled>Update</button><button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false"><span class="visually-hidden">Toggle Dropdown</span></button><ul class="dropdown-menu"><li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#packageDetailsModal"><i class="bi bi-eye me-2"></i>Details</a></li><li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#rollbackModal"><i class="bi bi-arrow-counterclockwise me-2"></i>Rollback</a></li></ul>`;
-						showToast('OTW Theme updated to 1.1.0 successfully!');
-					}, 2500);
-				});
-			});
+            if(syncButton) {
+                syncButton.addEventListener('click', function() {
+                    var toastBody = syncToastEl.querySelector('.toast-body');
+                    toastBody.textContent = 'Syncing all packages...';
+                    syncToast.show();
 
-			// Generic modal interaction handlers
-			const handleModalAction = (buttonId, modalId, message, messageType = 'success') => {
-				document.getElementById(buttonId)?.addEventListener('click', function () {
-					showToast(message, messageType);
-					const modalEl = document.getElementById(modalId);
-					if (modalEl) {
-						const modal = bootstrap.Modal.getInstance(modalEl);
-						if (modal) modal.hide();
-					}
-				});
-			};
+                    // Simulate a network request
+                    setTimeout(function() {
+                        toastBody.innerHTML = '<i class="bi bi-check-circle-fill text-success me-2"></i>Sync complete. 12 packages found.';
+                    }, 2000);
+                });
+            }
+            
+            // Activate Bootstrap tooltips
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+              return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
 
-			handleModalAction('create-app-btn', 'addAppModal', 'Redirecting to GitHub to create app...');
-			handleModalAction('confirm-rollback-btn', 'rollbackModal', 'Rollback initiated...');
-			handleModalAction('confirm-assign-btn', 'assignAppModal', 'Package assigned successfully.');
-			handleModalAction('disconnect-app-btn', 'appDetailsModal', 'App disconnected.', 'error');
-		});
-	</script>
+        });
+    </script>
 </body>
 </html>

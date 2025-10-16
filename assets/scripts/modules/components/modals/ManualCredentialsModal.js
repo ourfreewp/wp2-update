@@ -1,6 +1,5 @@
 import { StandardModal } from './StandardModal.js';
-import { api_request } from '../../api.js';
-import { modalManager } from '../../utils/modal.js';
+import { apiFetch } from '@wordpress/api-fetch';
 import { AppService } from '../../services/AppService.js';
 
 export const ManualCredentialsModal = () => {
@@ -39,45 +38,28 @@ export const ManualCredentialsModal = () => {
     const modal = StandardModal({
         title: 'Enter Manual Credentials',
         bodyContent,
-        footerActions
+        footerActions,
     });
 
-    modal.addEventListener('click', (event) => {
-        if (event.target.id === 'save-credentials-btn') {
-            const form = document.getElementById('manual-credentials-form');
-
-            if (!form.checkValidity()) {
-                event.preventDefault();
-                event.stopPropagation();
-            } else {
-                const appId = document.getElementById('app-id').value;
-                const installationId = document.getElementById('installation-id').value;
-                const privateKey = document.getElementById('private-key').value;
-
-                // Call the API to save credentials
-                api_request('credentials/manual-setup', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        app_id: appId,
-                        installation_id: installationId,
-                        private_key: privateKey
-                    })
-                }, 'wp2_manual_setup')
-                .then(() => {
-                    // Fetch updated apps and close the modal
-                    return AppService.fetchApps();
-                })
-                .then(() => {
-                    modal.dispatchEvent(new Event('close'));
-                    alert('Credentials saved successfully!');
-                })
-                .catch((error) => {
-                    console.error('Error saving credentials:', error);
-                    alert('Failed to save credentials. Please try again.');
-                });
-            }
-
+    document.getElementById('save-credentials-btn').addEventListener('click', async () => {
+        const form = document.getElementById('manual-credentials-form');
+        if (!form.checkValidity()) {
             form.classList.add('was-validated');
+            return;
+        }
+
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+
+        try {
+            await apiFetch({
+                path: '/wp2-update/v1/apps/manual-credentials',
+                method: 'POST',
+                data,
+            });
+            alert('Credentials saved successfully.');
+        } catch (error) {
+            alert('Failed to save credentials.');
         }
     });
 

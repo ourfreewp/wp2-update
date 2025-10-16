@@ -6,12 +6,14 @@ use WP2\Update\Health\Checks\ConnectivityCheck;
 use WP2\Update\Health\Checks\DataIntegrityCheck;
 use WP2\Update\Health\Checks\EnvironmentCheck;
 use WP2\Update\Health\Checks\DatabaseCheck;
-use WP2\Update\Health\Checks\RESTCheck; // New
-use WP2\Update\Health\Checks\AssetCheck; // New
+use WP2\Update\Health\Checks\RESTCheck;
+use WP2\Update\Health\Checks\AssetCheck;
 use WP2\Update\REST\AbstractController;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
+use WP2\Update\Utils\Logger;
+use WP2\Update\Config;
 
 /**
  * REST controller for exposing system health status.
@@ -27,8 +29,8 @@ final class HealthController extends AbstractController {
         DataIntegrityCheck $dataIntegrityCheck,
         EnvironmentCheck $environmentCheck,
         DatabaseCheck $databaseCheck,
-        RESTCheck $restCheck, // New dependency
-        AssetCheck $assetCheck // New dependency
+        RESTCheck $restCheck,
+        AssetCheck $assetCheck
     ) {
         parent::__construct();
         $this->healthChecks = [
@@ -39,6 +41,9 @@ final class HealthController extends AbstractController {
             'rest_endpoints' => $restCheck,
             'assets_loaded' => $assetCheck,
         ];
+
+        // Improved logging for health check initialization
+        Logger::info('HealthController initialized with health checks.', ['checks' => array_keys($this->healthChecks)]);
     }
 
     /**
@@ -48,28 +53,35 @@ final class HealthController extends AbstractController {
         register_rest_route($this->namespace, '/health', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_health_status'],
-            'permission_callback' => $this->permission_callback('wp2_get_health_status'),
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
         ]);
+
+        // Improved logging for route registration
+        Logger::info('HealthController routes registered.');
     }
 
     /**
-     * Retrieves all registered REST routes.
+     * Retrieves all registered REST routes belonging to the plugin's namespace.
      *
      * @return array
      */
-    private function get_rest_routes(): array {
+    private function get_plugin_rest_routes(): array {
         $routes = rest_get_server()->get_routes();
-        $formattedRoutes = [];
+        $pluginRoutes = [];
 
         foreach ($routes as $route => $details) {
-            $methods = array_map(fn($method) => $method, $details[0]['methods'] ?? []);
-            $formattedRoutes[] = [
-                'route' => $route,
-                'methods' => implode(', ', $methods),
-            ];
+            if (strpos($route, '/' . $this->namespace) === 0) {
+                $methods = array_map(fn($method) => $method, $details[0]['methods'] ?? []);
+                $pluginRoutes[] = [
+                    'route' => $route,
+                    'methods' => implode(', ', $methods),
+                ];
+            }
         }
 
-        return $formattedRoutes;
+        return $pluginRoutes;
     }
 
     /**
@@ -78,26 +90,28 @@ final class HealthController extends AbstractController {
     public function get_health_status(WP_REST_Request $request): WP_REST_Response {
         $results = [];
         foreach ($this->healthChecks as $key => $checkInstance) {
-             $results[$key] = $checkInstance->run();
+            $results[$key] = $checkInstance->run();
+            Logger::info("Health check executed for {$key}.", ['result' => $results[$key]]);
         }
 
-        // Add REST endpoints to the health check results
         $results['rest_endpoints'] = [
-            'title' => __('Registered REST Endpoints', \WP2\Update\Config::TEXT_DOMAIN),
-            'data' => $this->get_rest_routes(),
+            'title' => __('Registered REST Endpoints', Config::TEXT_DOMAIN),
+            'data' => $this->get_plugin_rest_routes(),
         ];
+
+        Logger::info('Plugin REST endpoints added to health check results.', ['endpoints' => $results['rest_endpoints']]);
 
         // Group checks by a title for better UI presentation and operational clarity
         $grouped_results = [
             [
-                'title' => __('System Environment', \WP2\Update\Config::TEXT_DOMAIN),
+                'title' => __('System Environment', Config::TEXT_DOMAIN),
                 'checks' => [
                     $results['environment'],
                     $results['database'],
                 ],
             ],
             [
-                'title' => __('Application Integrity & Front-end', \WP2\Update\Config::TEXT_DOMAIN),
+                'title' => __('Application Integrity & Front-end', Config::TEXT_DOMAIN),
                 'checks' => [
                     $results['data_integrity'],
                     $results['assets_loaded'],
@@ -105,7 +119,7 @@ final class HealthController extends AbstractController {
                 ],
             ],
             [
-                'title' => __('Integration & Connectivity', \WP2\Update\Config::TEXT_DOMAIN),
+                'title' => __('Integration & Connectivity', Config::TEXT_DOMAIN),
                 'checks' => [
                     $results['connectivity'],
                 ],

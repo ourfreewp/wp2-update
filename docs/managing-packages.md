@@ -36,3 +36,23 @@ Use the **Create Package** button to launch the wizard:
 1. **Select Type**: Choose whether to create a new Plugin or Theme based on a starter template.
 2. **Configure**: Provide the package name and target repository name.
 3. **Confirm**: The plugin creates the new repository on GitHub and registers it immediately within your WordPress installation.
+
+## Polling Service
+
+The Polling Service ensures that your packages are always up-to-date by periodically checking for new releases on GitHub. This service runs in the background and updates the package status automatically.
+
+### Key Features
+- **Automatic Updates**: Polls GitHub repositories at regular intervals to fetch the latest release information.
+- **Configurable Intervals**: You can adjust the polling frequency in the plugin settings.
+- **Error Handling**: Logs any issues encountered during polling, such as API rate limits or network errors.
+
+### Enabling the Polling Service
+1. Navigate to the **Settings** tab in the WP2 Update dashboard.
+2. Locate the **Polling Service** section.
+3. Toggle the switch to enable or disable the service.
+4. Adjust the polling interval as needed.
+
+### Viewing Polling Logs
+All polling activities are logged for transparency. To view the logs:
+1. Go to the **Logs** tab in the WP2 Update dashboard.
+2. Filter by **Polling Service** to see relevant entries.

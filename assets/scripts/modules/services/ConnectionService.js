@@ -1,5 +1,5 @@
 import { store, updateState, STATUS } from '../state/store.js';
-import { api_request } from '../api.js';
+import { apiFetch } from '@wordpress/api-fetch';
 import { logger } from '../utils/logger.js';
 import { NotificationService } from './NotificationService.js';
 
@@ -56,8 +56,8 @@ export class ConnectionService {
         }
 
         try {
-            const response = await api_request('connection-status', { method: 'GET' });
-            const data = response?.data || {};
+            const response = await apiFetch({ path: '/wp2-update/v1/connection-status' });
+            const data = response || {};
             let status = data.status || STATUS.NOT_CONFIGURED;
 
             if (status === STATUS.NOT_CONFIGURED && data.unlinked_packages?.length) {
@@ -80,7 +80,7 @@ export class ConnectionService {
         } catch (error) {
             logger.error('Failed to fetch connection status:', error);
             if (!silent) {
-                NotificationService.showError('Could not connect to the server.', error.message); // Ensure proper toast integration
+                NotificationService.showError('Could not connect to the server.', error.message);
                 updateState({
                     status: STATUS.ERROR,
                     message: error.message || 'An unexpected error occurred.',

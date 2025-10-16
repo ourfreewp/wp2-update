@@ -1,8 +1,11 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\Health\Checks;
 
 use WP2\Update\Health\AbstractCheck;
+
+use WP2\Update\Config;
 
 /**
  * Health check for verifying server environment requirements (PHP version, extensions, etc.).
@@ -22,7 +25,7 @@ class EnvironmentCheck extends AbstractCheck {
         // Check PHP version
         if (version_compare(PHP_VERSION, '8.0', '<')) {
             $errors[] = sprintf(
-                __('PHP version is %s, but 8.0 or higher is required.', \WP2\Update\Config::TEXT_DOMAIN),
+                __('PHP version is %s, but 8.0 or higher is required.', Config::TEXT_DOMAIN),
                 PHP_VERSION
             );
         }
@@ -31,7 +34,7 @@ class EnvironmentCheck extends AbstractCheck {
         global $wp_version;
         if (version_compare($wp_version, '6.0', '<')) {
             $errors[] = sprintf(
-                __('WordPress version is %s, but 6.0 or higher is required.', \WP2\Update\Config::TEXT_DOMAIN),
+                __('WordPress version is %s, but 6.0 or higher is required.', Config::TEXT_DOMAIN),
                 $wp_version
             );
         }
@@ -41,7 +44,7 @@ class EnvironmentCheck extends AbstractCheck {
         foreach ($required_extensions as $extension) {
             if (!extension_loaded($extension)) {
                 $errors[] = sprintf(
-                    __('The required PHP extension "%s" is not enabled.', \WP2\Update\Config::TEXT_DOMAIN),
+                    __('The required PHP extension "%s" is not enabled.', Config::TEXT_DOMAIN),
                     $extension
                 );
             }
@@ -58,7 +61,7 @@ class EnvironmentCheck extends AbstractCheck {
         return [
             'label'   => $this->label,
             'status'  => 'pass',
-            'message' => __('The server environment meets all requirements.', \WP2\Update\Config::TEXT_DOMAIN),
+            'message' => __('The server environment meets all requirements.', Config::TEXT_DOMAIN),
         ];
     }
 }

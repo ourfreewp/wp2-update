@@ -1,110 +1,137 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\Utils;
-
 use WP2\Update\Config;
-
 /**
- * Handles standardized logging to a custom database table.
+ * Class Logger
+ *
+ * A full-spectrum static logger class for the Query Monitor plugin.
+ *
+ * Provides a clear and simple API for logging messages, profiling code performance,
+ * and making assertions. All methods are safe to use even if Query Monitor
+ * is not active.
  */
 final class Logger
 {
     /**
-     * Logs a message to the custom database table.
+     * A list of valid PSR-3 log levels that Query Monitor supports.
      *
-     * @param string $level   The severity level (e.g., 'INFO', 'ERROR', 'DEBUG').
-     * @param string $message The log message.
-     * @param array  $context Optional additional data to log as a JSON string.
+     * @var string[]
      */
-    public static function log(string $level, string $message, array $context = []): void
-    {
-        global $wpdb;
-        $table_name = $wpdb->prefix . Config::LOGS_TABLE_NAME;
+    private const VALID_LOG_LEVELS = [
+        'debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'
+    ];
 
-        // Fallback to error_log if the table doesn't exist, to prevent fatal errors during activation.
-        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) !== $table_name) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log("[WP2 Update Fallback] [{$level}] {$message}");
-            }
+    /**
+     * Checks if Query Monitor is active and its API is available.
+     *
+     * @return bool True if QM is ready, false otherwise.
+     */
+    private static function is_qm_active(): bool
+    {
+        return class_exists('QM');
+    }
+
+    // --- Core Logging Methods ---
+
+    /**
+     * Logs a message at the specified level dynamically.
+     *
+     * @param string $level   The PSR-3 log level.
+     * @param mixed  $message The message or data to log.
+     * @param array  $context Optional context for string interpolation.
+     * @return void
+     */
+    public static function log(string $level, $message, array $context = []): void
+    {
+        if (!self::is_qm_active() || !defined('WP2_UPDATE_DEBUG') || !WP2_UPDATE_DEBUG) {
             return;
         }
 
-        $wpdb->insert(
-            $table_name,
-            [
-                'timestamp' => current_time('mysql', true),
-                'level'     => strtoupper($level),
-                'message'   => $message,
-                'context'   => !empty($context) ? wp_json_encode($context) : null,
-            ],
-            ['%s', '%s', '%s', '%s']
-        );
-    }
-
-    /**
-     * Retrieves logs from the database with pagination.
-     *
-     * @param int $limit The number of logs to retrieve.
-     * @param int $offset The starting point for retrieval.
-     * @return array The list of log entries.
-     */
-    public static function get_logs(int $limit, int $offset): array
-    {
-        global $wpdb;
-        $table_name = $wpdb->prefix . Config::LOGS_TABLE_NAME;
-
-        return $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT * FROM {$table_name} ORDER BY id DESC LIMIT %d OFFSET %d",
-                $limit,
-                $offset
-            ),
-            ARRAY_A
-        );
-    }
-
-    /**
-     * Fetches recent logs, optionally filtering by last ID.
-     *
-     * @param int|null $lastId The last log ID received by the client.
-     * @return array The recent logs.
-     */
-    public static function get_recent_logs(?int $lastId = null): array
-    {
-        global $wpdb;
-        $table_name = $wpdb->prefix . Config::LOGS_TABLE_NAME;
-
-        if ($lastId) {
-            $query = $wpdb->prepare(
-                "SELECT * FROM {$table_name} WHERE id > %d ORDER BY id ASC LIMIT %d",
-                $lastId,
-                10
-            );
-        } else {
-            $query = $wpdb->prepare(
-                "SELECT * FROM {$table_name} ORDER BY id DESC LIMIT %d",
-                10
-            );
+        if (!in_array($level, self::VALID_LOG_LEVELS, true)) {
+            $level = 'info';
         }
 
-        return $wpdb->get_results($query, ARRAY_A);
+        // Dynamically call the appropriate Query Monitor method
+        if (class_exists('QM') && method_exists('QM', $level)) {
+            \QM::{$level}($message, $context);
+        }
+    }
+
+    /** Logs a debug message. */
+    public static function debug($message, array $context = []): void { self::log('debug', $message, $context); }
+
+    /** Logs an info message. */
+    public static function info($message, array $context = []): void { self::log('info', $message, $context); }
+    
+    /** Logs a notice. */
+    public static function notice($message, array $context = []): void { self::log('notice', $message, $context); }
+
+    /** Logs a warning message. */
+    public static function warning($message, array $context = []): void { self::log('warning', $message, $context); }
+
+    /** Logs an error message. */
+    public static function error($message, array $context = []): void { self::log('error', $message, $context); }
+    
+    /** Logs a critical message. */
+    public static function critical($message, array $context = []): void { self::log('critical', $message, $context); }
+
+    // --- Profiling Methods ---
+
+    /**
+     * Starts a Query Monitor timer.
+     *
+     * @param string $timerName The unique name for the timer.
+     */
+    public static function start(string $timerName): void
+    {
+        if (self::is_qm_active()) {
+            do_action('qm/start', $timerName);
+        }
     }
 
     /**
-     * Prunes logs older than a specified retention period.
+     * Stops a Query Monitor timer.
+     *
+     * @param string $timerName The name of the timer to stop.
      */
-    public static function prune_logs(): void
+    public static function stop(string $timerName): void
     {
-        global $wpdb;
-        $table_name = $wpdb->prefix . Config::LOGS_TABLE_NAME;
+        if (self::is_qm_active()) {
+            do_action('qm/stop', $timerName);
+        }
+    }
 
-        // Define retention period (e.g., 30 days)
-        $retention_period = apply_filters('wp2_update_log_retention_days', 30);
-        $wpdb->query(
-            $wpdb->prepare(
-                "DELETE FROM {$table_name} WHERE timestamp < DATE_SUB(NOW(), INTERVAL %d DAY)",
-                $retention_period
-            )
-        );
+    /**
+     * Records a lap for an active Query Monitor timer.
+     *
+     * @param string $timerName The name of the timer to record a lap for.
+     */
+    public static function lap(string $timerName): void
+    {
+        if (self::is_qm_active()) {
+            do_action('qm/lap', $timerName);
+        }
+    }
+
+    // --- Assertion Method ---
+
+    /**
+     * Performs an assertion, logging an error in Query Monitor if it fails.
+     *
+     * @param mixed       $condition    The condition or expression to assert (should evaluate to bool).
+     * @param string      $description  A message describing the assertion.
+     * @param mixed|null  $value        An optional value to log if the assertion fails.
+     */
+    public static function assert($condition, string $description = 'Assertion failed', $value = null): void
+    {
+        if (!self::is_qm_active()) {
+            return;
+        }
+
+        if (class_exists('QM')) {
+            \QM::assert($condition, $description, $value);
+        }
     }
 }

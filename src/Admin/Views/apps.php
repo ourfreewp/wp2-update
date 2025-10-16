@@ -10,28 +10,31 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+use WP2\Update\Config;
+
 // Fetch real app data dynamically from the backend or database.
 $apps = $appService->get_apps();
 ?>
 <div class="card mt-4">
     <div class="card-body">
         <h2 class="card-title">
-            <?php esc_html_e('GitHub Apps', \WP2\Update\Config::TEXT_DOMAIN); ?>
+            <?php esc_html_e('GitHub Apps', Config::TEXT_DOMAIN); ?>
         </h2>
         <table class="table table-hover" role="table">
             <thead>
                 <tr>
-                    <th scope="col"><?php esc_html_e('App Name', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
-                    <th scope="col"><?php esc_html_e('Account Type', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
-                    <th scope="col"><?php esc_html_e('Packages', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
-                    <th scope="col" class="text-end"><?php esc_html_e('Actions', \WP2\Update\Config::TEXT_DOMAIN); ?></th>
+                    <th scope="col"><?php esc_html_e('App Name', Config::TEXT_DOMAIN); ?></th>
+                    <th scope="col"><?php esc_html_e('Account Type', Config::TEXT_DOMAIN); ?></th>
+                    <th scope="col"><?php esc_html_e('Packages', Config::TEXT_DOMAIN); ?></th>
+                    <th scope="col"><?php esc_html_e('Status', Config::TEXT_DOMAIN); ?></th>
+                    <th scope="col" class="text-end"><?php esc_html_e('Actions', Config::TEXT_DOMAIN); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($apps)) : ?>
                     <tr>
                         <td colspan="4" class="text-center text-muted">
-                            <?php esc_html_e('No GitHub Apps available. Add a new app to get started.', \WP2\Update\Config::TEXT_DOMAIN); ?>
+                            <?php esc_html_e('No GitHub Apps available. Add a new app to get started.', Config::TEXT_DOMAIN); ?>
                         </td>
                     </tr>
                 <?php else : ?>
@@ -46,6 +49,15 @@ $apps = $appService->get_apps();
                                 // Ensure packages is an array before calling implode
                                 echo esc_html(implode(', ', is_array($app['packages']) ? $app['packages'] : []));
                                 ?>
+                            </td>
+                            <td>
+                                <?php
+                                $status = $appService->test_connection($app['id']) ? 'Connected' : 'Error';
+                                $badge_class = $status === 'Connected' ? 'badge-success' : 'badge-danger';
+                                ?>
+                                <span class="badge <?php echo esc_attr($badge_class); ?>">
+                                    <?php echo esc_html($status); ?>
+                                </span>
                             </td>
                             <td class="text-end">
                                 <button class="btn btn-primary btn-sm">View</button>

@@ -6,7 +6,7 @@ const { __ } = wp.i18n;
 document.addEventListener('click', (event) => {
     if (event.target && event.target.dataset.wp2Action === 'app-details') {
         const appId = event.target.closest('tr').dataset.appId;
-        console.log(__("App interaction triggered for App ID:", "wp2-update"), appId);
+        console.log(wp2UpdateData.i18n.appInteraction, appId);
 
         // Trigger a custom event for app details interaction
         const appDetailsEvent = new CustomEvent('wp2AppDetails', {
@@ -26,18 +26,18 @@ document.addEventListener('click', (event) => {
 
         // Disable the button to prevent multiple clicks
         button.disabled = true;
-        button.textContent = __("Loading...", "wp2-update");
+        button.textContent = wp2UpdateData.i18n.loading;
 
         // Fetch the next page of apps
         fetchPaginatedApps(nextPage).then(() => {
             // Update the button state
             button.dataset.currentPage = nextPage;
             button.disabled = false;
-            button.textContent = __("Load More", "wp2-update");
+            button.textContent = wp2UpdateData.i18n.loadMore;
         }).catch(() => {
             // Handle errors
             button.disabled = false;
-            button.textContent = __("Load More", "wp2-update");
+            button.textContent = wp2UpdateData.i18n.loadMore;
         });
     }
 });

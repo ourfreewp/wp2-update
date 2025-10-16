@@ -36,3 +36,24 @@ Welcome to WP2 Update! This guide walks you through connecting your first GitHub
 - Once the app is installed, GitHub will attempt to redirect back to your WordPress site.
 - The WP2 Update plugin automatically detects the successful connection, verifies the credentials, and begins fetching your packages.
 - You should now see your connected app and packages ready for management in the dashboard.
+
+## Step 6: Enable Polling Service (Optional)
+
+The Polling Service ensures your packages are always up-to-date by periodically checking for new releases on GitHub.
+
+1. Navigate to the **Settings** tab in the WP2 Update dashboard.
+2. Locate the **Polling Service** section.
+3. Toggle the switch to enable the service.
+4. Adjust the polling interval as needed.
+
+Enabling this service automates the update-checking process, ensuring you always have the latest versions of your packages.
+
+## Important: Update URI Header
+
+For WP2 Update to detect and manage updates for your plugin or theme, ensure the main file includes the following header:
+
+```
+Update URI: owner/repository-name
+```
+
+Replace `owner/repository-name` with the GitHub repository slug. After adding this header, click **Sync All** in the WP2 Update dashboard to refresh the package list.

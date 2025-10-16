@@ -12,9 +12,11 @@ export const HealthView = {
         // Function to render health data dynamically
         const renderHealthData = () => {
             const healthData = store.get().health;
-            healthContainer.innerHTML = healthData
-                ? `<pre>${JSON.stringify(healthData, null, 2)}</pre>`
-                : '<p>No health data available.</p>';
+            if (healthContainer) {
+                healthContainer.innerHTML = healthData
+                    ? `<pre>${JSON.stringify(healthData, null, 2)}</pre>`
+                    : '<p>No health data available.</p>';
+            }
         };
 
         // Initial fetch and render

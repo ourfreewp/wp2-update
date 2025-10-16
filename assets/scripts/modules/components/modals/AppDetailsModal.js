@@ -1,5 +1,5 @@
 import { escapeHtml } from '../../utils/string.js';
-import { apiDelete } from '../../api.js';
+import { apiFetch } from '@wordpress/api-fetch';
 import { NotificationService } from '../../services/NotificationService.js';
 import { AppService } from '../../services/AppService.js';
 import { modalManager } from '../../utils/modal.js';
@@ -22,11 +22,11 @@ export const AppDetailsModal = (app) => {
     return StandardModal({
         title: escapeHtml(app.name),
         bodyContent,
-        footerActions
+        footerActions,
     });
 };
 
-document.addEventListener('click', (event) => {create
+document.addEventListener('click', (event) => {
     if (event.target && event.target.id === 'disconnect-app') {
         const appId = event.target.dataset.appId;
         if (!appId) {
@@ -34,15 +34,16 @@ document.addEventListener('click', (event) => {create
             return;
         }
 
-        apiDelete(`/apps/${appId}`, {}, 'wp2_delete_app')
+        apiFetch({
+            path: `/wp2-update/v1/apps/${appId}`,
+            method: 'DELETE',
+        })
             .then(() => {
-                NotificationService.showSuccess('App disconnected successfully.'); // Ensure proper toast integration
+                NotificationService.showSuccess('App disconnected successfully.');
                 AppService.fetchApps();
-                modalManager.close('appDetailsModal');
             })
             .catch((error) => {
-                console.error('Failed to disconnect app:', error);
-                NotificationService.showError('Failed to disconnect app. Please try again.'); // Ensure proper toast integration
+                NotificationService.showError('Failed to disconnect app.', error.message);
             });
     }
 });

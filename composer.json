@@ -4,10 +4,7 @@
 	"type": "wordpress-plugin",
 	"autoload": {
 		"psr-4": {
-			"WP2\\Update\\": "src/",
-			"WP2\\Update\\Admin\\Screens\\": "src/Admin/Screens/",
-			"WP2\\Update\\Core\\Health\\": "src/Core/Health/",
-			"Tests\\": "tests/"
+			"WP2\\Update\\": "src/"
 		}
 	},
 	"authors": [

@@ -6,6 +6,7 @@ use WP2\Update\Services\PackageService;
 use WP2\Update\Services\Github\ReleaseService;
 use WP2\Update\Services\Github\ClientService;
 use WP2\Update\Services\Github\RepositoryService;
+use WP2\Update\Utils\Logger;
 
 /**
  * Abstract base class for handling plugin and theme updates from GitHub.
@@ -47,11 +48,15 @@ abstract class AbstractUpdater {
             return $transient;
         }
 
+        Logger::info('Checking for updates.', ['type' => $this->type]);
+        Logger::start('update_check_' . $this->type);
+
         $cache_key = 'wp2_update_' . $this->type . '_updates';
         $cached_updates = get_transient($cache_key);
 
         if ($cached_updates !== false) {
             $transient->response = array_merge($transient->response ?? [], $cached_updates);
+            Logger::info('Updates found in cache.', ['type' => $this->type, 'updates' => $cached_updates]);
             return $transient;
         }
 
@@ -72,8 +77,12 @@ abstract class AbstractUpdater {
         if (!empty($updates)) {
             set_transient($cache_key, $updates, 5 * MINUTE_IN_SECONDS);
             $transient->response = array_merge($transient->response ?? [], $updates);
+            Logger::info('Updates found.', ['type' => $this->type, 'updates' => $updates]);
+        } else {
+            Logger::info('No updates found.', ['type' => $this->type]);
         }
 
+        Logger::stop('update_check_' . $this->type);
         return $transient;
     }
 
@@ -88,11 +97,14 @@ abstract class AbstractUpdater {
             return null;
         }
 
+        // Allow modification of the download URL via a filter hook
+        $download_url = apply_filters('wp2/update/download_url', $this->releaseService->get_zip_url_from_release($latest_release), $package);
+
         return [
             'slug'        => $package['slug'],
             'new_version' => $latest_release['tag_name'],
             'url'         => $latest_release['html_url'],
-            'package'     => $this->releaseService->get_zip_url_from_release($latest_release),
+            'package'     => $download_url,
         ];
     }
 }

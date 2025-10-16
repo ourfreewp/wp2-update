@@ -4,6 +4,7 @@ namespace WP2\Update\Admin;
 
 use WP2\Update\REST\Controllers\HealthController;
 use WP2\Update\Utils\Logger;
+use WP2\Update\Config;
 
 /**
  * Handles rendering the admin screen for the WP2 Update plugin.
@@ -25,13 +26,15 @@ final class Screens {
 	 */
 	public function render(): void {
 		$activeTab = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'dashboard';
+		Logger::info( 'Rendering admin screen.', [ 'activeTab' => $activeTab ] );
+
 		?>
 		<div id="wp2-update-app" class="wp2-wrap">
 
 			<div class="wp2-header d-flex flex-column flex-md-row align-items-md-center justify-content-md-between mb-4">
 				<div>
-					<h1 class="wp2-main-title"><?php esc_html_e( 'WP2 Update', \WP2\Update\Config::TEXT_DOMAIN ); ?></h1>
-					<p><?php esc_html_e( 'Manage your GitHub-hosted plugins and themes with clarity, confidence, and control.', \WP2\Update\Config::TEXT_DOMAIN ); ?>
+					<h1 class="wp2-main-title"><?php esc_html_e( 'WP2 Update', Config::TEXT_DOMAIN ); ?></h1>
+					<p><?php esc_html_e( 'Manage your GitHub-hosted plugins and themes with clarity, confidence, and control.', Config::TEXT_DOMAIN ); ?>
 					</p>
 				</div>
 				<div class="d-flex gap-2 mt-2 mt-md-0">
@@ -53,7 +56,7 @@ final class Screens {
 						href="<?php echo esc_url( add_query_arg( 'tab', 'dashboard' ) ); ?>" role="tab"
 						aria-controls="dashboard-panel"
 						aria-selected="<?php echo 'dashboard' === $activeTab ? 'true' : 'false'; ?>">
-						<?php esc_html_e( 'Dashboard', \WP2\Update\Config::TEXT_DOMAIN ); ?>
+						<?php esc_html_e( 'Dashboard', Config::TEXT_DOMAIN ); ?>
 					</a>
 				</li>
 				<li class="nav-item" role="presentation">
@@ -61,21 +64,21 @@ final class Screens {
 						href="<?php echo esc_url( add_query_arg( 'tab', 'packages' ) ); ?>" role="tab"
 						aria-controls="packages-panel"
 						aria-selected="<?php echo 'packages' === $activeTab ? 'true' : 'false'; ?>">
-						<?php esc_html_e( 'Packages', \WP2\Update\Config::TEXT_DOMAIN ); ?>
+						<?php esc_html_e( 'Packages', Config::TEXT_DOMAIN ); ?>
 					</a>
 				</li>
 				<li class="nav-item" role="presentation">
 					<a class="nav-link <?php echo 'apps' === $activeTab ? 'active' : ''; ?>"
 						href="<?php echo esc_url( add_query_arg( 'tab', 'apps' ) ); ?>" role="tab" aria-controls="apps-panel"
 						aria-selected="<?php echo 'apps' === $activeTab ? 'true' : 'false'; ?>">
-						<?php esc_html_e( 'Apps', \WP2\Update\Config::TEXT_DOMAIN ); ?>
+						<?php esc_html_e( 'Apps', Config::TEXT_DOMAIN ); ?>
 					</a>
 				</li>
 				<li class="nav-item" role="presentation">
 					<a class="nav-link <?php echo 'health' === $activeTab ? 'active' : ''; ?>"
 						href="<?php echo esc_url( add_query_arg( 'tab', 'health' ) ); ?>" role="tab"
 						aria-controls="health-panel" aria-selected="<?php echo 'health' === $activeTab ? 'true' : 'false'; ?>">
-						<?php esc_html_e( 'Health', \WP2\Update\Config::TEXT_DOMAIN ); ?>
+						<?php esc_html_e( 'Health', Config::TEXT_DOMAIN ); ?>
 					</a>
 				</li>
 			</ul>
@@ -94,6 +97,7 @@ final class Screens {
 	 * @param string $activeTab The currently active tab.
 	 */
 	private function render_tab_panel( string $activeTab ): void {
+		Logger::info( 'Rendering tab panel.', [ 'activeTab' => $activeTab ] );
 		?>
 		<div id="<?php echo esc_attr( $activeTab ); ?>-panel" class="tab-pane fade show active" role="tabpanel">
 			<?php
@@ -110,10 +114,11 @@ final class Screens {
 					include __DIR__ . '/Views/apps.php';
 					break;
 				case 'health':
+					$recent_logs = Data::get_recent_logs(10); // Fetch the 10 most recent logs using Data class
 					include __DIR__ . '/Views/health.php';
 					break;
 				default:
-					echo '<p>' . esc_html__( 'Invalid tab.', \WP2\Update\Config::TEXT_DOMAIN ) . '</p>';
+					echo '<p>' . esc_html__( 'Invalid tab.', Config::TEXT_DOMAIN ) . '</p>';
 			}
 			?>
 		</div>
@@ -128,7 +133,7 @@ final class Screens {
 		$modals = [
 			'createPackageModal' => __( 'Create Package', 'wp2-update' ),
 			'addAppModal' => __( 'Add GitHub App', 'wp2-update' ),
-			'rollbackModal' => __( 'Rollback Package', 'wp2-update' ),
+			'rollbackModal' => __( 'Rollback Confirmation', 'wp2-update' ),
 			'assignAppModal' => __( 'Assign App', 'wp2-update' ),
 			'packageDetailsModal' => __( 'Package Details', 'wp2-update' ),
 		];

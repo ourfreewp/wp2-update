@@ -127,4 +127,42 @@ The magic setup flow simplifies the process by generating a GitHub App manifest 
 
 ---
 
+## AppDTO Class
+
+The `AppDTO` (Data Transfer Object) class is a new addition to the WP2 Update plugin. It simplifies the handling of app-related data by providing a structured format for transferring data between the backend and frontend.
+
+### Key Features
+- **Data Validation**: Ensures that all required fields are present and correctly formatted.
+- **Serialization**: Converts app data into JSON for easy transmission via REST API endpoints.
+- **Decoupling**: Reduces dependencies between the app management logic and the REST API layer.
+
+### Usage
+The `AppDTO` class is used in the following scenarios:
+1. **App Creation**: Validates and serializes data before saving it to the database.
+2. **App Listing**: Formats app data for display in the WP2 Update dashboard.
+3. **App Updates**: Ensures that updated credentials are correctly validated and stored.
+
+### Example
+```php
+$appDTO = new AppDTO([
+    'name' => 'My GitHub App',
+    'client_id' => 'abc123',
+    'client_secret' => 'xyz789',
+    'webhook_secret' => 'secret123',
+]);
+
+// Serialize to JSON
+$json = $appDTO->toJson();
+
+// Validate data
+if ($appDTO->isValid()) {
+    // Save to database
+}
+```
+
+### Benefits
+- Simplifies app management workflows.
+- Improves code readability and maintainability.
+- Reduces the likelihood of errors during data handling.
+
 This document will be updated as new features and workflows are implemented.

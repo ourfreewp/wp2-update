@@ -1,25 +1,51 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\Services\Github;
 
 use Github\Client as GitHubClient;
 use Github\AuthMethod;
 use Github\Exception\ExceptionInterface;
-use WP2\Update\Utils\Logger;
 use WP2\Update\Utils\Cache;
 use WP2\Update\Utils\JWT as JwtService;
 use WP2\Update\Data\AppData;
 use WP2\Update\Utils\Encryption;
+use WP2\Update\Utils\Logger;
+use WP2\Update\Utils\CustomException;
 
 /**
+ * Class ClientService
+ *
  * Manages the GitHub API client, including authentication and token management.
  */
 class ClientService {
+    /**
+     * @var JwtService Handles JSON Web Token (JWT) operations.
+     */
     private JwtService $jwtService;
+
+    /**
+     * @var AppData Provides access to app-related data.
+     */
     private AppData $appData;
+
+    /**
+     * @var Encryption Handles encryption and decryption of sensitive data.
+     */
     private Encryption $encryption;
+
+    /**
+     * @var array Stores GitHub API clients for app installations.
+     */
     private array $installationClients = [];
 
+    /**
+     * Constructor for ClientService.
+     *
+     * @param JwtService $jwtService Handles JSON Web Token (JWT) operations.
+     * @param AppData $appData Provides access to app-related data.
+     * @param Encryption $encryption Handles encryption and decryption of sensitive data.
+     */
     public function __construct(JwtService $jwtService, AppData $appData, Encryption $encryption) {
         $this->jwtService = $jwtService;
         $this->appData = $appData;
@@ -28,19 +54,18 @@ class ClientService {
 
     /**
      * Gets an authenticated GitHub API client for a specific app installation.
+     *
      * @param string $app_id The ID of the app.
      * @return GitHubClient|null An authenticated client or null on failure.
      */
     public function getInstallationClient(string $app_id): ?GitHubClient {
         if (!$app_id) {
-            Logger::log('WARNING', 'App ID is required to create a GitHub client.');
             return null;
         }
 
         // Fetch credentials directly without relying on ConnectionService
         $credentials = $this->fetchStoredCredentials($app_id);
         if (!$credentials) {
-            Logger::log('ERROR', 'No credentials found for the provided app ID.', ['app_id' => $app_id]);
             return null;
         }
 
@@ -50,7 +75,6 @@ class ClientService {
 
         $token = $this->getInstallationToken($app_id);
         if (!$token) {
-            Logger::log('ERROR', 'Failed to retrieve GitHub installation token for app ' . $app_id);
             return null;
         }
 
@@ -72,23 +96,30 @@ class ClientService {
         $cached_token = Cache::get($cache_key);
 
         if ($cached_token) {
+            Logger::debug('Installation token retrieved from cache.', ['app_id' => $app_id]);
             return $cached_token;
         }
 
+        Logger::info('Generating new installation token.', ['app_id' => $app_id]);
+        Logger::start('token_generation');
+
         $credentials = $this->fetchStoredCredentials($app_id);
         if (empty($credentials['app_id']) || empty($credentials['private_key']) || empty($credentials['installation_id'])) {
-            Logger::log('WARNING', "Missing credentials to generate installation token for app {$app_id}.");
+            Logger::error('Token generation failed: Missing credentials.', ['app_id' => $app_id]);
             return null;
         }
 
         $token_data = $this->createInstallationToken($credentials);
+        Logger::stop('token_generation');
+
         if (!$token_data) {
+            Logger::error('Token generation failed: Could not create token via GitHub API.', ['app_id' => $app_id]);
             return null;
         }
 
-        // Cache the token until 60 seconds before it expires.
         $expires_in = max(1, $token_data['expires'] - time() - 60);
         Cache::set($cache_key, $token_data['token'], $expires_in);
+        Logger::info('New installation token cached.', ['app_id' => $app_id, 'expires_in' => $expires_in]);
 
         return $token_data['token'];
     }
@@ -117,8 +148,7 @@ class ClientService {
                 'expires' => isset($result['expires_at']) ? strtotime($result['expires_at']) : time() + 3540,
             ];
         } catch (ExceptionInterface $e) {
-            Logger::log('ERROR', 'Failed to create installation token: ' . $e->getMessage());
-            return null;
+            throw new CustomException('Failed to retrieve token.', 500);
         }
     }
 
@@ -129,18 +159,23 @@ class ClientService {
      */
     private function fetchStoredCredentials(string $app_id): ?array {
         $credentials = $this->appData->find($app_id);
-        if (!$credentials) {
-            Logger::log('ERROR', 'No credentials found for the provided app ID.', ['app_id' => $app_id]);
+        if (!$credentials instanceof AppDTO) {
+            Logger::error('No credentials found for the given app ID.', ['app_id' => $app_id]);
             return null;
         }
 
-        // Decrypt the private key
-        $privateKey = $this->encryption->decrypt($credentials['private_key']);
+        try {
+            // Attempt to decrypt the private key
+            $privateKey = $this->encryption->decrypt($credentials->webhook_secret);
+        } catch (\Exception $e) {
+            Logger::error('Failed to decrypt private key.', ['app_id' => $app_id, 'error' => $e->getMessage()]);
+            return null;
+        }
 
         return [
-            'app_id' => $app_id,
+            'app_id' => $credentials->id,
             'private_key' => $privateKey,
-            'other_data' => $credentials['other_data'] ?? null,
+            'other_data' => $credentials->metadata ?? null,
         ];
     }
 }

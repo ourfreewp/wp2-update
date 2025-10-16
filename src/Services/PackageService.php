@@ -1,42 +1,63 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\Services;
 
 use WP2\Update\Services\Github\RepositoryService;
 use WP2\Update\Services\Github\ReleaseService;
 use WP2\Update\Services\Github\ClientService;
-use WP2\Update\Services\Github\ConnectionService;
 use WP2\Update\Services\Github\AppService;
-use WP2\Update\Utils\Formatting;
 use WP2\Update\Utils\Logger;
-use WP2\Update\Container;
+use WP2\Update\Utils\CustomException;
+use WP2\Update\Config;
+use WP2\Update\Data\DTO\AppDTO;
+use WP2\Update\Utils\Cache;
+
 
 /**
+ * Class PackageService
+ *
  * Handles all package-related operations, absorbing the logic of the old PackageFinder.
  */
 class PackageService {
+    /**
+     * @var RepositoryService Handles repository-related operations.
+     */
     private RepositoryService $repositoryService;
+
+    /**
+     * @var ReleaseService Handles release-related operations.
+     */
     private ReleaseService $releaseService;
+
+    /**
+     * @var ClientService Handles GitHub client interactions.
+     */
     private ClientService $clientService;
-    private ?ConnectionService $connectionService = null;
+
+    /**
+     * @var AppService Handles app-related operations.
+     */
     private AppService $appService;
 
+    /**
+     * Constructor for PackageService.
+     *
+     * @param RepositoryService $repositoryService Handles repository-related operations.
+     * @param ReleaseService $releaseService Handles release-related operations.
+     * @param ClientService $clientService Handles GitHub client interactions.
+     * @param AppService $appService Handles app-related operations.
+     */
     public function __construct(
         RepositoryService $repositoryService,
         ReleaseService $releaseService,
         ClientService $clientService,
-        AppService $appService,
-        ?ConnectionService $connectionService = null
+        AppService $appService
     ) {
         $this->repositoryService = $repositoryService;
         $this->releaseService = $releaseService;
         $this->clientService = $clientService;
-        $this->connectionService = $connectionService;
         $this->appService = $appService;
-    }
-
-    public function set_connection_service(ConnectionService $connectionService): void {
-        $this->connectionService = $connectionService;
     }
 
     /**
@@ -44,20 +65,31 @@ class PackageService {
      * @return array
      */
     public function get_all_packages_grouped(): array {
-        error_log('get_all_packages_grouped: Start grouping packages.');
+        // Implement caching for package data
+        $cacheKey = 'all_packages_grouped';
+        $cachedData = Cache::get($cacheKey);
 
-        $local_packages = array_merge($this->getManagedPlugins(), $this->getManagedThemes());
-        error_log('get_all_packages_grouped: Local packages retrieved: ' . print_r($local_packages, true));
+        if ($cachedData !== false) {
+            return $cachedData;
+        }
+
+        $local_packages = array_merge($this->getManagedPlugins() ?? [], $this->getManagedThemes() ?? []);
+
+        // Validate that $local_packages is iterable
+        if (!is_array($local_packages)) {
+            return ['all' => []];
+        }
 
         $result = ['all' => []];
 
         foreach ($local_packages as $package) {
             $processed_package = $this->process_package($package);
-            error_log('get_all_packages_grouped: Processed package: ' . print_r($processed_package, true));
             $result['all'][] = $processed_package;
         }
 
-        error_log('get_all_packages_grouped: Final grouped packages: ' . print_r($result, true));
+        // Store the result in cache
+        Cache::set($cacheKey, $result, 3600); // Cache for 1 hour
+
         return $result;
     }
 
@@ -65,12 +97,11 @@ class PackageService {
      * Helper method to process a single package.
      */
     private function process_package(array $package): array {
-        error_log('process_package: Start processing package: ' . print_r($package, true));
+        Logger::assert(!empty($package['repo']), 'Package is missing a repository slug.', $package);
 
         if (empty($package['repo'])) {
             $package['latest'] = null;
             $package['status'] = 'unconnected';
-            error_log('process_package: Package is unconnected: ' . print_r($package, true));
             return $package;
         }
 
@@ -78,7 +109,6 @@ class PackageService {
         $package['latest'] = $latest_release['tag_name'] ?? null;
         $package['status'] = version_compare($package['version'], $package['latest'], '<') ? 'update_available' : 'up_to_date';
 
-        error_log('process_package: Processed package: ' . print_r($package, true));
         return $package;
     }
 
@@ -90,29 +120,32 @@ class PackageService {
      * @return void
      */
     public function assign_package_to_app(string $app_id, string $repo_slug): void {
-        Logger::log('INFO', "Assigning package: {$repo_slug} to app: {$app_id}");
+        // Validate inputs
+        if (empty($app_id) || !is_string($app_id)) {
+            throw new \InvalidArgumentException('Invalid app ID provided.');
+        }
+
+        if (empty($repo_slug) || !is_string($repo_slug)) {
+            throw new \InvalidArgumentException('Invalid repository slug provided.');
+        }
 
         try {
-            // Retrieve the app data from ConnectionData.
-            $app_data = $this->connectionService->get_connection_data()->find($app_id);
+            // Retrieve the app data from AppService.
+            $app_data = $this->appService->get_connection_data()->find($app_id);
             if (!$app_data) {
                 throw new \RuntimeException("App not found: {$app_id}");
             }
 
-            // Add the repository slug to the managed repositories.
-            $managed_repositories = $app_data['managed_repositories'] ?? [];
+            $app_data_array = $app_data->toArray();
+            $managed_repositories = $app_data_array['managed_repositories'] ?? [];
             if (!in_array($repo_slug, $managed_repositories, true)) {
                 $managed_repositories[] = $repo_slug;
-                $app_data['managed_repositories'] = $managed_repositories;
+                $app_data_array['managed_repositories'] = $managed_repositories;
 
                 // Save the updated app data.
-                $this->connectionService->get_connection_data()->save($app_data);
-                Logger::log('INFO', "Successfully assigned package: {$repo_slug} to app: {$app_id}");
-            } else {
-                Logger::log('INFO', "Package: {$repo_slug} is already assigned to app: {$app_id}");
+                $this->appService->get_connection_data()->save(AppDTO::fromArray($app_data_array));
             }
         } catch (\Throwable $exception) {
-            Logger::log('ERROR', "Failed to assign package: {$repo_slug} to app: {$app_id}. Error: " . $exception->getMessage());
             throw $exception;
         }
     }
@@ -124,10 +157,17 @@ class PackageService {
      * @return bool True on success, false on failure.
      */
     public function update_package(string $repo_slug): bool {
-        Logger::log('INFO', "Updating package: {$repo_slug}");
+        // Validate input
+        if (empty($repo_slug) || !is_string($repo_slug)) {
+            throw new \InvalidArgumentException('Invalid repository slug provided.');
+        }
+
+        Logger::info('Package update process started.', ['repo_slug' => $repo_slug]);
+        Logger::start('package_update_' . str_replace('/', '_', $repo_slug));
 
         try {
-            // Fetch the latest release for the repository.
+            Logger::assert(!empty($repo_slug), 'Repository slug is empty.', ['repo_slug' => $repo_slug]);
+
             $latestRelease = $this->releaseService->get_latest_release($repo_slug);
             if (!$latestRelease) {
                 throw new \RuntimeException("No latest release found for repository: {$repo_slug}");
@@ -138,136 +178,67 @@ class PackageService {
                 throw new \RuntimeException("Download URL not found for the latest release of repository: {$repo_slug}");
             }
 
-            // Download the package.
+            Logger::debug('Latest release found.', ['repo_slug' => $repo_slug, 'version' => $latestRelease['tag_name'], 'zip_url' => $zipUrl]);
+
             $app_id = $this->appService->resolve_app_id(null);
             $tempFile = $this->releaseService->download_package($zipUrl, $app_id);
-            if (!$tempFile || !$this->is_valid_package_archive($tempFile, $repo_slug)) {
-                throw new \RuntimeException("Invalid package archive for repository: {$repo_slug}");
-            }
 
-            // Use the WordPress upgrader to process the package.
+            Logger::assert($tempFile && $this->is_valid_package_archive($tempFile, $repo_slug), 'Package archive is invalid or download failed.', ['repo_slug' => $repo_slug, 'temp_file' => $tempFile]);
+
             $packageType = $this->get_package_type_by_repo($repo_slug);
             $result = $this->install_from_zip($tempFile, $packageType);
 
-            if ($result) {
-                Logger::log('INFO', "Successfully updated package: {$repo_slug}");
-                return true;
-            } else {
+            if (!$result) {
                 throw new \RuntimeException("WordPress upgrader failed to update the package: {$repo_slug}");
             }
-        } catch (\Throwable $exception) {
-            Logger::log('ERROR', "Failed to update package: {$repo_slug}. Error: " . $exception->getMessage());
-            return false;
-        }
-    }
 
-    private function install_package(string $repoSlug, string $version): bool {
-        Logger::log('INFO', "Installing package: {$repoSlug} version: {$version}");
-
-        try {
-            $release = $this->releaseService->get_release_by_version($repoSlug, $version);
-            if (!$release) {
-                throw new \RuntimeException("Release not found for repository: {$repoSlug}");
-            }
-
-            $zipUrl = $release['zipball_url'] ?? null;
-            if (!$zipUrl) {
-                throw new \RuntimeException("Download URL not found for release: {$version}");
-            }
-
-            $app_id = $this->appService->resolve_app_id(null);
-            $token = $this->clientService->getInstallationToken($app_id);
-            if (!$token) {
-                Logger::log('WARNING', "Authentication token not available for app ID: {$app_id}. Skipping operation.");
-                return false; // Skip the operation gracefully
-            }
-
-            $tempFile = $this->releaseService->download_package($zipUrl, $token);
-            if (!$tempFile || !$this->is_valid_package_archive($tempFile, $repoSlug)) {
-                throw new \RuntimeException("Invalid package archive for repository: {$repoSlug}");
-            }
-
-            $packageType = $this->get_package_type_by_repo($repoSlug);
-            $this->install_from_zip($tempFile, $packageType);
-
-            Logger::log('INFO', "Successfully installed package: {$repoSlug} version: {$version}");
+            Logger::info('Package update successful.', ['repo_slug' => $repo_slug]);
+            Logger::stop('package_update_' . str_replace('/', '_', $repo_slug));
             return true;
         } catch (\Throwable $exception) {
-            Logger::log('ERROR', "Failed to install package: {$repoSlug} version: {$version}. Error: " . $exception->getMessage());
+            Logger::error('Package update failed.', ['repo_slug' => $repo_slug, 'exception' => $exception->getMessage()]);
+            Logger::stop('package_update_' . str_replace('/', '_', $repo_slug));
             return false;
         }
     }
 
-    /**
-     * Retrieves release notes for a specific package.
-     *
-     * @param string $repo_slug The repository slug.
-     * @return array The release notes data.
-     */
-    public function get_release_notes(string $repo_slug): array {
-        if (empty($repo_slug)) {
-            throw new \InvalidArgumentException(__("Repository slug is required.", \WP2\Update\Config::TEXT_DOMAIN));
-        }
-
-        return $this->releaseService->get_release_notes($repo_slug);
-    }
-
-    /**
-     * Updates the release channel for a specific package.
-     *
-     * @param string $repo_slug The repository slug.
-     * @param string $channel The release channel (e.g., 'stable', 'beta').
-     * @return void
-     */
-    public function update_release_channel(string $repo_slug, string $channel): void {
-        if (empty($repo_slug) || empty($channel)) {
-            throw new \InvalidArgumentException(__("Repository slug and channel are required.", \WP2\Update\Config::TEXT_DOMAIN));
-        }
-
-        // Logic to update the release channel in the database or configuration.
-        Logger::log('INFO', "Updated release channel for {$repo_slug} to {$channel}.");
-    }
-
-    /**
-     * Rolls back a package (plugin or theme) to a specific version.
-     *
-     * @param string $repo_slug The repository slug.
-     * @param string $version The version to roll back to.
-     * @return bool True on success, false on failure.
-     */
     public function rollback_package(string $repo_slug, string $version): bool {
-        Logger::log('INFO', "Rolling back package: {$repo_slug} to version: {$version}");
+        Logger::info('Package rollback process started.', ['repo_slug' => $repo_slug, 'version' => $version]);
+        Logger::start('package_rollback_' . str_replace('/', '_', $repo_slug));
 
         try {
-            // Fetch the specific release for the repository and version.
+            Logger::assert(!empty($repo_slug) && !empty($version), 'Repository slug or version is empty.', ['repo_slug' => $repo_slug, 'version' => $version]);
+
             $release = $this->releaseService->get_release_by_version($repo_slug, $version);
             if (!$release) {
-                throw new \RuntimeException(__("Release not found for repository: {$repo_slug} and version: {$version}", \WP2\Update\Config::TEXT_DOMAIN));
+                throw new \RuntimeException("Release not found for repository: {$repo_slug} and version: {$version}");
             }
 
             $zipUrl = $release['zipball_url'] ?? null;
             if (!$zipUrl) {
-                throw new \RuntimeException(__("Download URL not found for release: {$version} of repository: {$repo_slug}", \WP2\Update\Config::TEXT_DOMAIN));
+                throw new \RuntimeException("Download URL not found for release: {$version} of repository: {$repo_slug}");
             }
+
+            Logger::debug('Release found for rollback.', ['repo_slug' => $repo_slug, 'version' => $version, 'zip_url' => $zipUrl]);
+
             $app_id = $this->appService->resolve_app_id(null);
             $tempFile = $this->releaseService->download_package($zipUrl, $app_id);
 
-            if (!$tempFile || !$this->is_valid_package_archive($tempFile, $repo_slug)) {
-                throw new \RuntimeException(__("Invalid package archive for repository: {$repo_slug}", \WP2\Update\Config::TEXT_DOMAIN));
-            }
+            Logger::assert($tempFile && $this->is_valid_package_archive($tempFile, $repo_slug), 'Package archive is invalid or download failed.', ['repo_slug' => $repo_slug, 'temp_file' => $tempFile]);
 
-            // Use the WordPress upgrader to process the package.
             $packageType = $this->get_package_type_by_repo($repo_slug);
             $result = $this->install_from_zip($tempFile, $packageType);
 
-            if ($result) {
-                Logger::log('INFO', "Successfully rolled back package: {$repo_slug} to version: {$version}");
-                return true;
-            } else {
+            if (!$result) {
                 throw new \RuntimeException("WordPress upgrader failed to roll back the package: {$repo_slug}");
             }
+
+            Logger::info('Package rollback successful.', ['repo_slug' => $repo_slug, 'version' => $version]);
+            Logger::stop('package_rollback_' . str_replace('/', '_', $repo_slug));
+            return true;
         } catch (\Throwable $exception) {
-            Logger::log('ERROR', "Failed to roll back package: {$repo_slug} to version: {$version}. Error: " . $exception->getMessage());
+            Logger::error('Package rollback failed.', ['repo_slug' => $repo_slug, 'version' => $version, 'exception' => $exception->getMessage()]);
+            Logger::stop('package_rollback_' . str_replace('/', '_', $repo_slug));
             return false;
         }
     }
@@ -335,18 +306,16 @@ class PackageService {
     }
 
     /**
-     * Factory method to create an instance of PackageService.
-     *
-     * @return PackageService
+     * Determines whether to use site-level options for multisite compatibility.
      */
-    public static function create(Container $container): self {
-        return new self(
-            $container->get(RepositoryService::class),
-            $container->get(ReleaseService::class),
-            $container->get(ClientService::class),
-            $container->get(AppService::class),
-            $container->has(ConnectionService::class) ? $container->get(ConnectionService::class) : null
-        );
+    private function get_option_function(): callable
+    {
+        return is_multisite() ? 'get_site_option' : 'get_option';
+    }
+
+    private function update_option_function(): callable
+    {
+        return is_multisite() ? 'update_site_option' : 'update_option';
     }
 
     /**
@@ -355,22 +324,10 @@ class PackageService {
      * @return array
      */
     public function get_packages(): array {
-        $packages = get_option('wp2_packages_data', []);
+        $get_option = $this->get_option_function();
+        $packages = $get_option(Config::OPTION_PACKAGES_DATA, []);
         if (empty($packages)) {
-            error_log('No packages found in wp2_packages_data option. Attempting to scan for managed plugins and themes.');
             $packages = $this->scan_for_packages();
-            error_log('Scanned packages: ' . print_r($packages, true));
-        } else {
-            error_log('Retrieved packages: ' . print_r($packages, true));
-        }
-
-        // Debugging: Log the type and structure of the packages variable
-        error_log('Type of packages: ' . gettype($packages));
-        if (is_array($packages)) {
-            error_log('Count of packages: ' . count($packages));
-            foreach ($packages as $key => $package) {
-                error_log("Package at index {$key}: " . print_r($package, true));
-            }
         }
 
         return is_array($packages) ? $packages : [];
@@ -382,17 +339,14 @@ class PackageService {
      * @return array
      */
     public function scan_for_packages(): array {
+        $update_option = $this->update_option_function();
         $plugins = $this->getManagedPlugins();
-        error_log('scan_for_packages: Retrieved plugins: ' . print_r($plugins, true));
 
         $themes = $this->getManagedThemes();
-        error_log('scan_for_packages: Retrieved themes: ' . print_r($themes, true));
 
         $packages = array_merge($plugins, $themes);
-        error_log('scan_for_packages: Merged packages: ' . print_r($packages, true));
 
-        update_option('wp2_packages_data', $packages);
-        error_log('scan_for_packages: Updated wp2_packages_data option.');
+        $update_option(Config::OPTION_PACKAGES_DATA, $packages);
 
         return $packages;
     }
@@ -428,44 +382,188 @@ class PackageService {
      * @return bool
      */
     public function create_new_package(string $template, string $name, string $appId): bool {
-        Logger::log('INFO', "Creating new package: {$name} using template: {$template} for app: {$appId}");
         // Placeholder logic for creating a new package.
         return true;
     }
 
     /**
-     * Validates if the given file is a valid package archive.
+     * Validates if the given ZIP file is a valid WordPress plugin or theme archive.
      *
-     * @param string $filePath
-     * @param string $repoSlug
-     * @return bool
+     * @param string $filePath Path to the ZIP file.
+     * @param string $repoSlug Repository slug for logging purposes.
+     * @return bool True if valid, false otherwise.
      */
     private function is_valid_package_archive(string $filePath, string $repoSlug): bool {
-        // Placeholder logic for validating the package archive.
-        return file_exists($filePath) && strpos($filePath, $repoSlug) !== false;
+        Logger::info('Validating package archive.', ['filePath' => $filePath, 'repoSlug' => $repoSlug]);
+
+        $tempDir = sys_get_temp_dir() . '/wp2_update_' . uniqid();
+        if (!mkdir($tempDir) && !is_dir($tempDir)) {
+            Logger::error('Failed to create temporary directory for validation.', ['tempDir' => $tempDir]);
+            return false;
+        }
+
+        $zip = new \ZipArchive();
+        if ($zip->open($filePath) !== true) {
+            Logger::error('Failed to open ZIP archive.', ['filePath' => $filePath]);
+            return false;
+        }
+
+        $zip->extractTo($tempDir);
+        $zip->close();
+
+        $isValid = false;
+        if (file_exists($tempDir . '/plugin.php')) {
+            $isValid = true;
+            Logger::info('Valid plugin archive detected.', ['repoSlug' => $repoSlug]);
+        } elseif (file_exists($tempDir . '/style.css')) {
+            $isValid = true;
+            Logger::info('Valid theme archive detected.', ['repoSlug' => $repoSlug]);
+        } else {
+            Logger::warning('Invalid package archive: Missing plugin.php or style.css.', ['repoSlug' => $repoSlug]);
+        }
+
+        // Clean up temporary directory
+        $this->delete_directory($tempDir);
+
+        return $isValid;
     }
 
     /**
-     * Determines the package type (plugin or theme) based on the repository slug.
+     * Recursively deletes a directory.
      *
-     * @param string $repoSlug
-     * @return string
+     * @param string $dir Directory path.
+     * @return void
      */
-    private function get_package_type_by_repo(string $repoSlug): string {
-        // Placeholder logic for determining the package type.
-        return strpos($repoSlug, 'theme') !== false ? 'theme' : 'plugin';
+    private function delete_directory(string $dir): void {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $items = array_diff(scandir($dir), ['.', '..']);
+        foreach ($items as $item) {
+            $path = $dir . DIRECTORY_SEPARATOR . $item;
+            if (is_dir($path)) {
+                $this->delete_directory($path);
+            } else {
+                unlink($path);
+            }
+        }
+
+        rmdir($dir);
+    }
+
+    /**
+     * Determines the package type (plugin or theme) for a given repository.
+     *
+     * @param string $repo_slug The repository slug (e.g., 'owner/repo').
+     * @return string|null The package type ('plugin', 'theme') or null if undetermined.
+     */
+    public function get_package_type_by_repo(string $repo_slug): ?string {
+        $tempFile = $this->releaseService->download_package_by_repo($repo_slug);
+        if (!$tempFile) {
+            return null;
+        }
+
+        $zip = new \ZipArchive();
+        if ($zip->open($tempFile) === true) {
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $fileName = $zip->getNameIndex($i);
+
+                if (stripos($fileName, 'style.css') !== false) {
+                    $zip->close();
+                    unlink($tempFile);
+                    return 'theme';
+                }
+
+                if (stripos($fileName, 'plugin.php') !== false) {
+                    $zip->close();
+                    unlink($tempFile);
+                    return 'plugin';
+                }
+            }
+            $zip->close();
+        }
+
+        unlink($tempFile);
+        return null;
     }
 
     /**
      * Installs a package from a ZIP file.
      *
-     * @param string $filePath
-     * @param string $packageType
-     * @return bool
+     * @param string $zipFilePath Path to the ZIP file.
+     * @param string $packageType The type of the package ('plugin' or 'theme').
+     * @return bool True on success, false on failure.
      */
-    private function install_from_zip(string $filePath, string $packageType): bool {
-        // Placeholder logic for installing a package from a ZIP file.
-        Logger::log('INFO', "Installing {$packageType} from ZIP: {$filePath}");
-        return true;
+    public function install_from_zip(string $zipFilePath, string $packageType): bool {
+        if (!file_exists($zipFilePath)) {
+            return false;
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        require_once ABSPATH . 'wp-admin/includes/theme.php';
+        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+
+        $upgrader = null;
+        if ($packageType === 'plugin') {
+            require_once ABSPATH . 'wp-admin/includes/class-plugin-upgrader.php';
+            $upgrader = new \Plugin_Upgrader();
+        } elseif ($packageType === 'theme') {
+            require_once ABSPATH . 'wp-admin/includes/class-theme-upgrader.php';
+            $upgrader = new \Theme_Upgrader();
+        }
+
+        if (!$upgrader) {
+            return false;
+        }
+
+        $result = $upgrader->install($zipFilePath);
+        return $result !== false;
+    }
+
+    /**
+     * Checks if a repository is available and accessible for the given app.
+     *
+     * @param string $repo_name The name of the repository.
+     * @param string $app_id The ID of the app.
+     * @return bool True if the repository is available, false otherwise.
+     * @throws \Exception If the GitHub API call fails.
+     */
+    public function check_repository_availability(string $repo_name, string $app_id): bool {
+        try {
+            $client = $this->clientService->getInstallationClient($app_id);
+            $repo = $client->repo()->show($app_id, $repo_name);
+            return !empty($repo);
+        } catch (\Exception $e) {
+            throw new CustomException(
+                __('Failed to check repository availability: ', Config::TEXT_DOMAIN) . $e->getMessage(),
+                500
+            );
+        }
+    }
+
+    /**
+     * Retrieves release notes for a specific version of a package.
+     *
+     * @param string $repo_slug The repository slug.
+     * @param string $version The version to retrieve release notes for.
+     * @return array The release notes data.
+     */
+    public function get_version_release_notes(string $repo_slug, string $version): array {
+        $release = $this->releaseService->get_release_by_version($repo_slug, $version);
+        return $release['body'] ?? [];
+    }
+
+    /**
+     * Updates the release channel for a specific package.
+     *
+     * @param string $repo_slug The repository slug.
+     * @param string $channel The new release channel.
+     * @return void
+     */
+    public function update_release_channel(string $repo_slug, string $channel): void {
+        // Logic to update the release channel for the package.
+        $this->repositoryService->update_channel($repo_slug, $channel);
     }
 }

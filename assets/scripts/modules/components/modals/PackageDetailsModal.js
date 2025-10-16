@@ -1,28 +1,27 @@
+const { __ } = wp.i18n;
 import { escapeHtml } from '../../utils/string.js';
 import { StandardModal } from './StandardModal.js';
-import { PackageService } from '../../services/PackageService.js';
-import { apiFetch } from '@wordpress/api-fetch';
 
 export const PackageDetailsModal = (pkg) => {
     const bodyContent = `
         <ul class="nav nav-tabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#details-tab" type="button" role="tab">Details</button>
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#details-tab" type="button" role="tab">${__('Details', 'wp2-update')}</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#release-notes-tab" type="button" role="tab">Release Notes</button>
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#release-notes-tab" type="button" role="tab">${__('Release Notes', 'wp2-update')}</button>
             </li>
         </ul>
         <div class="tab-content">
             <div class="tab-pane fade show active" id="details-tab" role="tabpanel">
                 <dl class="wp2-detail-grid">
-                    <dt>Repository</dt><dd>${escapeHtml(pkg.repo)}</dd>
-                    <dt>Installed Version</dt><dd>${escapeHtml(pkg.version || 'N/A')}</dd>
-                    <dt>Latest Version</dt><dd>${escapeHtml(pkg.latest || 'N/A')}</dd>
+                    <dt>${__('Repository', 'wp2-update')}</dt><dd>${escapeHtml(pkg.repo)}</dd>
+                    <dt>${__('Installed Version', 'wp2-update')}</dt><dd>${escapeHtml(pkg.version || __('N/A', 'wp2-update'))}</dd>
+                    <dt>${__('Latest Version', 'wp2-update')}</dt><dd>${escapeHtml(pkg.latest || __('N/A', 'wp2-update'))}</dd>
                 </dl>
             </div>
             <div class="tab-pane fade" id="release-notes-tab" role="tabpanel">
-                <p>Loading release notes...</p>
+                <p>${__('Loading release notes...', 'wp2-update')}</p>
             </div>
         </div>
     `;
@@ -46,10 +45,10 @@ export const PackageDetailsModal = (pkg) => {
                 .then((notes) => {
                     releaseNotesContainer.innerHTML = notes.length
                         ? `<ul>${notes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`
-                        : '<p>No release notes available.</p>';
+                        : `<p>${__('No release notes available.', 'wp2-update')}</p>`;
                 })
                 .catch(() => {
-                    releaseNotesContainer.innerHTML = '<p>Failed to load release notes.</p>';
+                    releaseNotesContainer.innerHTML = `<p>${__('Failed to load release notes.', 'wp2-update')}</p>`;
                 });
         }
     });
@@ -69,3 +68,6 @@ export const PackageDetailsModal = (pkg) => {
 
     return modal;
 };
+
+// Update the import to use wp.apiFetch directly in the browser context
+const apiFetch = window.wp.apiFetch;

@@ -4,17 +4,31 @@ namespace WP2\Update\REST\Controllers;
 
 use WP2\Update\REST\AbstractController;
 use WP2\Update\Services\PackageService;
+use WP2\Update\Utils\Permissions;
+use WP2\Update\Utils\Logger;
+use WP2\Update\Utils\CustomException;
+use WP2\Update\Config;
+use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
-use WP_Error;
 
 /**
- * REST controller for all package-related actions.
+ * Class PackagesController
+ *
+ * This class handles REST API endpoints for managing package-related actions.
  */
 final class PackagesController extends AbstractController {
+    /**
+     * @var PackageService The service responsible for handling package operations.
+     */
     private PackageService $packageService;
 
+    /**
+     * Constructor for the PackagesController class.
+     *
+     * @param PackageService $packageService The service responsible for handling package operations.
+     */
     public function __construct(PackageService $packageService) {
         parent::__construct();
         $this->packageService = $packageService;
@@ -22,6 +36,10 @@ final class PackagesController extends AbstractController {
 
     /**
      * Verifies the nonce for a given action.
+     *
+     * @param WP_REST_Request $request The REST request object.
+     * @param string $action The action name for nonce verification.
+     * @return bool True if the nonce is valid, false otherwise.
      */
     private function verify_action_nonce(WP_REST_Request $request, string $action): bool {
         $nonce = $request->get_header('X-WP-Nonce');
@@ -31,7 +49,7 @@ final class PackagesController extends AbstractController {
     /**
      * Validates the nonce for REST requests.
      *
-     * @return bool
+     * @return bool True if the nonce is valid, false otherwise.
      */
     private function validate_nonce(): bool {
         $nonce = $_REQUEST['_wpnonce'] ?? '';
@@ -45,12 +63,20 @@ final class PackagesController extends AbstractController {
      * @return callable
      */
     private function permission_callback_with_nonce(callable $callback): callable {
-        return function () use ($callback) {
-            if (!$this->validate_nonce()) {
-                return new WP_Error('rest_nonce_invalid', __('Invalid nonce.', 'wp2-update'), ['status' => 403]);
-            }
-            return call_user_func($callback);
+        return function (WP_REST_Request $request) use ($callback) {
+            return Permissions::current_user_can_manage('wp2_nonce_action', $request) && call_user_func($callback);
         };
+    }
+
+    /**
+     * Provides a generic permission callback that checks for admin capabilities and a valid nonce.
+     *
+     * @param string $action The specific nonce action to verify.
+     * @param bool $requireNonce Whether nonce validation is required.
+     * @return callable
+     */
+    protected function permission_callback(string $action, bool $requireNonce = true): callable {
+        return parent::permission_callback($action, $requireNonce);
     }
 
     /**
@@ -61,58 +87,65 @@ final class PackagesController extends AbstractController {
         register_rest_route($this->namespace, '/packages', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_packages'],
-            'permission_callback' => $this->permission_callback_with_nonce($this->permission_callback('wp2_get_packages')),
+            'permission_callback' => Permissions::callback('wp2_get_packages', true),
         ]);
 
         // Route to force a sync
         register_rest_route($this->namespace, '/packages/sync', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'sync_packages'],
-            'permission_callback' => $this->permission_callback_with_nonce($this->permission_callback('wp2_sync_packages')),
+            'permission_callback' => Permissions::callback('wp2_sync_packages', true),
         ]);
 
         // Route to assign a package to an app
         register_rest_route($this->namespace, '/packages/assign', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'assign_package'],
-            'permission_callback' => $this->permission_callback('wp2_assign_package'),
+            'permission_callback' => Permissions::callback('manage_options', true),
         ]);
 
-        // Route to perform an action on a package (update/rollback)
-        register_rest_route($this->namespace, '/packages/action', [
+        // Route to update a single package
+        register_rest_route($this->namespace, '/packages/(?P<repo_slug>[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/update', [
             'methods'             => WP_REST_Server::CREATABLE,
-            'callback'            => [$this, 'handle_package_action'],
-            'permission_callback' => $this->permission_callback('wp2_package_action'),
+            'callback'            => [$this, 'update_package'],
+            'permission_callback' => Permissions::callback('wp2_update_package', true),
+        ]);
+
+        // Route to roll back a single package
+        register_rest_route($this->namespace, '/packages/(?P<repo_slug>[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/rollback', [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => [$this, 'rollback_package'],
+            'permission_callback' => Permissions::callback('wp2_rollback_package', true),
         ]);
 
         // Route to get release notes for a specific package
         register_rest_route($this->namespace, '/packages/(?P<repo_slug>[^/]+)/release-notes', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_release_notes'],
-            'permission_callback' => $this->permission_callback('wp2_get_release_notes'),
+            'permission_callback' => Permissions::callback('wp2_get_release_notes', true),
         ]);
 
         // Route to update the release channel for a specific package
         register_rest_route($this->namespace, '/packages/(?P<repo_slug>[^/]+)/release-channel', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'update_release_channel'],
-            'permission_callback' => $this->permission_callback('wp2_update_release_channel'),
+            'permission_callback' => Permissions::callback('wp2_update_release_channel', true),
         ]);
 
         // Route to create a new package
         register_rest_route($this->namespace, '/packages/create', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'create_package'],
-            'permission_callback' => $this->permission_callback('wp2_create_package'),
+            'permission_callback' => Permissions::callback('wp2_create_package', true),
         ]);
 
         // Route to refresh packages
         register_rest_route($this->namespace, '/refresh-packages', [
             'methods'  => 'POST',
             'callback' => [$this, 'refresh_packages'],
-            'permission_callback' => function () {
+            'permission_callback' => $this->permission_callback_with_nonce(function () {
                 return current_user_can('manage_options');
-            },
+            }),
         ]);
     }
 
@@ -127,7 +160,12 @@ final class PackagesController extends AbstractController {
             $packages = $this->packageService->get_paginated_packages($page, $per_page);
             return $this->respond($packages);
         } catch (\Exception $e) {
-            return $this->respond($e->getMessage(), 500);
+            Logger::error('Failed to retrieve packages.', [
+                'exception' => $e->getMessage(),
+                'page' => $page,
+                'per_page' => $per_page
+            ]);
+            throw new CustomException(__('Failed to retrieve packages. Please check the logs for more details.', Config::TEXT_DOMAIN), 500);
         }
     }
 
@@ -135,11 +173,22 @@ final class PackagesController extends AbstractController {
      * Triggers a package synchronization.
      */
     public function sync_packages(WP_REST_Request $request): WP_REST_Response {
+        Logger::info('Package sync initiated via REST API.', [
+            'params' => $request->get_params()
+        ]);
+        Logger::start('package_sync');
         try {
             $result = $this->packageService->get_all_packages_grouped();
+            Logger::stop('package_sync');
             return $this->respond($result);
         } catch (\Exception $e) {
-            return $this->respond($e->getMessage(), 500);
+            Logger::error('Package sync failed.', [
+                'exception' => $e->getMessage(),
+                'params' => $request->get_params()
+            ]);
+            Logger::stop('package_sync');
+            $errorMessage = __('Package synchronization failed. Please check the logs for more details.', Config::TEXT_DOMAIN);
+            return $this->respond($errorMessage, 500);
         }
     }
 
@@ -151,47 +200,44 @@ final class PackagesController extends AbstractController {
         $repo_slug = sanitize_text_field($request->get_param('repo_slug'));
 
         if (empty($app_id) || empty($repo_slug)) {
-            return $this->respond(__("App ID and repository slug are required.", \WP2\Update\Config::TEXT_DOMAIN), 400);
+            return $this->respond(__("App ID and repository slug are required.", Config::TEXT_DOMAIN), 400);
         }
 
         try {
             $this->packageService->assign_package_to_app($app_id, $repo_slug);
-            return $this->respond(["message" => __("Package assigned successfully.", \WP2\Update\Config::TEXT_DOMAIN)]);
+            return $this->respond(["message" => __("Package assigned successfully.", Config::TEXT_DOMAIN)]);
         } catch (\Exception $e) {
             return $this->respond($e->getMessage(), 500);
         }
     }
 
     /**
-     * Handles package actions like 'update' and 'rollback'.
+     * Updates a single package.
      */
-    public function handle_package_action(WP_REST_Request $request): WP_REST_Response {
-        $action = sanitize_key($request->get_param('action'));
+    public function update_package(WP_REST_Request $request): WP_REST_Response {
+        $repo_slug = sanitize_text_field($request->get_param('repo_slug'));
+        try {
+            $success = $this->packageService->update_package($repo_slug);
+            $message = $success ? 'Package updated successfully.' : 'Failed to update package.';
+            return $this->respond(['message' => __($message, Config::TEXT_DOMAIN)], $success ? 200 : 500);
+        } catch (\Exception $e) {
+            return $this->respond($e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Rolls back a single package.
+     */
+    public function rollback_package(WP_REST_Request $request): WP_REST_Response {
         $repo_slug = sanitize_text_field($request->get_param('repo_slug'));
         $version = sanitize_text_field($request->get_param('version'));
-
-        if (empty($action) || empty($repo_slug)) {
-            return $this->respond(__("Action and repository slug are required.", \WP2\Update\Config::TEXT_DOMAIN), 400);
+        if (empty($version)) {
+            return $this->respond(__("Version is required for rollback.", Config::TEXT_DOMAIN), 400);
         }
-
         try {
-            switch ($action) {
-                case 'update':
-                    $success = $this->packageService->update_package($repo_slug);
-                    $message = $success ? __("Package updated successfully.", \WP2\Update\Config::TEXT_DOMAIN) : __("Failed to update package.", \WP2\Update\Config::TEXT_DOMAIN);
-                    return $this->respond(['message' => $message], $success ? 200 : 500);
-
-                case 'rollback':
-                    if (empty($version)) {
-                        return $this->respond(__("Version is required for rollback.", \WP2\Update\Config::TEXT_DOMAIN), 400);
-                    }
-                    $success = $this->packageService->rollback_package($repo_slug, $version);
-                    $message = $success ? __("Package rolled back successfully.", \WP2\Update\Config::TEXT_DOMAIN) : __("Failed to roll back package.", \WP2\Update\Config::TEXT_DOMAIN);
-                    return $this->respond(['message' => $message], $success ? 200 : 500);
-
-                default:
-                    return $this->respond(__("Invalid action specified.", \WP2\Update\Config::TEXT_DOMAIN), 400);
-            }
+            $success = $this->packageService->rollback_package($repo_slug, $version);
+            $message = $success ? 'Package rolled back successfully.' : 'Failed to roll back package.';
+            return $this->respond(['message' => __($message, Config::TEXT_DOMAIN)], $success ? 200 : 500);
         } catch (\Exception $e) {
             return $this->respond($e->getMessage(), 500);
         }
@@ -204,11 +250,11 @@ final class PackagesController extends AbstractController {
         $repo_slug = sanitize_text_field($request->get_param('repo_slug'));
 
         if (empty($repo_slug)) {
-            return $this->respond(__("Repository slug is required.", \WP2\Update\Config::TEXT_DOMAIN), 400);
+            return $this->respond(__("Repository slug is required.", Config::TEXT_DOMAIN), 400);
         }
 
         try {
-            $release_notes = $this->packageService->get_release_notes($repo_slug);
+            $release_notes = $this->packageService->get_version_release_notes($repo_slug, 'latest'); // Assuming 'latest' is the default version.
             return $this->respond($release_notes);
         } catch (\Exception $e) {
             return $this->respond($e->getMessage(), 500);
@@ -223,12 +269,12 @@ final class PackagesController extends AbstractController {
         $channel = sanitize_text_field($request->get_param('channel'));
 
         if (empty($repo_slug) || empty($channel)) {
-            return $this->respond(__("Repository slug and channel are required.", \WP2\Update\Config::TEXT_DOMAIN), 400);
+            return $this->respond(__("Repository slug and channel are required.", Config::TEXT_DOMAIN), 400);
         }
 
         try {
             $this->packageService->update_release_channel($repo_slug, $channel);
-            return $this->respond(["message" => __("Release channel updated successfully.", \WP2\Update\Config::TEXT_DOMAIN)]);
+            return $this->respond(["message" => __("Release channel updated successfully.", Config::TEXT_DOMAIN)]);
         } catch (\Exception $e) {
             return $this->respond($e->getMessage(), 500);
         }
@@ -244,7 +290,17 @@ final class PackagesController extends AbstractController {
         $app_id = $params['app_id'] ?? '';
 
         if (empty($template) || empty($name) || empty($app_id)) {
-            return $this->respond(__('Invalid parameters. The app_id is required.', \WP2\Update\Config::TEXT_DOMAIN), 400);
+            return $this->respond(__('Invalid parameters. The app_id is required.', Config::TEXT_DOMAIN), 400);
+        }
+
+        // Pre-flight checks
+        try {
+            $repo_exists = $this->packageService->check_repository_availability($name, $app_id);
+            if (!$repo_exists) {
+                return $this->respond(__('Repository does not exist or is inaccessible.', Config::TEXT_DOMAIN), 400);
+            }
+        } catch (\Exception $e) {
+            return $this->respond(__('Pre-flight check failed: ', Config::TEXT_DOMAIN) . $e->getMessage(), 500);
         }
 
         try {
@@ -264,7 +320,7 @@ final class PackagesController extends AbstractController {
 
             return new WP_REST_Response([
                 'success' => true,
-                'message' => __('Packages refreshed successfully.', \WP2\Update\Config::TEXT_DOMAIN),
+                'message' => __('Packages refreshed successfully.', Config::TEXT_DOMAIN),
             ], 200);
         } catch (\Exception $e) {
             return new WP_REST_Response([

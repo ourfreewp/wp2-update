@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update;
 
@@ -84,18 +85,64 @@ class Config
     public const TEXT_DOMAIN = 'wp2-update';
 
     /**
-     * Name of the custom database table for logs.
-     */
-    public const LOGS_TABLE_NAME = 'wp2_update_logs';
-
-    /**
-     * The number of days to retain logs before pruning.
-     */
-    public const LOG_RETENTION_DAYS = 30;
-
-    /**
      * Default cache expiration time in seconds.
      */
     public const CACHE_EXPIRATION = 3600;
+
+    /**
+     * Transient key prefix for state management.
+     */
+    public const TRANSIENT_STATE_PREFIX = 'wp2_state_';
+
+    /**
+     * Option key for storing package data.
+     */
+    public const OPTION_PACKAGES_DATA = 'wp2_packages_data';
+
+    /**
+     * Nonce prefix for manifest validation.
+     */
+    public const NONCE_MANIFEST_PREFIX = 'wp2_manifest_';
+
+    /**
+     * Transient prefix for installation tokens.
+     */
+    public const TRANSIENT_INST_TOKEN_PREFIX = 'wp2_inst_token_';
+
+    /**
+     * Temporary directory prefix for updates.
+     */
+    public const TEMP_DIR_PREFIX = 'wp2_update_';
+
+    /**
+     * Debug mode constant to enable or disable detailed logging.
+     */
+    public const DEBUG_MODE = true;
+
+    /**
+     * Base directory of the plugin.
+     */
+    public const PLUGIN_DIR = WP2_UPDATE_PLUGIN_DIR;
+
+    /**
+     * Option key for storing logs in the wp_options table.
+     */
+    public const OPTION_LOGS = 'wp2_update_logs';
+
+    /**
+     * Retrieve a configuration value dynamically.
+     *
+     * @param string $key The configuration key to retrieve.
+     * @param mixed $default The default value to return if the key is not found.
+     * @return mixed The configuration value or the default value.
+     */
+    public static function get(string $key, $default = null)
+    {
+        $config = [
+            'LOG_LEVEL' => 'info', // Default log level
+        ];
+
+        return $config[$key] ?? $default;
+    }
 }
 

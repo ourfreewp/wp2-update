@@ -68,3 +68,29 @@ V
 6.  **WordPress Checks for Updates**: The next time WordPress checks for updates, it finds that the transients are missing and is forced to fetch fresh data.
 7.  **Update Data Injected**: During this check, the `PluginUpdater` and `ThemeUpdater` classes in the plugin inject the new version information from your GitHub release into the update data.
 8.  **Update Notice Displayed**: The user sees the update notification in their WordPress admin dashboard and can update the plugin or theme as usual.
+
+## Polling Service
+
+The Polling Service is a background process that periodically checks for new releases on GitHub and updates the package status in WordPress. This service ensures that users are always informed about the latest updates without manual intervention.
+
+### Key Responsibilities
+- **Automated Checks**: Polls GitHub repositories at regular intervals to fetch the latest release information.
+- **Error Handling**: Logs any issues encountered during polling, such as API rate limits or network errors.
+- **Integration with Update Transients**: Clears and refreshes WordPress update transients to ensure accurate update notifications.
+
+### Component Interaction
+The Polling Service interacts with the following components:
+- **GitHub API Services**: Fetches release data using the `ReleaseService`.
+- **Logger**: Records polling activities and errors for debugging purposes.
+- **Settings**: Allows users to configure the polling interval and enable/disable the service.
+
+### Benefits
+- Reduces the need for manual synchronization.
+- Ensures timely updates for all managed packages.
+- Provides transparency through detailed logs.
+
+### Example Workflow
+1. The Polling Service runs at the configured interval.
+2. It fetches the latest release data for all managed repositories.
+3. If a new release is found, it clears the relevant WordPress transients.
+4. The next WordPress update check retrieves the new version information and displays it in the admin dashboard.

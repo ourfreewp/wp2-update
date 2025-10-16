@@ -3,7 +3,8 @@
 namespace WP2\Update\Data;
 
 use WP2\Update\Services\PackageService;
-use WP2\Update\Utils\Logger;
+use WP2\Update\Data\DTO\PackageDTO;
+use WP2\Update\Config;
 
 /**
  * Handles package-related data operations.
@@ -24,12 +25,11 @@ class PackageData {
         try {
             return $this->packageService->get_all_packages_grouped();
         } catch (\Throwable $e) {
-            Logger::log('ERROR', 'Failed to retrieve packages: ' . $e->getMessage());
             return [
                 'managed'  => [],
                 'unlinked' => [],
                 'all'      => [],
-                'error'    => __('Unable to load package information at this time.', \WP2\Update\Config::TEXT_DOMAIN),
+                'error'    => __('Unable to load package information at this time.', Config::TEXT_DOMAIN),
             ];
         }
     }
@@ -39,26 +39,16 @@ class PackageData {
      *
      * @param int $page The current page number.
      * @param int $per_page The number of items per page.
-     * @return array<string,mixed>
+     * @return PackageDTO[]
      */
     public function get_paginated_packages(int $page, int $per_page): array {
-        global $wpdb;
+        $get_option = is_multisite() ? 'get_site_option' : 'get_option';
+        $all_packages = $get_option(Config::OPTION_PACKAGES, []);
 
         $offset = ($page - 1) * $per_page;
-        $query = $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}wp2_packages LIMIT %d OFFSET %d",
-            $per_page,
-            $offset
-        );
+        $paginated = array_slice($all_packages, $offset, $per_page);
 
-        $results = $wpdb->get_results($query, ARRAY_A);
-
-        if ($results === false) {
-            Logger::log('ERROR', 'Failed to retrieve paginated packages.');
-            return [];
-        }
-
-        return $results;
+        return array_map(fn($pkg) => PackageDTO::fromArray($pkg), $paginated);
     }
 
     /**
@@ -68,5 +58,19 @@ class PackageData {
      */
     public function get_service(): PackageService {
         return $this->packageService;
+    }
+
+    /**
+     * Writes the package data to the WordPress options.
+     *
+     * @param PackageDTO[] $packages The package data to save.
+     */
+    public function persist(array $packages): void {
+        $update_option = is_multisite() ? 'update_site_option' : 'update_option';
+        $update_option(
+            Config::OPTION_PACKAGES,
+            array_map(fn(PackageDTO $pkg) => $pkg->toArray(), $packages),
+            false
+        );
     }
 }

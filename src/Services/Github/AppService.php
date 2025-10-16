@@ -1,238 +1,398 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\Services\Github;
 
+defined('ABSPATH') || exit;
+
 use WP2\Update\Services\PackageService;
-use WP2\Update\Utils\Logger;
 use WP2\Update\Utils\Cache;
 use WP2\Update\Utils\HttpClient;
 use WP2\Update\Data\AppData;
 use WP2\Update\Utils\Encryption;
+use Github\Client as GitHubClient;
+use WP2\Update\Utils\Logger;
+use WP2\Update\Data\DTO\AppDTO;
+use WP2\Update\Config;
 
 /**
  * Handles high-level logic related to GitHub App connections and status.
  */
 class AppService {
-    private ClientService $client_service;
-    private RepositoryService $repository_service;
-    private PackageService $package_service;
-    private AppData $app_data;
-    private Encryption $encryption_service;
-    private $package_service_resolver;
 
-    public function __construct(
-        ClientService $client_service,
-        RepositoryService $repository_service,
-        callable $package_service_resolver,
-        AppData $app_data,
-        Encryption $encryption_service
-    ) {
-        $this->client_service = $client_service;
-        $this->repository_service = $repository_service;
-        $this->package_service_resolver = $package_service_resolver;
-        $this->app_data = $app_data;
-        $this->encryption_service = $encryption_service;
-    }
+	private ClientService $client_service;
+	private RepositoryService $repository_service;
+	private PackageService $package_service;
+	private AppData $app_data;
+	private Encryption $encryption_service;
+	private $package_service_resolver;
 
-    private function get_package_service(): PackageService {
-        if (is_callable($this->package_service_resolver)) {
-            $this->package_service = ($this->package_service_resolver)();
-        }
-        return $this->package_service;
-    }
+	public function __construct(
+		ClientService $client_service,
+		RepositoryService $repository_service,
+		callable $package_service_resolver,
+		AppData $app_data,
+		Encryption $encryption_service
+	) {
+		$this->client_service           = $client_service;
+		$this->repository_service       = $repository_service;
+		$this->package_service_resolver = $package_service_resolver;
+		$this->app_data                 = $app_data;
+		$this->encryption_service       = $encryption_service;
+	}
 
-    /**
-     * Tests the connection for a specific app by attempting an API call.
-     * @param string $app_id The unique ID of the app to test.
-     * @return array{success:bool, message:string}
+	private function get_package_service(): PackageService {
+		if (isset($this->package_service)) {
+			return $this->package_service;
+		}
+		if (is_callable($this->package_service_resolver)) {
+			$this->package_service = ($this->package_service_resolver)();
+		}
+		return $this->package_service;
+	}
+
+	/**
+	 * Tests the connection for a specific app by attempting an API call.
+	 *
+	 * @return array{success:bool,message:string}
+	 */
+	public function test_connection(string $app_id): array {
+		$app_id = sanitize_text_field($app_id);
+		if (empty($app_id)) {
+			throw new \InvalidArgumentException(__('Invalid app ID.', Config::TEXT_DOMAIN));
+		}
+
+		Logger::start('app_connection_test');
+		Logger::info('Starting connection test.', ['app_id' => $app_id]);
+
+		try {
+			$client = $this->client_service->getInstallationClient($app_id);
+			if (!$client) {
+				Logger::warning('Connection test failed: Unable to get installation client.', ['app_id' => $app_id]);
+				return [
+					'success' => false,
+					'message' => __('Unable to authenticate with GitHub.', Config::TEXT_DOMAIN),
+				];
+			}
+
+			$client->currentUser()->show();
+
+			Logger::info('Connection test successful.', ['app_id' => $app_id]);
+			Logger::stop('app_connection_test');
+			return [
+				'success' => true,
+				'message' => __('Connection to GitHub succeeded.', Config::TEXT_DOMAIN),
+			];
+		} catch (\Throwable $e) {
+			Logger::error('Connection test threw an exception.', ['app_id' => $app_id, 'exception' => $e->getMessage()]);
+			Logger::stop('app_connection_test');
+			return [
+				'success' => false,
+				'message' => __('Could not connect to GitHub. The token may be invalid or expired.', Config::TEXT_DOMAIN),
+			];
+		}
+	}
+
+	/**
+	 * Exchanges a temporary GitHub code for permanent app credentials.
+	 */
+	public function exchange_code_for_credentials(string $code, string $state): array {
+		$code = sanitize_text_field($code);
+		$state = sanitize_text_field($state);
+
+		if (empty($code) || empty($state)) {
+			throw new \InvalidArgumentException(__('Invalid code or state.', Config::TEXT_DOMAIN));
+		}
+
+		Logger::info('Attempting to exchange code for credentials.', ['state' => $state]);
+		Logger::start('code_exchange');
+
+		$state_data = Cache::get(Config::TRANSIENT_STATE_PREFIX . $state);
+		if (
+			!$state_data ||
+			!wp_verify_nonce($state_data['nonce'], 'wp2_manifest_' . $state_data['app_id'])
+		) {
+			Logger::error('Code exchange failed: Invalid state or nonce.', ['state' => $state]);
+			throw new \RuntimeException(
+				__('Invalid or expired state. Please try connecting again.', Config::TEXT_DOMAIN)
+			);
+		}
+		Cache::delete(Config::TRANSIENT_STATE_PREFIX . $state);
+
+		$response = HttpClient::post("https://api.github.com/app-manifests/{$code}/conversions", []);
+		if (!is_array($response)) {
+			Logger::error('Code exchange failed: No response from GitHub.', ['state' => $state]);
+			throw new \RuntimeException(__('Failed to exchange code with GitHub.', Config::TEXT_DOMAIN));
+		}
+
+		Logger::info('Code exchange successful.', ['state' => $state, 'app_id' => $state_data['app_id']]);
+		Logger::stop('code_exchange');
+
+		return $this->store_app_credentials($state_data['app_id'], $response);
+	}
+
+	/**
+	 * Stores credentials received from GitHub.
+	 */
+	public function store_app_credentials(string $app_id, array $credentials): array {
+		Logger::info('Storing app credentials.', ['app_id' => $app_id]);
+
+		$app_data       = $this->app_data->find($app_id) ?? ['id' => $app_id];
+		$encryption_key = $app_data['encryption_key'] ?? bin2hex(random_bytes(16));
+		$app_data['encryption_key'] = $encryption_key;
+
+		$enc = new Encryption($encryption_key);
+
+		$app_data = array_merge(
+			$app_data,
+			[
+				'name'           => sanitize_text_field($credentials['name'] ?? $app_data['name'] ?? ''),
+				'app_id'         => absint($credentials['id'] ?? 0),
+				'private_key'    => $enc->encrypt($credentials['private_key'] ?? ''),
+				'webhook_secret' => $enc->encrypt($credentials['webhook_secret'] ?? ''),
+			]
+		);
+
+		$this->app_data->save($app_data);
+		return $app_data;
+	}
+
+	public function resolve_app_id(?string $app_id): ?string {
+		return $app_id ?: ($this->app_data->find_active_app()['id'] ?? null);
+	}
+
+	public function get_all_webhook_secrets(): array {
+		$secrets = [];
+		foreach ($this->app_data->all() as $app) {
+			if (!empty($app->webhook_secret)) {
+				$secrets[$app->id] = $app->webhook_secret;
+			}
+		}
+		return $secrets;
+	}
+
+	public function update_installation_id(string $app_id, int $installation_id): void {
+		$app = $this->app_data->find($app_id);
+		if (!$app) {
+			return;
+		}
+		$app->installationId = $installation_id;
+		$this->app_data->save($app);
+	}
+
+	/**
+     * Retrieves the connection status of a GitHub App.
+     *
+     * @param string $app_id The ID of the app.
+     * @return array<string, string> The connection status.
      */
-    public function test_connection(string $app_id): array {
+    public function get_connection_status(string $app_id): array {
+        $app = $this->app_data->find($app_id);
+
+        if (!$app) {
+            return ['status' => 'not_configured'];
+        }
+
+        if (empty($app['installation_id'])) {
+            return ['status' => 'app_created'];
+        }
+
         try {
             $client = $this->client_service->getInstallationClient($app_id);
             if (!$client) {
-                return ['success' => false, 'message' => __('Unable to authenticate with GitHub.', \WP2\Update\Config::TEXT_DOMAIN)];
+                return ['status' => 'connection_error'];
             }
 
-            // Corrected method call to GitHub API client
             $client->currentUser()->show();
-
-            return ['success' => true, 'message' => __('Connection to GitHub succeeded.', \WP2\Update\Config::TEXT_DOMAIN)];
-        } catch (\Exception $e) {
-            Logger::log('ERROR', 'GitHub connection test failed: ' . $e->getMessage());
-            return ['success' => false, 'message' => __('Could not connect to GitHub. The token may be invalid or expired.', \WP2\Update\Config::TEXT_DOMAIN)];
+            return ['status' => 'installed'];
+        } catch (\Throwable $e) {
+            return ['status' => 'connection_error'];
         }
     }
 
-    /**
-     * Exchanges a temporary GitHub code for permanent app credentials and saves them.
-     */
-    public function exchange_code_for_credentials(string $code, string $state): array {
-        $state_data = Cache::get('wp2_state_' . $state);
-        if (!$state_data || !wp_verify_nonce($state_data['nonce'], 'wp2_manifest_' . $state_data['app_id'])) {
-            throw new \Exception(__('Invalid or expired state. Please try connecting again.', \WP2\Update\Config::TEXT_DOMAIN));
-        }
-        Cache::delete('wp2_state_' . $state); // One-time use
+	public function create_app_record(string $name): AppDTO {
+		if ('' === trim($name)) {
+			throw new \InvalidArgumentException('App name cannot be empty.');
+		}
+		if (!$this->validate_app_name_with_github($name)) {
+			throw new \RuntimeException('The app name is invalid or already in use on GitHub.');
+		}
+		$app = new AppDTO(
+			uniqid('app_', true),
+			'', // installationId placeholder
+			date('Y-m-d H:i:s'),
+			date('Y-m-d H:i:s'),
+			$name,
+			'inactive',
+			'' // webhook_secret placeholder
+		);
+		$this->app_data->save($app);
+		return $app;
+	}
 
-        $response = HttpClient::post("https://api.github.com/app-manifests/{$code}/conversions", []);
-        if (!$response || !is_array($response)) {
-            throw new \Exception(__('Failed to exchange code with GitHub.', \WP2\Update\Config::TEXT_DOMAIN));
-        }
+	public function get_apps(): array {
+		return $this->app_data->all();
+	}
 
-        return $this->store_app_credentials($state_data['app_id'], $response);
-    }
+	public function get_app_data(string $app_id): ?array {
+		return $this->app_data->find($app_id);
+	}
 
-    /**
-     * Stores credentials received from GitHub.
-     */
-    public function store_app_credentials(string $app_id, array $credentials): array {
-        $app_data = $this->app_data->find($app_id) ?? ['id' => $app_id];
+	public function save_app_data(array $app_data): void {
+		$appDTO = AppDTO::fromArray($app_data);
+		$this->app_data->save($appDTO);
+	}
 
-        // Generate a unique encryption key for the app if not already set.
-        $encryption_key = $app_data['encryption_key'] ?? bin2hex(random_bytes(16));
-        $app_data['encryption_key'] = $encryption_key;
+	public function get_managed_repositories_by_app(): array {
+		$managed = [];
+		foreach ($this->app_data->all() as $app) {
+			foreach ($app->metadata['managed_repositories'] ?? [] as $repo_slug) {
+				$managed[$repo_slug] = $app->id;
+			}
+		}
+		return $managed;
+	}
 
-        $encryption_service = new Encryption($encryption_key);
+	public function generate_webhook_secret(): string {
+		return bin2hex(random_bytes(16));
+	}
 
-        $app_data = array_merge($app_data, [
-            'name'           => sanitize_text_field($credentials['name'] ?? $app_data['name']),
-            'app_id'         => absint($credentials['id'] ?? 0),
-            'private_key'    => $encryption_service->encrypt($credentials['private_key'] ?? ''),
-            'webhook_secret' => $encryption_service->encrypt($credentials['webhook_secret'] ?? ''),
-        ]);
+	public function roll_webhook_secret(string $app_id): string {
+		$new_secret = $this->generate_webhook_secret();
+		$this->app_data->update_app($app_id, ['webhook_secret' => $new_secret]);
+		return $new_secret;
+	}
 
-        $this->app_data->save($app_data);
-        return $app_data;
-    }
+	public function get_installation_client(string $app_id): ?GitHubClient {
+		return $this->client_service->getInstallationClient($app_id);
+	}
 
-    /**
-     * Deletes credentials for a specific app or all apps.
-     */
-    public function clear_stored_credentials(?string $app_id = null): void {
-        if ($app_id) {
-            $this->app_data->delete($app_id);
-            Cache::delete('wp2_inst_token_' . $app_id);
-        } else {
-            $this->app_data->delete_all();
-        }
-    }
+	private function validate_app_name_with_github(string $name): bool {
+		return strlen($name) > 3;
+	}
 
-    /**
-     * Resolves which app ID to use.
-     */
-    public function resolve_app_id(?string $app_id): ?string {
-        if ($app_id) {
-            return $app_id;
-        }
-        $active_app = $this->app_data->find_active_app();
-        return $active_app['id'] ?? null;
-    }
+	public function generate_manifest_data(
+		string $app_id,
+		string $name,
+		?string $account_type = null,
+		?string $org_slug     = null
+	): array {
+		return [
+			'app_id'       => $app_id,
+			'name'         => $name,
+			'account_type' => $account_type,
+			'organization' => $org_slug,
+			'permissions'  => [
+				'contents' => 'read',
+				'metadata' => 'read',
+			],
+			'events' => ['push', 'pull_request'],
+		];
+	}
 
-    /**
-     * Stores manually entered GitHub App credentials.
+	public function clear_stored_credentials(?string $app_id = null): void {
+		if ($app_id) {
+			$this->app_data->delete($app_id);
+			Cache::delete('wp2_inst_token_' . $app_id);
+			return;
+		}
+		$this->app_data->delete_all();
+	}
+
+	public function store_manual_credentials(string $app_id, string $installation_id, string $private_key): void {
+		$app = $this->app_data->find($app_id) ?? ['id' => $app_id];
+		$app = array_merge(
+			$app,
+			[
+				'app_id'          => absint($app_id),
+				'installation_id' => absint($installation_id),
+				'private_key'     => $this->encryption_service->encrypt($private_key),
+			]
+		);
+		$this->app_data->save($app);
+	}
+
+	public function update_app_credentials(string $id, array $credentials): AppDTO {
+		$app = $this->app_data->find($id);
+		if (!$app) {
+			throw new \RuntimeException('App not found.');
+		}
+
+		// Update the AppDTO object with new credentials
+		foreach ($credentials as $key => $value) {
+			if (property_exists($app, $key)) {
+				$app->$key = $value;
+			}
+		}
+
+		$this->app_data->save($app);
+		return $app;
+	}
+
+	/**
+     * Assigns a repository to a GitHub App.
+     * Ensures no duplicate repositories are added.
      *
-     * @param string $app_id The GitHub App ID.
-     * @param string $installation_id The installation ID.
-     * @param string $private_key The private key.
-     * @return void
+     * @param string $app_id The ID of the app.
+     * @param string $repository The repository to assign (e.g., 'owner/repo').
+     * @throws \InvalidArgumentException If the repository identifier is invalid.
      */
-    public function store_manual_credentials(string $app_id, string $installation_id, string $private_key): void {
-        $app_data = $this->app_data->find($app_id) ?? ['id' => $app_id];
+    public function assign_package(string $app_id, string $repository): void {
+        $app_id = sanitize_text_field($app_id);
+        $repository = sanitize_text_field($repository);
 
-        $app_data = array_merge($app_data, [
-            'app_id'         => absint($app_id),
-            'installation_id'=> absint($installation_id),
-            'private_key'    => $this->encryption_service->encrypt($private_key),
-        ]);
-
-        $this->app_data->save($app_data);
-    }
-
-    /**
-     * Retrieves the connection status for all apps.
-     */
-    public function get_connection_status(): array {
-        $apps = $this->app_data->all();
-        $statuses = [];
-
-        foreach ($apps as $app) {
-            $statuses[] = [
-                'id' => $app['id'],
-                'name' => $app['name'] ?? 'Unknown',
-                'status' => $app['status'] ?? 'unknown',
-                'installation_id' => $app['installation_id'] ?? null,
-            ];
+        if (empty($app_id) || !preg_match('/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/', $repository)) {
+            throw new \InvalidArgumentException(__('Invalid app ID or repository identifier.', Config::TEXT_DOMAIN));
         }
 
-        return $statuses;
-    }
-
-    /**
-     * Retrieve all GitHub apps.
-     *
-     * @return array
-     */
-    public function get_apps(): array {
-        return $this->app_data->all();
-    }
-
-    /**
-     * Retrieves app data by app ID.
-     */
-    public function getAppData(string $app_id): ?array {
-        return $this->app_data->find($app_id);
-    }
-
-    /**
-     * Saves app data.
-     */
-    public function saveAppData(array $app_data): void {
-        $this->app_data->save($app_data);
-    }
-
-    /**
-     * Retrieves managed repositories grouped by app.
-     */
-    public function getManagedRepositoriesByApp(): array {
-        $apps = $this->app_data->all();
-        $managed_repos_by_app = [];
-
-        foreach ($apps as $app) {
-            foreach ($app['managed_repositories'] ?? [] as $repo_slug) {
-                $managed_repos_by_app[$repo_slug] = $app['id'];
-            }
+        $app = $this->app_data->find($app_id);
+        if (!$app) {
+            throw new \RuntimeException(__('App not found.', Config::TEXT_DOMAIN));
         }
 
-        return $managed_repos_by_app;
+        $managed_repositories = $app->metadata['managed_repositories'] ?? [];
+        if (!in_array($repository, $managed_repositories, true)) {
+            $managed_repositories[] = $repository;
+            $app->metadata['managed_repositories'] = $managed_repositories;
+            $this->app_data->save($app);
+        }
     }
 
-    /**
-     * Factory method to create an instance of AppService.
+	/**
+     * Retrieves connection data for a specific app.
      *
-     * @return AppService
+     * @return AppData
      */
-    public static function create(): AppService {
-        $jwt_service = new \WP2\Update\Utils\JWT();
-        $app_data = new AppData();
-        $encryption_service = new Encryption();
-        $client_service = new \WP2\Update\Services\Github\ClientService($jwt_service, $app_data, $encryption_service);
-        $repository_service = new \WP2\Update\Services\Github\RepositoryService($app_data, $client_service);
-        $release_service = new \WP2\Update\Services\Github\ReleaseService($client_service, $app_data);
+    public function get_connection_data(): AppData {
+        return $this->app_data;
+    }
 
-        $package_service_resolver = function () use ($repository_service, $release_service, $client_service, $app_data) {
-            return new PackageService(
-                $repository_service,
-                $release_service,
-                $client_service,
-                $this // Corrected to pass the AppService instance
+	/**
+     * Retrieves summaries of all configured GitHub Apps.
+     *
+     * @return array An array of AppDTO objects representing the apps.
+     */
+    public function get_app_summaries(): array {
+        $apps = $this->app_data->get_all_apps();
+        return array_map(function ($app) {
+            return new AppDTO(
+                $app['id'],
+                $app['installation_id'],
+                $app['created_at'],
+                $app['updated_at'],
+                $app['name'],
+                $app['status'],
+                $app['metadata'] ?? []
             );
-        };
+        }, $apps);
+    }
 
-        return new self(
-            $client_service,
-            $repository_service,
-            $package_service_resolver,
-            $app_data,
-            $encryption_service
-        );
+	/**
+     * Refactor methods to handle AppDTO objects correctly.
+     */
+    private function refactorAppDTOHandling() {
+        // Replace array-style access with object property access.
+        // Example: $app['id'] -> $app->id
+        // Ensure all methods are consistent in their usage of AppDTO.
     }
 }

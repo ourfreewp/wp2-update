@@ -1,17 +1,11 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\Utils;
 
-// Ensure the JWT library from Composer is loaded.
-if (file_exists(WP2_UPDATE_PLUGIN_DIR . 'vendor/autoload.php')) {
-    require_once WP2_UPDATE_PLUGIN_DIR . 'vendor/autoload.php';
-}
-
 use Firebase\JWT\JWT as FirebaseJWT;
+use WP2\Update\Utils\Logger;
 
-/**
- * A wrapper for the firebase/php-jwt library to handle JWT generation for GitHub App authentication.
- */
 class JWT {
     /**
      * Generates a JSON Web Token (JWT) for GitHub App authentication.
@@ -22,7 +16,7 @@ class JWT {
      */
     public function generate_jwt(string $app_id, string $private_key): ?string {
         if (!class_exists(FirebaseJWT::class)) {
-            Logger::log('ERROR', 'JWT library is not loaded. Please run `composer install`.');
+            Logger::error('FirebaseJWT class not found. Ensure the library is installed.');
             return null;
         }
 
@@ -34,9 +28,11 @@ class JWT {
         ];
 
         try {
-            return FirebaseJWT::encode($payload, $private_key, 'RS256');
+            $jwt = FirebaseJWT::encode($payload, $private_key, 'RS256');
+            Logger::info('JWT generated successfully.', ['app_id' => $app_id, 'issued_at' => $issued_at]);
+            return $jwt;
         } catch (\Exception $e) {
-            Logger::log('ERROR', 'Failed to generate JWT: ' . $e->getMessage());
+            Logger::error('Failed to generate JWT.', ['app_id' => $app_id, 'error' => $e->getMessage()]);
             return null;
         }
     }

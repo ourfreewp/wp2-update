@@ -1,6 +1,7 @@
-import { api_request } from '../api.js';
+import { apiFetch } from '@wordpress/api-fetch';
 import { updateState } from '../state/store.js';
 import { logger } from '../utils/logger.js';
+import { NotificationService } from '../services/NotificationService.js';
 
 export class AppService {
     /**
@@ -8,7 +9,7 @@ export class AppService {
      */
     async fetchApps() {
         try {
-            const response = await api_request('apps', { method: 'GET' }, 'wp2_list_apps');
+            const response = await apiFetch({ path: '/wp2-update/v1/apps' });
             const apps = response?.data?.apps ?? [];
             updateState(state => ({
                 apps,
@@ -16,6 +17,7 @@ export class AppService {
             }));
         } catch (error) {
             logger.error('Failed to fetch apps:', error);
+            NotificationService.showError('An error occurred while fetching apps. Please try again.');
         }
     }
 
@@ -26,15 +28,16 @@ export class AppService {
      */
     async createApp(appData) {
         try {
-            const response = await api_request('apps', {
+            const response = await apiFetch({
+                path: '/wp2-update/v1/apps',
                 method: 'POST',
-                body: JSON.stringify(appData),
-            }, 'wp2_create_app');
+                data: appData,
+            });
             await this.fetchApps(); // Refresh app list
             return response.data;
         } catch (error) {
             logger.error('Failed to create app:', error);
-            return null;
+            NotificationService.showError('An error occurred while creating the app. Please try again.');
         }
     }
 
@@ -45,7 +48,9 @@ export class AppService {
      */
     async fetchPaginatedApps(page = 1, perPage = 10) {
         try {
-            const response = await api_request(`apps?page=${page}&per_page=${perPage}`, { method: 'GET' }, 'wp2_list_apps');
+            const response = await apiFetch({
+                path: `/wp2-update/v1/apps?page=${page}&per_page=${perPage}`,
+            });
             const apps = response?.data?.apps ?? [];
             updateState(state => ({
                 apps: [...state.apps, ...apps], // Append new apps to the existing state
@@ -53,6 +58,57 @@ export class AppService {
             }));
         } catch (error) {
             logger.error('Failed to fetch paginated apps:', error);
+        }
+    }
+
+    /**
+     * Generates a GitHub App manifest and setup URL.
+     */
+    async generateManifest() {
+        try {
+            const response = await apiFetch({
+                path: '/wp2-update/v1/apps/manifest',
+                method: 'POST',
+            });
+            return response.data;
+        } catch (error) {
+            logger.error('Failed to generate manifest:', error);
+            NotificationService.showError('An error occurred while generating the manifest. Please try again.');
+        }
+    }
+
+    /**
+     * Exchanges a temporary code from GitHub for permanent app credentials.
+     * @param {string} code - The temporary code from GitHub.
+     */
+    async exchangeCode(code) {
+        try {
+            const response = await apiFetch({
+                path: '/wp2-update/v1/apps/exchange-code',
+                method: 'POST',
+                data: { code },
+            });
+            return response.data;
+        } catch (error) {
+            logger.error('Failed to exchange code:', error);
+            NotificationService.showError('An error occurred while exchanging the code. Please try again.');
+        }
+    }
+
+    /**
+     * Fetches the connection status for a specific app.
+     * @param {string} appId - The ID of the app.
+     */
+    async fetchAppStatus(appId) {
+        try {
+            const response = await apiFetch({
+                path: `/wp2-update/v1/apps/${appId}/status`,
+                method: 'GET',
+            });
+            return response.data;
+        } catch (error) {
+            logger.error('Failed to fetch app status:', error);
+            NotificationService.showError('An error occurred while fetching the app status. Please try again.');
         }
     }
 }

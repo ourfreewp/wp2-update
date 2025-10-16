@@ -4,6 +4,8 @@ namespace WP2\Update\CLI;
 
 use WP_CLI;
 use WP2\Update\Services\PackageService;
+use WP2\Update\Utils\Logger;
+use WP2\Update\Config;
 
 /**
  * Handles WP-CLI commands for the WP2 Update plugin.
@@ -21,7 +23,7 @@ class Commands extends \WP_CLI_Command {
      * @param PackageService $packageService The instantiated package service.
      */
     public static function register(PackageService $packageService): void {
-        WP_CLI::add_command(\WP2\Update\Config::TEXT_DOMAIN, new self($packageService));
+        WP_CLI::add_command(Config::TEXT_DOMAIN, new self($packageService));
     }
 
     /**
@@ -41,6 +43,7 @@ class Commands extends \WP_CLI_Command {
      */
     public function sync(array $args, array $assoc_args): void {
         $apply_updates = isset($assoc_args['apply-updates']);
+        Logger::info('Package sync initiated via WP-CLI.', ['apply_updates' => $apply_updates]);
 
         WP_CLI::line('Starting package synchronization...');
         try {
@@ -54,7 +57,7 @@ class Commands extends \WP_CLI_Command {
                 $items = array_map(function($pkg) {
                     return ['name' => $pkg['name'], 'repo' => $pkg['repo'], 'status' => $pkg['status']];
                 }, $packages);
-                WP_CLI\Utils\format_items('table', $items, ['name', 'repo', 'status']);
+                WP_CLI::table($items, ['name', 'repo', 'status']);
             }
 
             if ($apply_updates) {
@@ -89,7 +92,7 @@ class Commands extends \WP_CLI_Command {
      */
     public function update(array $args): void {
         [$repo_slug] = $args;
-        WP_CLI::line("Attempting to update package: {$repo_slug}");
+        Logger::info('Package update initiated via WP-CLI.', ['repo_slug' => $repo_slug]);
 
         $success = $this->packageService->update_package($repo_slug);
 
@@ -100,8 +103,6 @@ class Commands extends \WP_CLI_Command {
         }
     }
 
-
-    
 
     /**
      * Rolls back a package to a specific version.
@@ -123,6 +124,7 @@ class Commands extends \WP_CLI_Command {
     public function rollback(array $args, array $assoc_args): void {
         [$repo_slug] = $args;
         $version = $assoc_args['version'] ?? null;
+        Logger::info('Package rollback initiated via WP-CLI.', ['repo_slug' => $repo_slug, 'version' => $version]);
 
         if (!$version) {
             WP_CLI::error('The --version flag is required for rollback.');
@@ -137,30 +139,6 @@ class Commands extends \WP_CLI_Command {
             WP_CLI::success("Package '{$repo_slug}' was successfully rolled back to version '{$version}'.");
         } else {
             WP_CLI::error("Failed to roll back package '{$repo_slug}'. Check logs for details.");
-        }
-    }
-
-    /**
-     * Clears all logs from the WP2 Update log table.
-     *
-     * ## EXAMPLES
-     *
-     * wp wp2-update clear_logs
-     *
-     * @when after_wp_load
-     */
-    public function clear_logs(): void {
-        global $wpdb;
-        $table_name = $wpdb->prefix . \WP2\Update\Config::LOGS_TABLE_NAME;
-
-        WP_CLI::confirm('Are you sure you want to clear all WP2 Update logs?');
-
-        $rows_deleted = $wpdb->query("TRUNCATE TABLE {$table_name}");
-
-        if ($rows_deleted === false) {
-            WP_CLI::error('Failed to clear logs.');
-        } else {
-            WP_CLI::success("All logs have been cleared successfully.");
         }
     }
 }

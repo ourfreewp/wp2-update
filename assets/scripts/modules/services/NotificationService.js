@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger.js';
+import { Toast } from 'bootstrap';
 
 export const NotificationService = {
     /**
@@ -50,7 +51,7 @@ export const NotificationService = {
         // Remove white close button in case it was set by an error
         toastEl.querySelector('.btn-close').classList.remove('btn-close-white');
 
-        const toast = new bootstrap.Toast(toastEl);
+        const toast = new Toast(toastEl);
         toast.show();
     },
 
@@ -72,7 +73,7 @@ export const NotificationService = {
         // Ensure the close button is visible on a dark background
         toastEl.querySelector('.btn-close').classList.add('btn-close-white');
 
-        const toast = new bootstrap.Toast(toastEl);
+        const toast = new Toast(toastEl);
         toast.show();
     }
 };

@@ -3,9 +3,11 @@
 namespace WP2\Update\Data;
 
 use WP2\Update\Config;
-use WP2\Update\Utils\Logger;
+use WP2\Update\Data\DTO\AppDTO;
 
 /**
+ * Class AppData
+ *
  * Handles all CRUD operations for GitHub App connection data,
  * abstracting the underlying WordPress options storage mechanism.
  */
@@ -13,45 +15,74 @@ final class AppData
 {
     /**
      * In-memory cache of connection records to reduce database reads.
+     *
      * @var array<string, array<string, mixed>>|null
      */
     private ?array $cache = null;
 
     /**
-     * Loads connection data from the database into the cache upon instantiation.
+     * Determines whether to use site-level options for multisite compatibility.
+     *
+     * @return callable The appropriate WordPress option function.
      */
-    public function __construct()
+    private function get_option_function(): callable
     {
-        $this->load();
+        return is_multisite() ? 'get_site_option' : 'get_option';
+    }
+
+    /**
+     * Loads connection data from the database into the cache.
+     *
+     * @param string|null $id The ID of the app to load, or null to load all apps.
+     * @return void
+     */
+    private function load(string $id = null): void
+    {
+        $get_option = $this->get_option_function();
+
+        if ($this->cache === null) {
+            $this->cache = $get_option(Config::OPTION_APPS, []);
+        }
+
+        if ($id !== null && !isset($this->cache[$id])) {
+            $all_apps = $get_option(Config::OPTION_APPS, []);
+            $this->cache[$id] = $all_apps[$id] ?? null;
+        }
     }
 
     /**
      * Retrieve all connection records.
-     * @return array<int, array<string, mixed>> Indexed array of app data.
+     *
+     * @return AppDTO[] Indexed array of AppDTO objects.
      */
     public function all(): array
     {
-        return array_values($this->cache);
+        $this->load();
+        return array_map(fn($data) => AppDTO::fromArray($data), array_values($this->cache));
     }
 
     /**
      * Find a connection record by its unique identifier.
+     *
      * @param string $id The unique identifier for the connection.
-     * @return array<string, mixed>|null The connection data or null if not found.
+     * @return AppDTO|null The connection data as an AppDTO or null if not found.
      */
-    public function find(string $id): ?array
+    public function find(string $id): ?AppDTO
     {
-        return $this->cache[$id] ?? null;
+        $this->load($id);
+        return isset($this->cache[$id]) ? AppDTO::fromArray($this->cache[$id]) : null;
     }
 
     /**
      * Find connection records where a specific field matches a given value.
+     *
      * @param string $field The field name to search by (e.g., 'installation_id').
      * @param mixed $value The value to match.
      * @return array<int, array<string, mixed>> A list of matching connection records.
      */
     public function find_by_field(string $field, $value): array
     {
+        $this->load();
         return array_values(array_filter($this->cache, function ($connection) use ($field, $value) {
             return isset($connection[$field]) && $connection[$field] == $value;
         }));
@@ -59,30 +90,22 @@ final class AppData
 
     /**
      * Save or update a connection record.
-     * @param array<string, mixed> $app_data The data for the connection.
-     * @return array<string, mixed> The saved connection data, including its `id`.
+     *
+     * @param AppDTO $appDTO The AppDTO object to save.
+     * @return AppDTO The saved AppDTO object.
      */
-    public function save(array $app_data): array
+    public function save(AppDTO $appDTO): AppDTO
     {
-        // Ensure an ID exists, generating one if it's a new record.
-        $id = $app_data['id'] ?? wp_generate_uuid4();
-        $app_data['id'] = $id;
-
-        // Set timestamps
-        if (!isset($app_data['created_at'])) {
-            $app_data['created_at'] = current_time('mysql', true);
-        }
-        $app_data['updated_at'] = current_time('mysql', true);
-
-        $this->cache[$id] = $app_data;
+        $this->cache[$appDTO->id] = $appDTO->toArray();
         $this->persist();
-
-        return $this->cache[$id];
+        return $appDTO;
     }
 
     /**
      * Remove a connection record by its unique identifier.
+     *
      * @param string $id The identifier for the connection to delete.
+     * @return void
      */
     public function delete(string $id): void
     {
@@ -94,6 +117,8 @@ final class AppData
 
     /**
      * Remove all stored connection records.
+     *
+     * @return void
      */
     public function delete_all(): void
     {
@@ -102,39 +127,21 @@ final class AppData
     }
 
     /**
-     * Writes the in-memory cache to the WordPress options table.
+     * Writes the in-memory cache to the WordPress options.
+     *
+     * @return void
      */
     private function persist(): void
     {
-        update_option(Config::OPTION_APPS, $this->cache, false); // Corrected third argument
-    }
-
-    /**
-     * Loads all connection records from the WordPress options table into the cache.
-     */
-    private function load(): void
-    {
-        $apps = get_option(Config::OPTION_APPS, []);
-        if (!is_array($apps)) {
-            Logger::log('ERROR', 'Invalid connection data in database. Expected array, got ' . gettype($apps));
-            $this->cache = [];
-            return;
-        }
-
-        // Normalize data to ensure it's always indexed by a valid ID.
-        $normalized = [];
-        foreach ($apps as $key => $app) {
-            if (is_array($app) && !empty($app['id'])) {
-                $normalized[$app['id']] = $app;
-            }
-        }
-        $this->cache = $normalized;
+        $update_option = is_multisite() ? 'update_site_option' : 'update_option';
+        $update_option(Config::OPTION_APPS, $this->cache, false);
     }
 
     /**
      * Finds the first active (installed) app.
      * This is useful for contexts where a single connection is assumed.
-     * @return array|null
+     *
+     * @return array|null The first active app data or null if none found.
      */
     public function find_active_app(): ?array
     {
@@ -169,9 +176,51 @@ final class AppData
     {
         if ($app_id === null) {
             $active_app = $this->find_active_app();
-            return $active_app['id'] ?? null;
+            if (!$active_app) {
+                throw new \RuntimeException('No active GitHub app found.');
+            }
+            return $active_app['id'];
         }
 
         return $app_id;
+    }
+
+    /**
+     * Updates a specific field in an app record.
+     *
+     * @param string $id The unique identifier for the app.
+     * @param array<string, mixed> $fields The fields to update.
+     * @return bool True if the update was successful, false otherwise.
+     */
+    public function update_app(string $id, array $fields): bool
+    {
+        if (!isset($this->cache[$id])) {
+            return false; // App not found
+        }
+
+        // Merge the updated fields into the existing record
+        $this->cache[$id] = array_merge($this->cache[$id], $fields);
+        $this->cache[$id]['updated_at'] = current_time('mysql', true);
+
+        $this->persist();
+        return true;
+    }
+
+    /**
+     * Retrieves all GitHub App connection data.
+     *
+     * @return array An array of associative arrays representing the apps.
+     */
+    public function get_all_apps(): array {
+        $get_option = $this->get_option_function();
+        return $get_option(Config::OPTION_APPS, []);
+    }
+
+    /**
+     * Invalidate the in-memory cache.
+     */
+    private function invalidate_cache(): void
+    {
+        $this->cache = null;
     }
 }

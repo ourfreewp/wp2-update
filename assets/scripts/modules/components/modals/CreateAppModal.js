@@ -2,7 +2,7 @@ const { __ } = wp.i18n;
 import { modalManager } from '../../utils/modal.js';
 import { StandardModal } from './StandardModal.js';
 import { ManualCredentialsModal } from './ManualCredentialsModal.js';
-import { api_request } from '../../api.js';
+import { apiFetch } from '@wordpress/api-fetch';
 
 /**
  * Initializes the GitHub App Setup Wizard modal.
@@ -38,15 +38,6 @@ export function initializeWizardModal() {
                     ${__('App Manifest:', 'wp2-update')}<br>
                     <textarea id="app-manifest" rows="10" readonly></textarea>
                 </label>
-            </div>
-            <div class="wizard-step" data-step="3" style="display: none;">
-                <h3>${__('Step 3: Review and confirm', 'wp2-update')}</h3>
-                <p>${__('Please review your app details below:', 'wp2-update')}</p>
-                <ul>
-                    <li>${__('App Name:', 'wp2-update')} <span id="review-app-name"></span></li>
-                    <li>${__('Account Type:', 'wp2-update')} <span id="review-account-type"></span></li>
-                    <li>${__('Manifest URL:', 'wp2-update')} <a id="manifest-url" href="#" target="_blank">${__('Open GitHub', 'wp2-update')}</a></li>
-                </ul>
             </div>
         </div>
     `;
@@ -114,13 +105,14 @@ export function initializeWizardModal() {
             }
 
             try {
-                const response = await api_request('credentials/generate-manifest', {
+                const response = await apiFetch({
+                    path: '/wp2-update/v1/apps/manifest',
                     method: 'POST',
-                    body: JSON.stringify({ app_name: appName, account_type: accountType })
-                }, 'wp2_generate_manifest');
+                    data: { name: appName, account_type: accountType },
+                });
 
                 const manifestTextarea = document.getElementById('app-manifest');
-                manifestTextarea.value = response.manifest;
+                manifestTextarea.value = response.setup_url;
                 manifestTextarea.readOnly = true;
 
                 if (response.manifest_url) {

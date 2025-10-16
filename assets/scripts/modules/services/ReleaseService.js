@@ -1,5 +1,6 @@
 import { fetchReleaseNotes, switchReleaseChannel } from './PackageService.js';
 import { escapeHtml } from '../utils/string.js';
+import { NotificationService } from '../services/NotificationService.js';
 
 /**
  * Handles switching the release channel.
@@ -14,6 +15,7 @@ export function handleSwitchReleaseChannel(packageId, channel) {
             })
             .catch(error => {
                 console.error(`Error switching channel for package ${packageId}:`, error);
+                NotificationService.showError('An error occurred while switching the release channel. Please try again.');
             });
     } catch (error) {
         console.error('Unexpected error during channel switch:', error);
@@ -32,6 +34,7 @@ export function handleFetchReleaseNotes(packageId) {
             })
             .catch(error => {
                 console.error(`Error fetching release notes for package ${packageId}:`, error);
+                NotificationService.showError('An error occurred while fetching release notes. Please try again.');
             });
     } catch (error) {
         console.error('Unexpected error fetching release notes:', error);

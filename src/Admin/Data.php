@@ -4,10 +4,15 @@ namespace WP2\Update\Admin;
 use WP2\Update\Data\AppData;
 use WP2\Update\Data\PackageData;
 use WP2\Update\Data\HealthData;
+use WP2\Update\Health\Checks\DatabaseCheck;
+use WP2\Update\Health\Checks\ConnectivityCheck;
 use WP2\Update\Services\Github\AppService;
-use WP2\Update\Services\PackageService; // Import the PackageService class
+use WP2\Update\Services\Github\ClientService;
+use WP2\Update\Services\Github\ReleaseService;
+use WP2\Update\Services\Github\RepositoryService;
+use WP2\Update\Services\PackageService;
+use WP2\Update\Config;
 use WP2\Update\Utils\Logger;
-use WP2\Update\Config; // Import the Config class
 
 /**
  * Provides preloaded data for the admin dashboard SPA.
@@ -28,55 +33,91 @@ final class Data {
     }
 
     /**
+     * Retrieve data for the active tab dynamically.
+     *
+     * @param string $tab The active tab slug.
+     * @return array<string, mixed>
+     */
+    public function get_tab_data(string $tab): array {
+        switch ($tab) {
+            case 'packages':
+                return [
+                    'packages' => $this->packageData->get_all_packages_grouped(),
+                ];
+            case 'apps':
+                return [
+                    'apps' => $this->appData->getApps(),
+                    'selectedAppId' => $this->appData->find_active_app()['id'] ?? null,
+                ];
+            case 'health':
+                return [
+                    'health' => $this->healthData->get_health_checks(),
+                ];
+            case 'dashboard':
+            default:
+                return [
+                    'stats' => $this->get_stats_data(
+                        $this->appData,
+                        $this->packageData,
+                        $this->healthData
+                    ),
+                    'recentLogs' => $this->get_recent_logs(),
+                ];
+        }
+    }
+
+    /**
      * Retrieve the complete preloaded state for the SPA bootstrap.
      *
      * @return array<string,mixed>
      */
     public function get_state(): array {
-        return [
-            'apps'              => $this->appData->getApps(),
-            'packages'          => $this->packageData->get_all_packages_grouped(),
-            'selectedAppId'     => $this->appData->find_active_app()['id'] ?? null,
-            'connectionStatus'  => $this->appService->get_connection_status(),
-            'health'            => $this->healthData->get_health_checks(),
-            'stats'             => $this->get_stats_data(),
-        ];
+        $activeTab = $this->get_active_tab();
+        $state = $this->get_tab_data($activeTab);
+
+        Logger::debug('Bootstrapping frontend with initial state for tab: ' . $activeTab, ['state' => $state]);
+
+        return $state;
     }
 
     /**
      * Retrieve stats data for the dashboard. (Placeholder data)
      *
+     * @param AppData $appData
+     * @param PackageData $packageData
+     * @param HealthData $healthData
      * @return array<string, mixed>
      */
-    public static function get_stats_data(): array {
-        global $wpdb;
+    public static function get_stats_data(AppData $appData, PackageData $packageData, HealthData $healthData): array {
+        // Cache key for stats data
+        $cache_key = 'wp2_update_stats_data';
+        $cached_stats = get_transient($cache_key);
 
-        error_log('AdminData::get_stats_data() called.');
-
-        // Use the constant for the table name.
-        $tableName = Config::LOGS_TABLE_NAME;
-
-        // Check if the table exists before running queries.
-        $tableExists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $tableName));
-        if (!$tableExists) {
-            error_log("Table {$tableName} does not exist. Returning empty stats.");
-            return [
-                'totalUpdates' => 0,
-                'successfulUpdates' => 0,
-                'failedUpdates' => 0,
-            ];
+        if ($cached_stats !== false) {
+            return $cached_stats;
         }
 
-        error_log("Table {$tableName} exists. Fetching stats.");
-        $totalUpdates = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$tableName}"));
-        $successfulUpdates = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$tableName} WHERE status = %s", 'success'));
-        $failedUpdates = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$tableName} WHERE status = %s", 'failure'));
+        // Retrieve app stats
+        $totalApps = count($appData->all());
 
-        return [
-            'totalUpdates' => $totalUpdates,
-            'successfulUpdates' => $successfulUpdates,
-            'failedUpdates' => $failedUpdates,
+        // Retrieve package stats
+        $packages = $packageData->get_all_packages_grouped();
+        $totalPackages = count($packages['all'] ?? []);
+
+        // Retrieve health stats
+        $healthChecks = $healthData->get_health_checks();
+        $totalHealthChecks = count($healthChecks);
+
+        $stats = [
+            'totalApps' => $totalApps,
+            'totalPackages' => $totalPackages,
+            'totalHealthChecks' => $totalHealthChecks,
         ];
+
+        // Cache the stats data for 1 hour
+        set_transient($cache_key, $stats, HOUR_IN_SECONDS);
+
+        return $stats;
     }
 
     /**
@@ -86,25 +127,12 @@ final class Data {
      * @return array<string, mixed> The recent logs.
      */
     public static function get_recent_logs(int $limit = 10): array {
-        global $wpdb;
+        $logs = get_option(Config::OPTION_LOGS, []);
 
-        $tableName = Config::LOGS_TABLE_NAME;
+        // Sort logs by timestamp in descending order
+        usort($logs, fn($a, $b) => $b['timestamp'] <=> $a['timestamp']);
 
-        // Check if the table exists before running queries.
-        $tableExists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $tableName));
-        if (!$tableExists) {
-            error_log("Table {$tableName} does not exist. Returning empty logs.");
-            return [];
-        }
-
-        // Fetch the most recent logs.
-        $query = $wpdb->prepare(
-            "SELECT * FROM {$tableName} ORDER BY created_at DESC LIMIT %d",
-            $limit
-        );
-        $results = $wpdb->get_results($query, ARRAY_A);
-
-        return $results ?: [];
+        return array_slice($logs, 0, $limit);
     }
 
     /**
@@ -144,12 +172,11 @@ final class Data {
         try {
             return $this->packageData->get_all_packages_grouped();
         } catch (\Throwable $e) {
-            Logger::log('ERROR', 'Failed to retrieve grouped packages: ' . $e->getMessage());
             return [
                 'managed'  => [],
                 'unlinked' => [],
                 'all'      => [],
-                'error'    => __('Unable to load package information at this time.', \WP2\Update\Config::TEXT_DOMAIN),
+                'error'    => __('Unable to load package information at this time.', Config::TEXT_DOMAIN),
             ];
         }
     }

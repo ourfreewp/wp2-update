@@ -1,20 +1,36 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\Services\Github;
-use WP2\Update\Utils\Logger;
-use WP2\Update\Utils\HttpClient;
+
 use WP2\Update\Utils\Cache;
 use WP2\Update\Config;
 use WP2\Update\Data\AppData;
+use WP2\Update\Utils\Logger;
 
 /**
+ * Class ReleaseService
+ *
  * Handles all interactions with the GitHub Releases API.
  */
 class ReleaseService
 {
+    /**
+     * @var ClientService Handles interactions with the GitHub API client.
+     */
     private ClientService $clientService;
+
+    /**
+     * @var AppData Provides access to app-related data.
+     */
     private AppData $appData;
 
+    /**
+     * Constructor for ReleaseService.
+     *
+     * @param ClientService $clientService Handles interactions with the GitHub API client.
+     * @param AppData $appData Provides access to app-related data.
+     */
     public function __construct(ClientService $clientService, AppData $appData)
     {
         $this->clientService = $clientService;
@@ -23,6 +39,7 @@ class ReleaseService
 
     /**
      * Fetches the latest release for a repository.
+     *
      * @param string $repo_slug The repository slug (e.g., 'owner/repo').
      * @param string|null $app_id The app context.
      * @return array|null The latest release data or null on failure.
@@ -49,7 +66,7 @@ class ReleaseService
             Cache::set($cache_key, $release, HOUR_IN_SECONDS);
             return $release;
         } catch (\Throwable $e) {
-            Logger::log('ERROR', "Failed to fetch latest release for {$repo_slug}: " . $e->getMessage());
+            Logger::error('Error fetching latest release.', ['exception' => $e->getMessage(), 'repo_slug' => $repo_slug]);
             return null;
         }
     }
@@ -59,14 +76,48 @@ class ReleaseService
      */
     public function get_release_by_version(string $repo_slug, string $version, ?string $app_id = null): ?array
     {
-        // GitHub API doesn't have a direct "get by version" endpoint, so we fetch all and find the match.
-        $releases = $this->get_all_releases($repo_slug, $app_id);
-        foreach ($releases as $release) {
-            if ($release['tag_name'] === $version) {
-                return $release;
-            }
+        // Validate repo_slug format
+        if (!preg_match('/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/', $repo_slug)) {
+            throw new \InvalidArgumentException(__('Invalid repository slug.', Config::TEXT_DOMAIN));
         }
-        return null;
+
+        // Validate version format
+        if (empty($version)) {
+            throw new \InvalidArgumentException(__('Version cannot be empty.', Config::TEXT_DOMAIN));
+        }
+
+        [$owner, $repo] = explode('/', $repo_slug);
+        $cache_key = sprintf('%s_%s_%s_%s', Config::TRANSIENT_LATEST_RELEASE, $owner, $repo, $version);
+        $cached = Cache::get($cache_key);
+
+        if ($cached !== false) {
+            return $cached;
+        }
+
+        try {
+            $app_id = $this->appData->resolve_app_id($app_id);
+
+            if (!$app_id) {
+                Logger::error('Failed to resolve app_id.', ['repo_slug' => $repo_slug, 'version' => $version]);
+                throw new \InvalidArgumentException(__('A valid app_id is required to fetch the release.', Config::TEXT_DOMAIN));
+            }
+
+            Logger::info('Resolved app_id for release fetch.', ['app_id' => $app_id]);
+
+            $client = $this->clientService->getInstallationClient($app_id);
+
+            // Fetch release by tag name using GitHub's tag-specific endpoint
+            $release = $client->repo()->releases()->tag($owner, $repo, $version);
+            Cache::set($cache_key, $release, HOUR_IN_SECONDS);
+
+            return $release;
+        } catch (\Github\Exception\RuntimeException $e) {
+            Logger::warning('GitHub API error while fetching release.', ['exception' => $e->getMessage(), 'repo_slug' => $repo_slug, 'version' => $version]);
+            return null;
+        } catch (\Throwable $e) {
+            Logger::error('Unexpected error while fetching release.', ['exception' => $e->getMessage(), 'repo_slug' => $repo_slug, 'version' => $version]);
+            return null;
+        }
     }
 
     /**
@@ -90,7 +141,7 @@ class ReleaseService
             Cache::set($cache_key, $releases, HOUR_IN_SECONDS);
             return $releases;
         } catch (\Throwable $e) {
-            Logger::log('ERROR', "Failed to fetch all releases for {$repo_slug}: " . $e->getMessage());
+            Logger::error('Error fetching all releases.', ['exception' => $e->getMessage(), 'repo_slug' => $repo_slug]);
             return [];
         }
     }
@@ -102,7 +153,6 @@ class ReleaseService
     {
         $token = $this->clientService->getInstallationToken($app_id);
         if (!$token) {
-            Logger::log('ERROR', 'Cannot download package without an authentication token.');
             return null;
         }
 
@@ -112,22 +162,51 @@ class ReleaseService
 
         // The download_url function in WordPress doesn't support passing authorization headers directly.
         // We must use a workaround with the http_request_args filter.
-        $download_args_filter = function ($args) use ($token) {
-            $args['headers']['Authorization'] = 'Bearer ' . $token;
+        $download_args_filter = function ($args, $request_url) use ($token) {
+            // Only add the Authorization header for GitHub URLs
+            if (strpos($request_url, 'https://api.github.com') === 0) {
+                $args['headers']['Authorization'] = 'Bearer ' . $token;
+            }
             return $args;
         };
-        add_filter('http_request_args', $download_args_filter, 10, 1);
+        add_filter('http_request_args', $download_args_filter, 10, 2);
 
         $temp_file = download_url($url);
 
-        remove_filter('http_request_args', $download_args_filter);
+        remove_filter('http_request_args', $download_args_filter, 10);
 
         if (is_wp_error($temp_file)) {
-            Logger::log('ERROR', 'Failed to download package: ' . $temp_file->get_error_message());
+            Logger::error('Error downloading package.', ['url' => $url, 'app_id' => $app_id, 'error' => $temp_file->get_error_message()]);
             return null;
         }
 
         return $temp_file;
+    }
+
+    /**
+     * Downloads a package ZIP file for a given repository.
+     *
+     * @param string $repo_slug The repository slug (e.g., 'owner/repo').
+     * @return string|null Path to the downloaded ZIP file or null on failure.
+     */
+    public function download_package_by_repo(string $repo_slug): ?string {
+        [$owner, $repo] = explode('/', $repo_slug);
+
+        $latestRelease = $this->get_latest_release($repo_slug);
+        if (!$latestRelease || empty($latestRelease['zipball_url'])) {
+            return null;
+        }
+
+        $zipUrl = $latestRelease['zipball_url'];
+        $tempFile = sys_get_temp_dir() . '/' . uniqid('wp2_update_', true) . '.zip';
+
+        $downloadedFile = $this->download_package($zipUrl, null);
+        if (!$downloadedFile) {
+            return null;
+        }
+
+        rename($downloadedFile, $tempFile);
+        return $tempFile;
     }
 
     /**
@@ -159,7 +238,7 @@ class ReleaseService
 
             return $release_notes;
         } catch (\Throwable $e) {
-            Logger::log('ERROR', "Failed to fetch release notes for {$repo_slug}: " . $e->getMessage());
+            Logger::error('Error fetching release notes.', ['exception' => $e->getMessage(), 'repo_slug' => $repo_slug]);
             throw new \RuntimeException(__("Failed to fetch release notes.", Config::TEXT_DOMAIN));
         }
     }
@@ -180,7 +259,7 @@ class ReleaseService
      * @param string $repo_slug The repository slug (e.g., 'owner/repo').
      * @return array The list of releases.
      */
-    public function get_releases_for_package(string $repo_slug): array
+    public function get_releases_for_package(string $repo_slug, ?string $app_id = null): array
     {
         [$owner, $repo] = explode('/', $repo_slug);
         $cache_key = sprintf(Config::TRANSIENT_ALL_RELEASES, $owner, $repo);
@@ -191,21 +270,42 @@ class ReleaseService
         }
 
         try {
-            $client = $this->clientService->getInstallationClient(null);
+            $app_id = $this->appData->resolve_app_id($app_id);
+
+            if (!$app_id) {
+                Logger::error('Failed to resolve app_id for fetching releases.', ['repo_slug' => $repo_slug]);
+                return [];
+            }
+
+            $client = $this->clientService->getInstallationClient($app_id);
             if (!$client) {
                 return [];
             }
 
-            $response = $client->get("/repos/{$owner}/{$repo}/releases");
-            $releases = json_decode((string) $response->getBody(), true);
-
-            // Cache the releases for future use
-            Cache::set($cache_key, $releases, Config::CACHE_EXPIRATION);
+            $releases = $client->repo()->releases()->all($owner, $repo);
+            Cache::set($cache_key, $releases, HOUR_IN_SECONDS);
 
             return $releases;
-        } catch (\Exception $e) {
-            Logger::log('ERROR', "Failed to fetch releases for {$repo_slug}: " . $e->getMessage());
+        } catch (\Throwable $e) {
+            Logger::error('Error fetching releases for package.', ['exception' => $e->getMessage()]);
             return [];
+        }
+    }
+
+    /**
+     * Invalidate the cache for a specific repository or all repositories.
+     *
+     * @param string|null $repo_slug The repository slug to invalidate the cache for. If null, invalidates all caches.
+     */
+    public function invalidate_cache(?string $repo_slug = null): void
+    {
+        if ($repo_slug) {
+            [$owner, $repo] = explode('/', $repo_slug);
+            $cache_key = sprintf(Config::TRANSIENT_LATEST_RELEASE, $owner, $repo);
+            Cache::delete($cache_key);
+        } else {
+            // Clear all related caches (if a wildcard mechanism exists, otherwise log for manual cleanup)
+            Logger::info('Cache invalidation for all repositories is not implemented.');
         }
     }
 }

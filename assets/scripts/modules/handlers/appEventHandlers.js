@@ -48,5 +48,46 @@ export function registerAppHandlers(appService, connectionService) {
 
             const polling = setInterval(pollAppStatus, pollInterval);
         }
+
+        if (action === 'initiate-app-creation') {
+            (async () => {
+                const button = target;
+                button.disabled = true;
+                button.textContent = 'Generating...';
+
+                try {
+                    const manifest = await appService.generateManifest();
+                    window.location.href = manifest.setup_url;
+                } catch (error) {
+                    console.error('Error initiating app creation:', error);
+                    button.disabled = false;
+                    button.textContent = 'Try Again';
+                }
+            })();
+        }
+
+        if (action === 'exchange-code') {
+            (async () => {
+                const code = target.dataset.code;
+
+                try {
+                    const result = await appService.exchangeCode(code);
+                    console.log('App connected successfully:', result);
+                } catch (error) {
+                    console.error('Error exchanging code:', error);
+                }
+            })();
+        }
+
+        if (action === 'fetch-app-status' && appId) {
+            (async () => {
+                try {
+                    const status = await appService.fetchAppStatus(appId);
+                    console.log('App status:', status);
+                } catch (error) {
+                    console.error('Error fetching app status:', error);
+                }
+            })();
+        }
     });
 }

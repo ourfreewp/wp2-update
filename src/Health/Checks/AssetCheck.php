@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\Health\Checks;
 
@@ -16,7 +17,7 @@ class AssetCheck extends AbstractCheck {
         $errors = [];
         
         // 1. Check for Vite Manifest existence (Critical build step)
-        $manifest_path = WP2_UPDATE_PLUGIN_DIR . '/dist/.vite/manifest.json';
+        $manifest_path = Config::PLUGIN_DIR . '/dist/.vite/manifest.json';
         if (!file_exists($manifest_path)) {
             $errors[] = __('Vite manifest file is missing. The asset pipeline requires a rebuild.', Config::TEXT_DOMAIN);
         }

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\Utils;
 
@@ -20,7 +21,6 @@ class Encryption
 
         if (!$key) {
             // Log a warning and allow the plugin to continue operating.
-            \WP2\Update\Utils\Logger::log('WARNING', 'Encryption key not found. Certain features may not work as expected.');
             $this->key = null; // No encryption key available.
             return;
         }

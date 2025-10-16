@@ -2,19 +2,22 @@
 
 namespace WP2\Update\Data;
 
+use WP2\Update\Health\AbstractCheck;
 use WP2\Update\Health\Checks\DatabaseCheck;
 use WP2\Update\Health\Checks\ConnectivityCheck;
-use WP2\Update\Services\Github\ConnectionService;
+use WP2\Update\Services\Github\AppService;
 
 /**
  * Service to fetch health check data dynamically.
  */
 class HealthData {
 
-    private ConnectionService $connection_service;
+    private AppService $app_service;
+    private array $health_checks;
 
-    public function __construct(ConnectionService $connection_service) {
-        $this->connection_service = $connection_service;
+    public function __construct(AppService $app_service, array $health_checks) {
+        $this->app_service = $app_service;
+        $this->health_checks = $health_checks;
     }
 
     /**
@@ -23,14 +26,13 @@ class HealthData {
      * @return array The health check data.
      */
     public function get_health_checks(): array {
-        $checks = [
-            new ConnectivityCheck($this->connection_service),
-            new DatabaseCheck(),
-        ];
-
         $health_checks = [];
 
-        foreach ($checks as $check) {
+        foreach ($this->health_checks as $check) {
+            if (!$check instanceof AbstractCheck) {
+                continue;
+            }
+
             $result = $check->run();
             $health_checks[] = [
                 'title' => $result['label'],

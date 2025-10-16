@@ -37,6 +37,11 @@ export const store = atom({
 export const updateState = (newState) => {
     const currentState = store.get();
     const updates = typeof newState === 'function' ? newState(currentState) : newState;
+    // Ensure packages remains an array
+    if (updates.packages && !Array.isArray(updates.packages)) {
+        console.error('Invalid state update: packages must be an array.', updates.packages);
+        return;
+    }
     store.set({ ...currentState, ...updates });
 };
 

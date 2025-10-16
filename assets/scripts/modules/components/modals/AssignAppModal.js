@@ -8,7 +8,7 @@ export const AssignAppModal = (pkg) => {
 
     const bodyContent = `
         <form class="wp2-form" data-repo="${escapeHtml(pkg.repo)}">
-            <p>${__('Select a GitHub App to manage this package.', 'wp2-update')}</p>
+            <p>${wp2UpdateData.i18n.selectGitHubApp}</p>
             <select name="app_id" class="wp2-input">
                 ${apps.map(app => `<option value="${app.id}">${escapeHtml(app.name)}</option>`).join('')}
             </select>
@@ -21,7 +21,7 @@ export const AssignAppModal = (pkg) => {
     ];
 
     return StandardModal({
-        title: `${__('Assign App to', 'wp2-update')} ${escapeHtml(pkg.name)}`,
+        title: `${wp2UpdateData.i18n.assignAppTitle} ${escapeHtml(pkg.name)}`,
         bodyContent,
         footerActions
     });

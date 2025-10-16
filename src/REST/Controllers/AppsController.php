@@ -3,38 +3,52 @@
 namespace WP2\Update\REST\Controllers;
 
 use WP2\Update\REST\AbstractController;
-use WP2\Update\Services\Github\ConnectionService;
+use WP2\Update\Services\Github\AppService;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
+use WP2\Update\Utils\CustomException;
+use WP2\Update\Utils\Permissions;
+use WP2\Update\Data\DTO\AppDTO;
+use WP2\Update\Config;
 
 /**
- * REST controller for managing GitHub App connections (CRUD operations).
+ * Class AppsController
+ *
+ * This class handles REST API endpoints for managing GitHub App connections, including CRUD operations.
  */
 final class AppsController extends AbstractController {
-    private ConnectionService $connectionService;
+    /**
+     * @var AppService The service responsible for handling GitHub App operations.
+     */
+    private AppService $appService;
 
-    public function __construct(ConnectionService $connectionService) {
+    /**
+     * Constructor for the AppsController class.
+     *
+     * @param AppService $appService The service responsible for handling GitHub App operations.
+     */
+    public function __construct(AppService $appService) {
         parent::__construct();
-        $this->connectionService = $connectionService;
+        $this->appService = $appService;
     }
 
     /**
-     * Checks if the user can list apps.
+     * Checks if the user has permission to list apps.
      *
-     * @return bool
+     * @return bool True if the user can list apps, false otherwise.
      */
     private function can_list_apps(): bool {
-        return current_user_can('wp2_list_apps');
+        return current_user_can('manage_options');
     }
 
     /**
-     * Checks if the user can create an app.
+     * Checks if the user has permission to create an app.
      *
-     * @return bool
+     * @return bool True if the user can create an app, false otherwise.
      */
     private function can_create_app(): bool {
-        return current_user_can('wp2_create_app');
+        return current_user_can('manage_options');
     }
 
     /**
@@ -43,7 +57,7 @@ final class AppsController extends AbstractController {
      * @return bool
      */
     private function can_update_app(): bool {
-        return current_user_can('wp2_update_app');
+        return current_user_can('manage_options');
     }
 
     /**
@@ -52,7 +66,7 @@ final class AppsController extends AbstractController {
      * @return bool
      */
     private function can_delete_app(): bool {
-        return current_user_can('wp2_delete_app');
+        return current_user_can('manage_options');
     }
 
     /**
@@ -60,36 +74,51 @@ final class AppsController extends AbstractController {
      */
     public function register_routes(): void {
         register_rest_route($this->namespace, '/apps', [
-            [
-                'methods'             => WP_REST_Server::READABLE,
-                'callback'            => [$this, 'list_apps'],
-                'permission_callback' => [$this, 'can_list_apps'],
-            ],
-            [
-                'methods'             => WP_REST_Server::CREATABLE,
-                'callback'            => [$this, 'create_app'],
-                'permission_callback' => [$this, 'can_create_app'],
-            ],
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => [$this, 'list_apps'],
+            'permission_callback' => $this->permission_callback('wp2_list_apps'),
+        ]);
+
+        register_rest_route($this->namespace, '/apps', [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => [$this, 'create_app'],
+            'permission_callback' => $this->permission_callback('wp2_create_app'),
         ]);
 
         register_rest_route($this->namespace, '/apps/(?P<id>[\w-]+)', [
-            'args' => [
-                'id' => [
-                    'description' => __('The unique identifier for the app.', \WP2\Update\Config::TEXT_DOMAIN),
-                    'type'        => 'string',
-                    'required'    => true,
-                ],
-            ],
-            [
-                'methods'             => WP_REST_Server::EDITABLE,
-                'callback'            => [$this, 'update_app'],
-                'permission_callback' => [$this, 'can_update_app'],
-            ],
-            [
-                'methods'             => WP_REST_Server::DELETABLE,
-                'callback'            => [$this, 'delete_app'],
-                'permission_callback' => [$this, 'can_delete_app'],
-            ],
+            'methods'             => WP_REST_Server::EDITABLE,
+            'callback'            => [$this, 'update_app'],
+            'permission_callback' => $this->permission_callback('wp2_update_app'),
+        ]);
+
+        register_rest_route($this->namespace, '/apps/(?P<id>[\w-]+)', [
+            'methods'             => WP_REST_Server::DELETABLE,
+            'callback'            => [$this, 'delete_app'],
+            'permission_callback' => $this->permission_callback('wp2_delete_app'),
+        ]);
+
+        register_rest_route($this->namespace, '/apps/add-existing', [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => [$this, 'add_existing_app'],
+            'permission_callback' => $this->permission_callback('wp2_create_app'),
+        ]);
+
+        register_rest_route($this->namespace, '/apps/manifest', [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => [$this, 'generate_manifest'],
+            'permission_callback' => $this->permission_callback('wp2_create_app'),
+        ]);
+
+        register_rest_route($this->namespace, '/apps/exchange-code', [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => [$this, 'exchange_code'],
+            'permission_callback' => $this->permission_callback('wp2_exchange_code'),
+        ]);
+
+        register_rest_route($this->namespace, '/apps/(?P<id>[\w-]+)/status', [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => [$this, 'get_connection_status'],
+            'permission_callback' => $this->permission_callback('wp2_get_connection_status'),
         ]);
     }
 
@@ -97,7 +126,7 @@ final class AppsController extends AbstractController {
      * Retrieves a list of all configured apps.
      */
     public function list_apps(): WP_REST_Response {
-        $apps = $this->connectionService->get_app_summaries();
+        $apps = $this->appService->get_app_summaries();
         return $this->respond($apps);
     }
 
@@ -107,14 +136,28 @@ final class AppsController extends AbstractController {
     public function create_app(WP_REST_Request $request): WP_REST_Response {
         $name = sanitize_text_field($request->get_param('name'));
         if (empty($name)) {
-            return $this->respond(__('App name is required.', \WP2\Update\Config::TEXT_DOMAIN), 400);
+            return $this->respond(__('App name is required.', Config::TEXT_DOMAIN), 400);
         }
 
         try {
-            $app = $this->connectionService->create_app_record($name);
-            return $this->respond($app, 201);
+            /** @var AppDTO $app */
+            $app = $this->appService->create_app_record($name);
+
+            // Provide the app data directly in the response for client-side state management
+            return $this->respond([
+                'status' => 'success',
+                'app'    => [
+                    'id'     => $app->id,
+                    'name'   => $app->name,
+                    'status' => $app->status,
+                ],
+            ], 201);
         } catch (\Exception $e) {
-            return $this->respond(__('Failed to create app: ', \WP2\Update\Config::TEXT_DOMAIN) . $e->getMessage(), 500);
+            // Return error details for client-side handling
+            return $this->respond([
+                'status' => 'failed',
+                'error'  => __('Failed to create app: ', Config::TEXT_DOMAIN) . $e->getMessage(),
+            ], 500);
         }
     }
 
@@ -126,7 +169,7 @@ final class AppsController extends AbstractController {
         $params = $request->get_json_params();
 
         try {
-            $updated_app = $this->connectionService->update_app_credentials($id, $params);
+            $updated_app = $this->appService->update_app_credentials($id, $params);
             return $this->respond($updated_app);
         } catch (\Exception $e) {
             return $this->respond($e->getMessage(), 404);
@@ -140,14 +183,43 @@ final class AppsController extends AbstractController {
         $id = $request->get_param('id');
 
         try {
-            $this->connectionService->clear_stored_credentials($id);
+            $this->appService->clear_stored_credentials($id);
 
             // Invalidate cache for the deleted app
-            \WP2\Update\Utils\Cache::delete(\WP2\Update\Config::TRANSIENT_REPOSITORIES_CACHE . '_' . $id);
+            \WP2\Update\Utils\Cache::delete(Config::TRANSIENT_REPOSITORIES_CACHE . '_' . $id);
 
-            return $this->respond(['message' => __('App deleted successfully.', \WP2\Update\Config::TEXT_DOMAIN)]);
+            return $this->respond(['message' => __('App deleted successfully.', Config::TEXT_DOMAIN)]);
         } catch (\Exception $e) {
             return $this->respond($e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Adds an existing GitHub App by securely storing its credentials.
+     */
+    public function add_existing_app(WP_REST_Request $request): WP_REST_Response {
+        $app_id = sanitize_text_field($request->get_param('app_id'));
+        $private_key = $request->get_param('private_key');
+        $webhook_secret = sanitize_text_field($request->get_param('webhook_secret'));
+
+        if (empty($app_id) || empty($private_key) || empty($webhook_secret)) {
+            return $this->respond(__('All fields are required: App ID, Private Key, and Webhook Secret.', Config::TEXT_DOMAIN), 400);
+        }
+
+        try {
+            // Encrypt and store credentials
+            $this->appService->store_manual_credentials($app_id, $private_key, $webhook_secret);
+
+            // Test the connection
+            $connection_status = $this->appService->test_connection($app_id);
+
+            if (!$connection_status['success']) {
+                return $this->respond(__('Failed to validate the GitHub App credentials.', Config::TEXT_DOMAIN), 400);
+            }
+
+            return $this->respond(['message' => __('GitHub App connected successfully.', Config::TEXT_DOMAIN)], 201);
+        } catch (\Exception $e) {
+            return $this->respond(__('Error connecting GitHub App: ', Config::TEXT_DOMAIN) . $e->getMessage(), 500);
         }
     }
 
@@ -198,5 +270,81 @@ final class AppsController extends AbstractController {
     private function save_wizard_progress(array $progress): array {
         // Save progress logic here (e.g., database update).
         return ['status' => 'success', 'message' => 'Progress saved successfully.'];
+    }
+
+    public function generate_manifest(WP_REST_Request $request): WP_REST_Response {
+        $app_id = sanitize_text_field($request->get_param('app_id'));
+        $name = sanitize_text_field($request->get_param('name'));
+        $account_type = sanitize_key($request->get_param('account_type'));
+        $org_slug = sanitize_title($request->get_param('organization'));
+
+        if (empty($app_id) || empty($name)) {
+            return $this->respond(__('App ID and name are required.', Config::TEXT_DOMAIN), 400);
+        }
+
+        try {
+            $result = $this->appService->generate_manifest_data($app_id, $name, $account_type, $org_slug);
+            return $this->respond($result);
+        } catch (\Exception $e) {
+            throw new CustomException($e->getMessage(), 500);
+        }
+    }
+
+    public function exchange_code(WP_REST_Request $request): WP_REST_Response {
+        $code = sanitize_text_field($request->get_param('code'));
+        $state = sanitize_text_field($request->get_param('state'));
+
+        if (empty($code) || empty($state)) {
+            return $this->respond(__('Invalid request. Code and state are required.', Config::TEXT_DOMAIN), 400);
+        }
+
+        try {
+            $app = $this->appService->exchange_code_for_credentials($code, $state);
+            return $this->respond($app);
+        } catch (\Exception $e) {
+            return $this->respond($e->getMessage(), 400);
+        }
+    }
+
+    public function manual_setup(WP_REST_Request $request): WP_REST_Response {
+        $app_id = sanitize_text_field($request->get_param('app_id'));
+        $installation_id = sanitize_text_field($request->get_param('installation_id'));
+        $private_key = sanitize_textarea_field($request->get_param('private_key'));
+
+        if (empty($app_id) || empty($installation_id) || empty($private_key)) {
+            return $this->respond(__('App ID, installation ID, and private key are required.', Config::TEXT_DOMAIN), 400);
+        }
+
+        try {
+            $this->appService->store_manual_credentials($app_id, $installation_id, $private_key);
+            return $this->respond(['message' => __('Credentials stored successfully.', Config::TEXT_DOMAIN)]);
+        } catch (\Exception $e) {
+            return $this->respond($e->getMessage(), 500);
+        }
+    }
+
+    public function get_connection_status(WP_REST_Request $request): WP_REST_Response {
+        try {
+            $app_id = $request->get_param('app_id');
+            if (!$app_id) {
+                throw new \Exception(__('App ID is required.', Config::TEXT_DOMAIN));
+            }
+
+            $status = $this->appService->get_connection_status($app_id);
+            return $this->respond($status);
+        } catch (\Exception $e) {
+            throw new CustomException(__('Unable to retrieve connection status.', Config::TEXT_DOMAIN) . ' ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Provides a generic permission callback that checks for admin capabilities and a valid nonce.
+     *
+     * @param string $action The specific nonce to check.
+     * @param bool $requireNonce Whether nonce validation is required.
+     * @return callable
+     */
+    protected function permission_callback(string $action, bool $requireNonce = true): callable {
+        return parent::permission_callback($action, $requireNonce);
     }
 }
