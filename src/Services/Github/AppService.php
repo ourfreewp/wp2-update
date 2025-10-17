@@ -14,6 +14,7 @@ use Github\Client as GitHubClient;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Data\DTO\AppDTO;
 use WP2\Update\Config;
+use WP2\Update\Services\AppPackageMediator;
 
 /**
  * Handles high-level logic related to GitHub App connections and status.
@@ -26,6 +27,7 @@ class AppService {
 	private AppData $app_data;
 	private Encryption $encryption_service;
 	private $package_service_resolver;
+	private AppPackageMediator $mediator;
 
 	public function __construct(
 		ClientService $client_service,
@@ -51,6 +53,10 @@ class AppService {
 		return $this->package_service;
 	}
 
+	public function setMediator(AppPackageMediator $mediator): void {
+        $this->mediator = $mediator;
+    }
+
 	/**
 	 * Tests the connection for a specific app by attempting an API call.
 	 *
@@ -75,6 +81,7 @@ class AppService {
 				];
 			}
 
+			// Use currentUser()->show() to test the connection
 			$client->currentUser()->show();
 
 			Logger::info('Connection test successful.', ['app_id' => $app_id]);
@@ -267,8 +274,26 @@ class AppService {
 		return $this->client_service->getInstallationClient($app_id);
 	}
 
+	/**
+	 * Validates the app name with GitHub to ensure uniqueness.
+	 *
+	 * @param string $name The app name to validate.
+	 * @return bool True if the app name is valid, false otherwise.
+	 */
 	private function validate_app_name_with_github(string $name): bool {
-		return strlen($name) > 3;
+		try {
+			$client = $this->client_service->getClient();
+			$apps = $client->getHttpClient()->get('/app/installations');
+			foreach ($apps as $app) {
+				if ($app['name'] === $name) {
+					return false; // Name already in use.
+				}
+			}
+			return true;
+		} catch (\Exception $e) {
+			Logger::error('Failed to validate app name with GitHub.', ['error' => $e->getMessage()]);
+			return false;
+		}
 	}
 
 	public function generate_manifest_data(
@@ -388,11 +413,44 @@ class AppService {
     }
 
 	/**
-     * Refactor methods to handle AppDTO objects correctly.
+     * Fetches all apps along with their connection statuses in a batch operation.
+     *
+     * @return array An array of apps with their connection statuses.
      */
-    private function refactorAppDTOHandling() {
-        // Replace array-style access with object property access.
-        // Example: $app['id'] -> $app->id
-        // Ensure all methods are consistent in their usage of AppDTO.
+    public function get_apps_with_status(): array {
+        $apps = $this->app_data->get_all_apps();
+        $apps_with_status = [];
+
+        foreach ($apps as $app) {
+            $app_array = (array) $app; // Ensure $app is treated as an array
+            try {
+                $connection_status = $this->test_connection($app_array['id']); // Access array key safely
+                $apps_with_status[] = (object) array_merge($app_array, [
+                    'status' => $connection_status['success'] ? 'Connected' : 'Error',
+                ]);
+            } catch (\Throwable $e) {
+                $apps_with_status[] = (object) array_merge($app_array, [
+                    'status' => 'Error',
+                ]);
+            }
+        }
+
+        return $apps_with_status;
+    }
+
+	/**
+     * Retrieves all configured apps with their details.
+     *
+     * @return array An array of apps with their details.
+     */
+    public function get_all_apps(): array {
+        $apps = $this->app_data->get_all();
+
+        // Add additional processing or filtering if needed
+        foreach ($apps as &$app) {
+            $app['status'] = $this->get_connection_status($app['id']);
+        }
+
+        return $apps;
     }
 }

@@ -33,10 +33,27 @@ final class Logger
         return class_exists('QM');
     }
 
+    /**
+     * Holds global context for all log messages.
+     *
+     * @var array
+     */
+    private static array $globalContext = [];
+
     // --- Core Logging Methods ---
 
     /**
-     * Logs a message at the specified level dynamically.
+     * Sets global context for all log messages.
+     *
+     * @param array $context Global context to merge with log-specific context.
+     */
+    public static function setGlobalContext(array $context): void
+    {
+        self::$globalContext = $context;
+    }
+
+    /**
+     * Logs a message at the specified level dynamically, with optional global context.
      *
      * @param string $level   The PSR-3 log level.
      * @param mixed  $message The message or data to log.
@@ -45,18 +62,21 @@ final class Logger
      */
     public static function log(string $level, $message, array $context = []): void
     {
-        if (!self::is_qm_active() || !defined('WP2_UPDATE_DEBUG') || !WP2_UPDATE_DEBUG) {
-            return;
-        }
-
         if (!in_array($level, self::VALID_LOG_LEVELS, true)) {
             $level = 'info';
         }
 
-        // Dynamically call the appropriate Query Monitor method
-        if (class_exists('QM') && method_exists('QM', $level)) {
-            \QM::{$level}($message, $context);
+        $mergedContext = array_merge(self::$globalContext, $context);
+        $formattedMessage = sprintf('[%s] %s: %s', strtoupper($level), 'WP2 Update', is_string($message) ? $message : json_encode($message));
+
+        if (self::is_qm_active() && defined('WP2_UPDATE_DEBUG') && WP2_UPDATE_DEBUG) {
+            if (class_exists('QM') && method_exists('QM', $level)) {
+                \QM::$level($formattedMessage, $mergedContext);
+                return;
+            }
         }
+
+        error_log($formattedMessage);
     }
 
     /** Logs a debug message. */
@@ -133,5 +153,56 @@ final class Logger
         if (class_exists('QM')) {
             \QM::assert($condition, $description, $value);
         }
+    }
+
+    // Add correlation ID to global context
+    public static function setCorrelationId(string $correlationId): void
+    {
+        self::$globalContext['correlation_id'] = $correlationId;
+    }
+
+    // Ensure this logic is placed inside a method or function
+    public static function initializeCorrelationId(): void
+    {
+        if (isset($_SERVER['HTTP_X_CORRELATION_ID'])) {
+            self::setCorrelationId($_SERVER['HTTP_X_CORRELATION_ID']);
+        }
+    }
+
+    /**
+     * Retrieves recent logs for streaming from the options API.
+     *
+     * @return array The recent logs.
+     */
+    public static function get_recent_logs(): array {
+        $logs = get_option('wp2_update_logs', []);
+        return is_array($logs) ? $logs : [];
+    }
+
+    /**
+     * Adds a log entry to the options API.
+     *
+     * @param string $message The log message.
+     * @param array $context Additional context for the log entry.
+     */
+    public static function add_log(string $message, array $context = []): void {
+        $logs = get_option('wp2_update_logs', []);
+
+        if (!is_array($logs)) {
+            $logs = [];
+        }
+
+        $logs[] = [
+            'message' => $message,
+            'context' => $context,
+            'timestamp' => current_time('mysql'),
+        ];
+
+        // Keep only the most recent 50 logs
+        if (count($logs) > 50) {
+            $logs = array_slice($logs, -50);
+        }
+
+        update_option('wp2_update_logs', $logs);
     }
 }

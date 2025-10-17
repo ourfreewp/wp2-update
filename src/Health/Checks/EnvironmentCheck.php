@@ -6,6 +6,7 @@ namespace WP2\Update\Health\Checks;
 use WP2\Update\Health\AbstractCheck;
 
 use WP2\Update\Config;
+use WP2\Update\Utils\Logger;
 
 /**
  * Health check for verifying server environment requirements (PHP version, extensions, etc.).
@@ -14,12 +15,19 @@ class EnvironmentCheck extends AbstractCheck {
 
     protected string $label = 'Server Environment';
 
+    public function __construct() {
+        parent::__construct('environment_check');
+    }
+
     /**
      * Runs the environment health check.
      *
      * @return array The result of the health check.
      */
     public function run(): array {
+        // Log the start of the health check
+        Logger::info('Starting EnvironmentCheck health check.');
+
         $errors = [];
 
         // Check PHP version
@@ -32,7 +40,9 @@ class EnvironmentCheck extends AbstractCheck {
 
         // Check WordPress version
         global $wp_version;
-        if (version_compare($wp_version, '6.0', '<')) {
+        if (!isset($wp_version)) {
+            $errors[] = __('WordPress version could not be determined. Ensure WordPress is fully loaded before running health checks.', Config::TEXT_DOMAIN);
+        } elseif (version_compare($wp_version, '6.0', '<')) {
             $errors[] = sprintf(
                 __('WordPress version is %s, but 6.0 or higher is required.', Config::TEXT_DOMAIN),
                 $wp_version
@@ -51,6 +61,7 @@ class EnvironmentCheck extends AbstractCheck {
         }
 
         if (!empty($errors)) {
+            Logger::warning('EnvironmentCheck health check failed.', ['errors' => $errors]);
             return [
                 'label'   => $this->label,
                 'status'  => 'error',
@@ -58,6 +69,7 @@ class EnvironmentCheck extends AbstractCheck {
             ];
         }
 
+        Logger::info('EnvironmentCheck health check passed.');
         return [
             'label'   => $this->label,
             'status'  => 'pass',

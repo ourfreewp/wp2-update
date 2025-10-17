@@ -20,10 +20,28 @@ abstract class AbstractCheck {
     protected string $label;
 
     /**
+     * Constructor to initialize the unique identifier for the health check.
+     *
+     * @param string $id The unique identifier for the health check.
+     */
+    public function __construct(string $id) {
+        $this->id = $id;
+    }
+
+    /**
      * Run the health check and return its result.
      *
      * @return array An associative array containing the result.
      * Expected keys: 'label', 'status' ('pass', 'warn', 'error'), 'message'.
      */
     abstract public function run(): array;
+
+    /**
+     * Returns the unique identifier for the health check.
+     *
+     * @return string The unique identifier.
+     */
+    public function getName(): string {
+        return $this->id;
+    }
 }

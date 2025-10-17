@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update;
 
@@ -52,24 +53,18 @@ class Container implements ContainerInterface
      */
     public function get(string $id)
     {
-        // If the instance already exists, return it immediately.
+        if (!isset($this->definitions[$id])) {
+            \WP2\Update\Utils\Logger::error('Service not found in container.', ['id' => $id]);
+            throw new \Exception("Service '{$id}' not found in container.");
+        }
+
         if (isset($this->instances[$id])) {
             return $this->instances[$id];
         }
 
-        // If there's no definition for the service, we cannot create it.
-        if (!isset($this->definitions[$id])) {
-            throw new Exception("Service '{$id}' not found in container. Please register it in Init.php.");
-        }
-
-        // Create the service instance by calling the factory.
         $factory = $this->definitions[$id];
-        $instance = $factory($this);
-
-        // Cache the newly created instance for future requests.
-        $this->instances[$id] = $instance;
-
-        return $instance;
+        $this->instances[$id] = $factory($this);
+        return $this->instances[$id];
     }
 
     /**

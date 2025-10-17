@@ -94,12 +94,16 @@ class Commands extends \WP_CLI_Command {
         [$repo_slug] = $args;
         Logger::info('Package update initiated via WP-CLI.', ['repo_slug' => $repo_slug]);
 
-        $success = $this->packageService->update_package($repo_slug);
-
-        if ($success) {
-            WP_CLI::success("Package '{$repo_slug}' updated successfully.");
-        } else {
-            WP_CLI::error("Failed to update package '{$repo_slug}'. Check logs for details.");
+        try {
+            $success = $this->packageService->update_package($repo_slug);
+            if ($success) {
+                Logger::info('Package updated successfully.', ['repo_slug' => $repo_slug]);
+            } else {
+                Logger::warning('Package update failed.', ['repo_slug' => $repo_slug]);
+            }
+        } catch (\Exception $e) {
+            Logger::error('Error during package update.', ['repo_slug' => $repo_slug, 'error' => $e->getMessage()]);
+            throw $e;
         }
     }
 

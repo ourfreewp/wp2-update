@@ -37,6 +37,10 @@ abstract class AbstractController implements ControllerInterface {
      * @return WP_REST_Response
      */
     protected function respond($data, int $status = 200): WP_REST_Response {
+        if (defined('WP2_UPDATE_DEBUG') && WP2_UPDATE_DEBUG) {
+            Logger::debug('Responding to REST request.', ['status' => $status, 'data_type' => gettype($data)]);
+        }
+
         $is_error = $status >= 400;
 
         $response_data = [
@@ -46,7 +50,7 @@ abstract class AbstractController implements ControllerInterface {
         if ($is_error) {
             $response_data['message'] = is_string($data) ? $data : __('An unknown error occurred.', Config::TEXT_DOMAIN);
             if (is_array($data)) {
-                 $response_data['data'] = $data;
+                $response_data['data'] = $data;
             }
             Logger::error('REST response error.', ['status' => $status, 'data' => $data]);
         } else {
@@ -98,4 +102,5 @@ abstract class AbstractController implements ControllerInterface {
             $e->getStatusCode()
         );
     }
+
 }

@@ -11,10 +11,8 @@ use WP2\Update\Config;
  * Designed to work with a Vite manifest for modern asset handling.
  */
 final class Assets {
-    private Data $data;
-
-    public function __construct(Data $data) {
-        $this->data = $data;
+    public function __construct() {
+        // Constructor is now empty as Data dependency is removed.
     }
 
     /**
@@ -31,7 +29,6 @@ final class Assets {
      * @param string $hook The current admin page hook.
      */
     public function enqueue_assets(string $hook): void {
-        Logger::info('Attempting to enqueue assets.', ['hook' => $hook]);
 
         $allowed_screens = [
             'toplevel_page_wp2-update',
@@ -50,7 +47,6 @@ final class Assets {
             return;
         }
 
-        Logger::info('Enqueuing assets.', ['manifest' => $manifest]);
         $main_script_handle = 'wp2-update-admin-main';
 
         $this->enqueue_styles_from_manifest( $manifest );
@@ -60,9 +56,6 @@ final class Assets {
         // Enqueue WordPress dependencies
         wp_enqueue_script('wp-i18n');
 
-        // Ensure wp-api-fetch is registered with dependencies
-        wp_register_script('wp-api-fetch', false, ['wp-i18n'], null, true);
-        wp_enqueue_script('wp-api-fetch');
         // Localize REST API root and nonce for use in JavaScript
         wp_localize_script(
             $main_script_handle,
@@ -75,29 +68,15 @@ final class Assets {
     }
 
     /**
-     * Localizes the main script with data from PHP to bootstrap the frontend application.
+     * Localizes the main script with only essential data for the SPA bootstrap.
      * @param string $handle The script handle to attach the data to.
      */
     private function localize_script_data( string $handle ): void {
-        $state = $this->data->get_state();
-
-        // Ensure WordPress environment is fully loaded.
-        if ( ! function_exists( 'add_action' ) ) {
-            Logger::error( 'WordPress environment is not fully loaded. Skipping asset localization.' );
-            return;
-        }
-
         $data = [
-            'nonce'             => wp_create_nonce( 'wp2_get_connection_status' ),
+            // Provide the REST API root URL for the client-side apiFetch utility.
             'apiRoot'           => esc_url_raw( rest_url( Config::REST_NAMESPACE ) ),
-            'connectionStatus'  => $state['connectionStatus'],
-            'apps'              => $state['apps'],
-            'packages'          => $state['packages']['all'], // Pass combined packages
-            'unlinkedPackages'  => $state['packages']['unlinked'],
-            'selectedAppId'     => $state['selectedAppId'],
-            'health'            => $state['health'],
-            'stats'             => $state['stats'],
-            'siteName'          => get_bloginfo('name'),
+            'nonce'             => wp_create_nonce('wp_rest'), // Use a single nonce for all routes
+            // Provide internationalization strings.
             'i18n'              => [
                 'loading' => __( 'Loading', 'wp2-update' ),
                 'appInitialized' => __( 'Application already initialized. Skipping.', 'wp2-update' ),
@@ -130,22 +109,21 @@ final class Assets {
      */
     private function load_manifest(): ?array {
         $manifest_path = WP2_UPDATE_PLUGIN_DIR . '/dist/.vite/manifest.json';
+        Logger::debug('Loading manifest file.', ['path' => $manifest_path]);
 
-        if ( ! file_exists( $manifest_path ) ) {
+        if (!file_exists($manifest_path)) {
+            Logger::warning('Manifest file does not exist.', ['path' => $manifest_path]);
             return null;
         }
 
-        $manifest_contents = file_get_contents( $manifest_path );
-        if ( false === $manifest_contents ) {
+        $manifest = json_decode(file_get_contents($manifest_path), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            Logger::error('Failed to decode manifest file.', ['path' => $manifest_path, 'error' => json_last_error_msg()]);
             return null;
         }
 
-        $manifest = json_decode( $manifest_contents, true );
-        if ( json_last_error() !== JSON_ERROR_NONE ) {
-            return null;
-        }
-
-        return is_array( $manifest ) ? $manifest : null;
+        Logger::info('Manifest file loaded successfully.', ['path' => $manifest_path]);
+        return $manifest;
     }
 
     /**

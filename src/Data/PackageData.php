@@ -48,7 +48,10 @@ class PackageData {
         $offset = ($page - 1) * $per_page;
         $paginated = array_slice($all_packages, $offset, $per_page);
 
-        return array_map(fn($pkg) => PackageDTO::fromArray($pkg), $paginated);
+        return array_map(fn($pkg) => PackageDTO::fromArray([
+            ...$pkg,
+            'repo_slug' => $pkg['repository'] ?? $pkg['repo_slug'] ?? '',
+        ]), $paginated);
     }
 
     /**

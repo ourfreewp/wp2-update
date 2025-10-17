@@ -130,7 +130,7 @@ class Config
     public const OPTION_LOGS = 'wp2_update_logs';
 
     /**
-     * Retrieve a configuration value dynamically.
+     * Retrieve a filterable configuration value.
      *
      * @param string $key The configuration key to retrieve.
      * @param mixed $default The default value to return if the key is not found.
@@ -139,10 +139,26 @@ class Config
     public static function get(string $key, $default = null)
     {
         $config = [
-            'LOG_LEVEL' => 'info', // Default log level
+            'OPTION_APPS' => 'wp2_update_apps',
+            'OPTION_PACKAGES' => 'wp2_update_packages',
+            'OPTION_ENCRYPTION_SALT' => 'wp2_update_encryption_salt',
+            'TRANSIENT_PLUGIN_UPDATES' => 'wp2_plugin_updates',
+            'TRANSIENT_THEME_UPDATES' => 'wp2_theme_updates',
+            'REST_NAMESPACE' => 'wp2-update/v1',
+            'TEXT_DOMAIN' => 'wp2-update',
+            'CACHE_EXPIRATION' => 3600,
         ];
 
-        return $config[$key] ?? $default;
+        $value = $config[$key] ?? $default;
+
+        // Log configuration retrieval
+        if (isset($config[$key])) {
+            Logger::info('Configuration value retrieved.', ['key' => $key, 'value' => $value]);
+        } else {
+            Logger::warning('Configuration key not found.', ['key' => $key, 'default' => $default]);
+        }
+
+        return apply_filters("wp2_update_config_{$key}", $value);
     }
 }
 

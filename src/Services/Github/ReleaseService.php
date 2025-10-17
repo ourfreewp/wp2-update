@@ -46,24 +46,29 @@ class ReleaseService
      */
     public function get_latest_release(string $repo_slug, ?string $app_id = null): ?array
     {
+        Logger::info('Fetching latest release.', ['repo_slug' => $repo_slug, 'app_id' => $app_id]);
+
         [$owner, $repo] = explode('/', $repo_slug);
         $cache_key = sprintf(Config::TRANSIENT_LATEST_RELEASE, $owner, $repo);
         $cached = Cache::get($cache_key);
 
         if ($cached !== false) {
+            Logger::info('Using cached latest release.', ['repo_slug' => $repo_slug]);
             return $cached;
         }
 
         try {
-            // Ensure $app_id is retrieved or validated
             $app_id = $app_id ?? $this->appData->find_active_app()['id'] ?? null;
 
             $client = $this->clientService->getInstallationClient($app_id);
             if (!$client) {
+                Logger::warning('No GitHub client available.', ['app_id' => $app_id]);
                 return null;
             }
+
             $release = $client->repository()->releases()->latest($owner, $repo);
             Cache::set($cache_key, $release, HOUR_IN_SECONDS);
+            Logger::info('Latest release fetched and cached.', ['repo_slug' => $repo_slug]);
             return $release;
         } catch (\Throwable $e) {
             Logger::error('Error fetching latest release.', ['exception' => $e->getMessage(), 'repo_slug' => $repo_slug]);
@@ -76,6 +81,8 @@ class ReleaseService
      */
     public function get_release_by_version(string $repo_slug, string $version, ?string $app_id = null): ?array
     {
+        Logger::info('Fetching release by version.', ['repo_slug' => $repo_slug, 'version' => $version, 'app_id' => $app_id]);
+
         // Validate repo_slug format
         if (!preg_match('/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/', $repo_slug)) {
             throw new \InvalidArgumentException(__('Invalid repository slug.', Config::TEXT_DOMAIN));
@@ -91,6 +98,7 @@ class ReleaseService
         $cached = Cache::get($cache_key);
 
         if ($cached !== false) {
+            Logger::info('Using cached release by version.', ['repo_slug' => $repo_slug, 'version' => $version]);
             return $cached;
         }
 
@@ -98,18 +106,19 @@ class ReleaseService
             $app_id = $this->appData->resolve_app_id($app_id);
 
             if (!$app_id) {
-                Logger::error('Failed to resolve app_id.', ['repo_slug' => $repo_slug, 'version' => $version]);
-                throw new \InvalidArgumentException(__('A valid app_id is required to fetch the release.', Config::TEXT_DOMAIN));
+                Logger::warning('No app ID resolved.', ['repo_slug' => $repo_slug, 'version' => $version]);
+                return null;
             }
 
-            Logger::info('Resolved app_id for release fetch.', ['app_id' => $app_id]);
-
             $client = $this->clientService->getInstallationClient($app_id);
+            if (!$client) {
+                Logger::warning('No GitHub client available.', ['app_id' => $app_id]);
+                return null;
+            }
 
-            // Fetch release by tag name using GitHub's tag-specific endpoint
-            $release = $client->repo()->releases()->tag($owner, $repo, $version);
+            $release = $client->repository()->releases()->tag($owner, $repo, $version);
             Cache::set($cache_key, $release, HOUR_IN_SECONDS);
-
+            Logger::info('Release by version fetched and cached.', ['repo_slug' => $repo_slug, 'version' => $version]);
             return $release;
         } catch (\Github\Exception\RuntimeException $e) {
             Logger::warning('GitHub API error while fetching release.', ['exception' => $e->getMessage(), 'repo_slug' => $repo_slug, 'version' => $version]);
@@ -301,11 +310,38 @@ class ReleaseService
     {
         if ($repo_slug) {
             [$owner, $repo] = explode('/', $repo_slug);
-            $cache_key = sprintf(Config::TRANSIENT_LATEST_RELEASE, $owner, $repo);
-            Cache::delete($cache_key);
+
+            // Invalidate specific repository caches
+            $cache_keys = [
+                sprintf(Config::TRANSIENT_LATEST_RELEASE, $owner, $repo),
+                sprintf(Config::TRANSIENT_ALL_RELEASES, $owner, $repo)
+            ];
+
+            foreach ($cache_keys as $cache_key) {
+                Cache::delete($cache_key);
+            }
+
+            Logger::info('Cache invalidated for repository.', ['repo_slug' => $repo_slug]);
         } else {
-            // Clear all related caches (if a wildcard mechanism exists, otherwise log for manual cleanup)
-            Logger::info('Cache invalidation for all repositories is not implemented.');
+            // Invalidate all caches by iterating over known keys
+            $all_keys = Cache::get_all_keys('wp2_update');
+
+            foreach ($all_keys as $key) {
+                Cache::delete($key);
+            }
+
+            Logger::info('Cache invalidated for all repositories.');
         }
+    }
+
+    /**
+     * Invalidate cache when release channel is updated.
+     *
+     * @param string $repo_slug The repository slug.
+     */
+    public function invalidate_cache_on_channel_update(string $repo_slug): void
+    {
+        $this->invalidate_cache($repo_slug);
+        Logger::info('Cache invalidated due to release channel update.', ['repo_slug' => $repo_slug]);
     }
 }

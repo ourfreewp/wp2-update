@@ -35,6 +35,11 @@ class ClientService {
     private Encryption $encryption;
 
     /**
+     * @var Logger Instance of the Logger service.
+     */
+    private Logger $logger;
+
+    /**
      * @var array Stores GitHub API clients for app installations.
      */
     private array $installationClients = [];
@@ -45,11 +50,13 @@ class ClientService {
      * @param JwtService $jwtService Handles JSON Web Token (JWT) operations.
      * @param AppData $appData Provides access to app-related data.
      * @param Encryption $encryption Handles encryption and decryption of sensitive data.
+     * @param Logger $logger Instance of the Logger service.
      */
-    public function __construct(JwtService $jwtService, AppData $appData, Encryption $encryption) {
+    public function __construct(JwtService $jwtService, AppData $appData, Encryption $encryption, Logger $logger) {
         $this->jwtService = $jwtService;
         $this->appData = $appData;
         $this->encryption = $encryption;
+        $this->logger = $logger;
     }
 
     /**
@@ -87,6 +94,17 @@ class ClientService {
     }
 
     /**
+     * Returns a GitHub client instance.
+     *
+     * @return GitHubClient
+     */
+    public function getClient(): GitHubClient {
+        $client = new GitHubClient();
+        $client->authenticate('your-token-here', 'http_token');
+        return $client;
+    }
+
+    /**
      * Retrieves a cached installation token or generates a new one.
      * @param string $app_id The app ID for which to get a token.
      * @return string|null The installation token or null on failure.
@@ -96,30 +114,37 @@ class ClientService {
         $cached_token = Cache::get($cache_key);
 
         if ($cached_token) {
-            Logger::debug('Installation token retrieved from cache.', ['app_id' => $app_id]);
+            $this->logger->debug('Installation token retrieved from cache.', ['app_id' => $app_id]);
             return $cached_token;
         }
 
-        Logger::info('Generating new installation token.', ['app_id' => $app_id]);
-        Logger::start('token_generation');
+        $this->logger->info('Generating new installation token.', ['app_id' => $app_id]);
+        $this->logger->start('token_generation');
 
         $credentials = $this->fetchStoredCredentials($app_id);
         if (empty($credentials['app_id']) || empty($credentials['private_key']) || empty($credentials['installation_id'])) {
-            Logger::error('Token generation failed: Missing credentials.', ['app_id' => $app_id]);
+            $this->logger->error('Token generation failed: Missing credentials.', [
+                'app_id' => $app_id,
+                'missing_fields' => [
+                    'app_id' => empty($credentials['app_id']),
+                    'private_key' => empty($credentials['private_key']),
+                    'installation_id' => empty($credentials['installation_id'])
+                ]
+            ]);
             return null;
         }
 
         $token_data = $this->createInstallationToken($credentials);
-        Logger::stop('token_generation');
+        $this->logger->stop('token_generation');
 
         if (!$token_data) {
-            Logger::error('Token generation failed: Could not create token via GitHub API.', ['app_id' => $app_id]);
+            $this->logger->error('Token generation failed: Could not create token via GitHub API.', ['app_id' => $app_id]);
             return null;
         }
 
         $expires_in = max(1, $token_data['expires'] - time() - 60);
         Cache::set($cache_key, $token_data['token'], $expires_in);
-        Logger::info('New installation token cached.', ['app_id' => $app_id, 'expires_in' => $expires_in]);
+        $this->logger->info('New installation token cached.', ['app_id' => $app_id, 'expires_in' => $expires_in]);
 
         return $token_data['token'];
     }
@@ -160,22 +185,57 @@ class ClientService {
     private function fetchStoredCredentials(string $app_id): ?array {
         $credentials = $this->appData->find($app_id);
         if (!$credentials instanceof AppDTO) {
-            Logger::error('No credentials found for the given app ID.', ['app_id' => $app_id]);
+            $this->logger->error('No credentials found for the given app ID.', ['app_id' => $app_id]);
             return null;
         }
 
         try {
             // Attempt to decrypt the private key
-            $privateKey = $this->encryption->decrypt($credentials->webhook_secret);
+            $privateKey = $this->encryption->decrypt($credentials->private_key);
         } catch (\Exception $e) {
-            Logger::error('Failed to decrypt private key.', ['app_id' => $app_id, 'error' => $e->getMessage()]);
+            $this->logger->error('Failed to decrypt private key.', ['app_id' => $app_id, 'error' => $e->getMessage()]);
             return null;
         }
 
         return [
             'app_id' => $credentials->id,
             'private_key' => $privateKey,
+            'installation_id' => $credentials->installationId,
             'other_data' => $credentials->metadata ?? null,
         ];
+    }
+
+    /**
+     * Checks and handles GitHub API rate limits.
+     *
+     * @param GitHubClient $client The GitHub client instance.
+     * @return bool Returns true if operations can proceed, false if paused.
+     */
+    public function checkRateLimits(GitHubClient $client): bool {
+        try {
+            $rateLimitData = $client->getHttpClient()->get('/rate_limit');
+            $rateLimit = json_decode($rateLimitData->getBody()->getContents(), true);
+
+            $remaining = $rateLimit['rate']['remaining'] ?? 0;
+            $resetTime = $rateLimit['rate']['reset'] ?? time();
+
+            if ($remaining < 100) {
+                $waitTime = max(0, $resetTime - time());
+                $this->logger->warning('GitHub API rate limit nearing exhaustion. Pausing operations.', [
+                    'remaining' => $remaining,
+                    'reset_time' => $resetTime,
+                    'wait_time' => $waitTime
+                ]);
+
+                // Pause operations until reset time
+                sleep($waitTime);
+                return false;
+            }
+
+            return true;
+        } catch (ExceptionInterface $e) {
+            $this->logger->error('Failed to check GitHub API rate limits.', ['error' => $e->getMessage()]);
+            return true; // Allow operations to proceed in case of error
+        }
     }
 }

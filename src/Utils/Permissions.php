@@ -22,6 +22,9 @@ final class Permissions {
      * @return bool True if the user has permission, false otherwise.
      */
     public static function current_user_can_manage(string $action, WP_REST_Request $request): bool {
+        if (defined('WP2_UPDATE_DEBUG') && WP2_UPDATE_DEBUG) {
+            Logger::debug('Checking if current user can manage.', ['action' => $action, 'user_id' => get_current_user_id()]);
+        }
         // 1. Check user capability.
         if (!current_user_can('manage_options')) {
             Logger::warning('Permission denied: User lacks manage_options capability.', ['action' => $action]);
@@ -46,6 +49,9 @@ final class Permissions {
      * @return bool True if the nonce is valid, false otherwise.
      */
     private static function validate_nonce(string $action, WP_REST_Request $request): bool {
+        if (defined('WP2_UPDATE_DEBUG') && WP2_UPDATE_DEBUG) {
+            Logger::debug('Validating nonce.', ['action' => $action]);
+        }
         $nonce = $request->get_header('X-WP-Nonce') ?: $request->get_param('_wpnonce');
         $isValid = $nonce && wp_verify_nonce($nonce, $action);
 
@@ -62,31 +68,17 @@ final class Permissions {
      * Generates a permission callback for REST routes.
      *
      * @param string $capability The capability required to access the route.
-     * @param bool $requireNonce Whether to validate a nonce.
      * @return callable The permission callback.
      */
-    public static function callback(string $capability, bool $requireNonce = false): callable
+    public static function callback(string $capability): callable
     {
-        return function () use ($capability, $requireNonce) {
+        return function (WP_REST_Request $request) use ($capability) {
             if (!current_user_can($capability)) {
-                return new WP_Error(
-                    'rest_forbidden',
-                    __('You do not have permission to perform this action.', 'wp2-update'),
-                    ['status' => 403]
-                );
+                Logger::warning('Permission denied: User lacks required capability.', ['capability' => $capability]);
+                return false;
             }
 
-            if ($requireNonce) {
-                $nonce = $_REQUEST['_wpnonce'] ?? '';
-                if (!wp_verify_nonce($nonce, 'wp_rest')) {
-                    return new WP_Error(
-                        'rest_invalid_nonce',
-                        __('Invalid nonce.', 'wp2-update'),
-                        ['status' => 403]
-                    );
-                }
-            }
-
+            Logger::info('Permission granted.', ['capability' => $capability]);
             return true;
         };
     }

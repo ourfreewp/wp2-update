@@ -5,6 +5,7 @@ namespace WP2\Update\Health\Checks;
 use WP2\Update\Config;
 use WP2\Update\Health\AbstractCheck;
 use WP2\Update\Services\Github\AppService;
+use WP2\Update\Utils\Logger;
 
 /**
  * Health check for verifying connectivity to GitHub.
@@ -24,39 +25,56 @@ class ConnectivityCheck extends AbstractCheck {
      * @return array The result of the health check.
      */
     public function run(): array {
+        // Log the start of the health check
+        Logger::info('Starting ConnectivityCheck health check.');
+
         $status = 'pass';
         $message = __('Successfully connected to GitHub.', Config::TEXT_DOMAIN);
 
         try {
-            // Retrieve the app ID (this is a placeholder; replace with actual logic to get the app ID)
-            $app_id = 'default_app_id';
+            // Retrieve a real app ID from the AppService
+            $app = $this->appService->get_apps_with_status()[0] ?? null;
 
-            $connection_status = $this->appService->get_connection_status($app_id);
+            if (!$app) {
+                $status = 'warn';
+                $message = __('No GitHub Apps are configured.', Config::TEXT_DOMAIN);
+                return [
+                    'label'   => $this->label,
+                    'status'  => $status,
+                    'message' => $message,
+                ];
+            }
 
-            switch ($connection_status['status']) {
-                case 'not_configured':
-                    $status = 'warn';
-                    $message = __('GitHub App is not configured.', Config::TEXT_DOMAIN);
-                    break;
-                case 'app_created':
-                    $status = 'warn';
-                    $message = __('GitHub App is created but not yet installed on any repositories.', Config::TEXT_DOMAIN);
-                    break;
-                case 'connection_error':
-                    $status = 'error';
-                    $message = __('Could not establish a connection to GitHub. Check credentials and network.', Config::TEXT_DOMAIN);
-                    break;
-                case 'installed':
-                    // This is the success case.
-                    break;
-                default:
-                    $status = 'warn';
-                    $message = __('Connection status is unknown.', Config::TEXT_DOMAIN);
-                    break;
+            // Use the first app ID for the connectivity check
+            $app_id = $app->id ?? null;
+
+            if (!$app_id) {
+                $status = 'warn';
+                $message = __('No valid GitHub App ID found.', Config::TEXT_DOMAIN);
+                return [
+                    'label'   => $this->label,
+                    'status'  => $status,
+                    'message' => $message,
+                ];
+            }
+
+            $connection_status = $this->appService->test_connection($app_id);
+
+            if (!$connection_status['success']) {
+                $status = 'fail';
+                $message = __('Failed to connect to GitHub.', Config::TEXT_DOMAIN);
             }
         } catch (\Exception $e) {
-            $status = 'error';
-            $message = __('An error occurred while checking the GitHub connection: ', Config::TEXT_DOMAIN) . $e->getMessage();
+            $status = 'fail';
+            $message = __('Error during connectivity check: ', Config::TEXT_DOMAIN) . $e->getMessage();
+        }
+
+        if ($status === 'warn') {
+            Logger::warning('ConnectivityCheck health check warning.', ['message' => $message]);
+        } elseif ($status === 'error') {
+            Logger::error('ConnectivityCheck health check failed.', ['message' => $message]);
+        } else {
+            Logger::info('ConnectivityCheck health check passed.');
         }
 
         return [
@@ -64,5 +82,14 @@ class ConnectivityCheck extends AbstractCheck {
             'status'  => $status,
             'message' => $message,
         ];
+    }
+
+    /**
+     * Returns the name of the health check.
+     *
+     * @return string The name of the health check.
+     */
+    public function getName(): string {
+        return 'connectivity_check';
     }
 }

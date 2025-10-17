@@ -47,105 +47,64 @@ final class PackagesController extends AbstractController {
     }
 
     /**
-     * Validates the nonce for REST requests.
-     *
-     * @return bool True if the nonce is valid, false otherwise.
-     */
-    private function validate_nonce(): bool {
-        $nonce = $_REQUEST['_wpnonce'] ?? '';
-        return wp_verify_nonce($nonce, 'wp_rest') !== false;
-    }
-
-    /**
-     * Wrapper for permission callbacks with nonce validation.
-     *
-     * @param callable $callback The original permission callback.
-     * @return callable
-     */
-    private function permission_callback_with_nonce(callable $callback): callable {
-        return function (WP_REST_Request $request) use ($callback) {
-            return Permissions::current_user_can_manage('wp2_nonce_action', $request) && call_user_func($callback);
-        };
-    }
-
-    /**
-     * Provides a generic permission callback that checks for admin capabilities and a valid nonce.
-     *
-     * @param string $action The specific nonce action to verify.
-     * @param bool $requireNonce Whether nonce validation is required.
-     * @return callable
-     */
-    protected function permission_callback(string $action, bool $requireNonce = true): callable {
-        return parent::permission_callback($action, $requireNonce);
-    }
-
-    /**
      * Registers routes for package management.
      */
     public function register_routes(): void {
-        // Route to get all packages
-        register_rest_route($this->namespace, '/packages', [
+        register_rest_route(Config::REST_NAMESPACE, '/packages', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_packages'],
-            'permission_callback' => Permissions::callback('wp2_get_packages', true),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        // Route to force a sync
-        register_rest_route($this->namespace, '/packages/sync', [
+        register_rest_route(Config::REST_NAMESPACE, '/packages/sync', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'sync_packages'],
-            'permission_callback' => Permissions::callback('wp2_sync_packages', true),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        // Route to assign a package to an app
-        register_rest_route($this->namespace, '/packages/assign', [
-            'methods'             => WP_REST_Server::CREATABLE,
+        register_rest_route(Config::REST_NAMESPACE, '/packages/assign', [
+            'methods'             => WP_REST_Server::EDITABLE,
             'callback'            => [$this, 'assign_package'],
-            'permission_callback' => Permissions::callback('manage_options', true),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        // Route to update a single package
-        register_rest_route($this->namespace, '/packages/(?P<repo_slug>[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/update', [
-            'methods'             => WP_REST_Server::CREATABLE,
+        register_rest_route(Config::REST_NAMESPACE, '/packages/(?P<repo_slug>[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/update', [
+            'methods'             => WP_REST_Server::EDITABLE,
             'callback'            => [$this, 'update_package'],
-            'permission_callback' => Permissions::callback('wp2_update_package', true),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        // Route to roll back a single package
-        register_rest_route($this->namespace, '/packages/(?P<repo_slug>[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/rollback', [
-            'methods'             => WP_REST_Server::CREATABLE,
-            'callback'            => [$this, 'rollback_package'],
-            'permission_callback' => Permissions::callback('wp2_rollback_package', true),
+        register_rest_route(Config::REST_NAMESPACE, '/packages/(?P<repo_slug>[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/rollback', [
+            'methods'             => WP_REST_Server::EDITABLE,
+            'callback'            => Permissions::callback('manage_options'),
         ]);
 
         // Route to get release notes for a specific package
-        register_rest_route($this->namespace, '/packages/(?P<repo_slug>[^/]+)/release-notes', [
+        register_rest_route(Config::REST_NAMESPACE, '/packages/(?P<repo_slug>[^/]+)/release-notes', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_release_notes'],
-            'permission_callback' => Permissions::callback('wp2_get_release_notes', true),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
         // Route to update the release channel for a specific package
-        register_rest_route($this->namespace, '/packages/(?P<repo_slug>[^/]+)/release-channel', [
+        register_rest_route(Config::REST_NAMESPACE, '/packages/(?P<repo_slug>[^/]+)/release-channel', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'update_release_channel'],
-            'permission_callback' => Permissions::callback('wp2_update_release_channel', true),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
         // Route to create a new package
-        register_rest_route($this->namespace, '/packages/create', [
+        register_rest_route(Config::REST_NAMESPACE, '/packages/create', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'create_package'],
-            'permission_callback' => Permissions::callback('wp2_create_package', true),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
         // Route to refresh packages
-        register_rest_route($this->namespace, '/refresh-packages', [
+        register_rest_route(Config::REST_NAMESPACE, '/packages/refresh', [
             'methods'  => 'POST',
             'callback' => [$this, 'refresh_packages'],
-            'permission_callback' => $this->permission_callback_with_nonce(function () {
-                return current_user_can('manage_options');
-            }),
+            'permission_callback' => $this->permission_callback('manage_options'),
         ]);
     }
 
@@ -153,8 +112,13 @@ final class PackagesController extends AbstractController {
      * Retrieves paginated packages.
      */
     public function get_packages(WP_REST_Request $request): WP_REST_Response {
-        $page = max(1, (int) $request->get_param('page'));
-        $per_page = max(1, min(100, (int) $request->get_param('per_page')));
+        $page = max(1, (int) sanitize_text_field($request->get_param('page')));
+        $per_page = max(1, min(100, (int) sanitize_text_field($request->get_param('per_page'))));
+
+        Logger::info('Fetching packages.', [
+            'page' => $page,
+            'per_page' => $per_page
+        ]);
 
         try {
             $packages = $this->packageService->get_paginated_packages($page, $per_page);
@@ -212,7 +176,18 @@ final class PackagesController extends AbstractController {
     }
 
     /**
-     * Updates a single package.
+     * Enhanced error response with detailed messages.
+     */
+    private function respondWithError(string $userMessage, string $logMessage, int $statusCode = 500): WP_REST_Response {
+        Logger::error($logMessage);
+        return $this->respond([
+            'error' => $userMessage,
+            'code' => $statusCode
+        ], $statusCode);
+    }
+
+    /**
+     * Updates a single package with enhanced error handling.
      */
     public function update_package(WP_REST_Request $request): WP_REST_Response {
         $repo_slug = sanitize_text_field($request->get_param('repo_slug'));
@@ -220,8 +195,17 @@ final class PackagesController extends AbstractController {
             $success = $this->packageService->update_package($repo_slug);
             $message = $success ? 'Package updated successfully.' : 'Failed to update package.';
             return $this->respond(['message' => __($message, Config::TEXT_DOMAIN)], $success ? 200 : 500);
+        } catch (CustomException $e) {
+            return $this->respondWithError(
+                __('Custom error occurred while updating the package.', Config::TEXT_DOMAIN),
+                $e->getMessage(),
+                400
+            );
         } catch (\Exception $e) {
-            return $this->respond($e->getMessage(), 500);
+            return $this->respondWithError(
+                __('An unexpected error occurred. Please try again later.', Config::TEXT_DOMAIN),
+                $e->getMessage()
+            );
         }
     }
 

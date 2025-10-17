@@ -14,6 +14,7 @@ use WP_REST_Response;
 use WP_REST_Server;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Config;
+use WP2\Update\Utils\Permissions;
 
 /**
  * REST controller for exposing system health status.
@@ -42,20 +43,22 @@ final class HealthController extends AbstractController {
             'assets_loaded' => $assetCheck,
         ];
 
-        // Improved logging for health check initialization
-        Logger::info('HealthController initialized with health checks.', ['checks' => array_keys($this->healthChecks)]);
     }
 
     /**
      * Registers the routes for this controller.
      */
     public function register_routes(): void {
-        register_rest_route($this->namespace, '/health', [
+        register_rest_route(Config::REST_NAMESPACE, '/health', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_health_status'],
-            'permission_callback' => function () {
-                return current_user_can('manage_options');
-            },
+            'permission_callback' => Permissions::callback('manage_options'),
+        ]);
+
+        register_rest_route(Config::REST_NAMESPACE, '/health/connection', [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => [$this, 'get_connection_status'],
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
         // Improved logging for route registration
@@ -85,24 +88,10 @@ final class HealthController extends AbstractController {
     }
 
     /**
-     * Runs all registered health checks and returns the results, grouped for troubleshooting.
+     * Groups health check results for better presentation.
      */
-    public function get_health_status(WP_REST_Request $request): WP_REST_Response {
-        $results = [];
-        foreach ($this->healthChecks as $key => $checkInstance) {
-            $results[$key] = $checkInstance->run();
-            Logger::info("Health check executed for {$key}.", ['result' => $results[$key]]);
-        }
-
-        $results['rest_endpoints'] = [
-            'title' => __('Registered REST Endpoints', Config::TEXT_DOMAIN),
-            'data' => $this->get_plugin_rest_routes(),
-        ];
-
-        Logger::info('Plugin REST endpoints added to health check results.', ['endpoints' => $results['rest_endpoints']]);
-
-        // Group checks by a title for better UI presentation and operational clarity
-        $grouped_results = [
+    private function group_health_results(array $results): array {
+        return [
             [
                 'title' => __('System Environment', Config::TEXT_DOMAIN),
                 'checks' => [
@@ -115,7 +104,10 @@ final class HealthController extends AbstractController {
                 'checks' => [
                     $results['data_integrity'],
                     $results['assets_loaded'],
-                    $results['rest_endpoints'],
+                    [
+                        'title' => __('Registered REST Endpoints', Config::TEXT_DOMAIN),
+                        'data' => $this->get_plugin_rest_routes(),
+                    ],
                 ],
             ],
             [
@@ -125,7 +117,28 @@ final class HealthController extends AbstractController {
                 ],
             ],
         ];
+    }
 
+    /**
+     * Runs all registered health checks and returns the results, grouped for troubleshooting.
+     */
+    public function get_health_status(WP_REST_Request $request): WP_REST_Response {
+        $results = array_map(fn($check) => $check->run(), $this->healthChecks);
+        Logger::info('All health checks executed.', ['results' => $results]);
+
+        $grouped_results = $this->group_health_results($results);
         return $this->respond($grouped_results);
+    }
+
+    /**
+     * Retrieves the connection status for the current app.
+     */
+    public function get_connection_status(WP_REST_Request $request): WP_REST_Response {
+        $connectionStatus = [
+            'status' => 'connected',
+            'message' => __('Connected to the server', Config::TEXT_DOMAIN),
+        ];
+
+        return new WP_REST_Response($connectionStatus, 200);
     }
 }

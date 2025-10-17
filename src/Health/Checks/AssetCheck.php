@@ -5,6 +5,7 @@ namespace WP2\Update\Health\Checks;
 
 use WP2\Update\Health\AbstractCheck;
 use WP2\Update\Config;
+use WP2\Update\Utils\Logger;
 
 /**
  * Health check for verifying asset loading, Vite build integrity, and localized data.
@@ -13,7 +14,14 @@ class AssetCheck extends AbstractCheck {
 
     protected string $label = 'Admin Asset & Localization';
 
+    public function __construct() {
+        parent::__construct('asset_check');
+    }
+
     public function run(): array {
+        // Log the start of the health check
+        Logger::info('Starting AssetCheck health check.');
+
         $errors = [];
         
         // 1. Check for Vite Manifest existence (Critical build step)
@@ -35,6 +43,7 @@ class AssetCheck extends AbstractCheck {
         }
 
         if (!empty($errors)) {
+            Logger::warning('AssetCheck health check failed.', ['errors' => $errors]);
             return [
                 'label'   => $this->label,
                 'status'  => 'error',
@@ -42,6 +51,7 @@ class AssetCheck extends AbstractCheck {
             ];
         }
 
+        Logger::info('AssetCheck health check passed.');
         return [
             'label'   => $this->label,
             'status'  => 'pass',

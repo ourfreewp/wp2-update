@@ -1,6 +1,7 @@
 import { defineConfig, createLogger } from 'vite';
 import path from 'path';
 import sassDts from 'vite-plugin-sass-dts';
+import babel from 'vite-plugin-babel';
 
 // Dynamically determine the plugin path
 const PLUGIN_PATH = process.env.PLUGIN_PATH || '/wp-content/plugins/wp2-update';
@@ -13,6 +14,14 @@ export default defineConfig(({ command }) => {
   return {
     plugins: [
       sassDts(),
+      babel({
+        babelConfig: {
+          plugins: [
+            ['@babel/plugin-proposal-decorators', { legacy: true }],
+            ['@babel/plugin-proposal-class-properties', { loose: true }],
+          ],
+        },
+      }),
       {
         name: 'log-build',
         buildStart() {
@@ -42,9 +51,10 @@ export default defineConfig(({ command }) => {
 
       // Define your entry points
       rollupOptions: {
-        external: ['@wordpress/i18n', 'wp2UpdateData', '@wordpress/api-fetch'],
+        external: ['wp2UpdateData'],
         output: {
           globals: {
+            '@wordpress/api-fetch': 'wp.apiFetch',
             '@wordpress/i18n': 'wp.i18n',
           },
           format: 'es', // Use ES module format to support multiple inputs
@@ -60,7 +70,7 @@ export default defineConfig(({ command }) => {
 
       // Ensure compatibility with older browsers by transpiling to ES2015
       esbuild: {
-        target: 'es2015',
+        target: 'es2020', // Add this line to ensure compatibility with modern JavaScript features
       },
     },
 
@@ -89,5 +99,11 @@ export default defineConfig(({ command }) => {
 
     // Suppress deprecation warnings from Sass dependencies globally
     quietDeps: true,
+
+    resolve: {
+      alias: {
+        '@modals': path.resolve(__dirname, 'assets/scripts/src/components/modals'),
+      },
+    },
   };
 });

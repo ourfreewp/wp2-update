@@ -41,7 +41,14 @@ abstract class AbstractUpdater {
     }
 
     /**
-     * Checks for updates for all managed packages of this type with caching.
+     * Generates a cache key for a given package slug.
+     */
+    private function generate_cache_key(string $slug): string {
+        return 'wp2_update_' . $this->type . '_' . $slug;
+    }
+
+    /**
+     * Checks for updates for all managed packages of this type with enhanced caching.
      */
     public function check_for_updates($transient) {
         if (empty($transient->checked)) {
@@ -51,38 +58,32 @@ abstract class AbstractUpdater {
         Logger::info('Checking for updates.', ['type' => $this->type]);
         Logger::start('update_check_' . $this->type);
 
-        $cache_key = 'wp2_update_' . $this->type . '_updates';
-        $cached_updates = get_transient($cache_key);
-
-        if ($cached_updates !== false) {
-            $transient->response = array_merge($transient->response ?? [], $cached_updates);
-            Logger::info('Updates found in cache.', ['type' => $this->type, 'updates' => $cached_updates]);
-            return $transient;
-        }
-
         $packages = ($this->type === 'plugin')
             ? $this->packageService->getManagedPlugins()
             : $this->packageService->getManagedThemes();
 
+        $cache_duration = apply_filters('wp2/update/cache_duration', 5 * MINUTE_IN_SECONDS);
         $updates = [];
+
         foreach ($packages as $slug => $package) {
-            if (isset($transient->checked[$slug])) {
+            $cache_key = $this->generate_cache_key($slug);
+            $cached_update = get_transient($cache_key);
+
+            if ($cached_update !== false) {
+                $updates[$slug] = $cached_update;
+            } else {
                 $update = $this->get_update_data($package, $transient->checked[$slug]);
                 if ($update) {
+                    set_transient($cache_key, (object) $update, $cache_duration);
                     $updates[$slug] = (object) $update;
                 }
             }
         }
 
-        if (!empty($updates)) {
-            set_transient($cache_key, $updates, 5 * MINUTE_IN_SECONDS);
-            $transient->response = array_merge($transient->response ?? [], $updates);
-            Logger::info('Updates found.', ['type' => $this->type, 'updates' => $updates]);
-        } else {
-            Logger::info('No updates found.', ['type' => $this->type]);
-        }
-
+        $transient->response = array_merge($transient->response ?? [], $updates);
+        Logger::info('Updates processed.', ['type' => $this->type, 'updates' => $updates]);
         Logger::stop('update_check_' . $this->type);
+
         return $transient;
     }
 

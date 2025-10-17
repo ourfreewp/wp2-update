@@ -11,6 +11,7 @@ use WP2\Update\Utils\CustomException;
 use WP2\Update\Utils\Permissions;
 use WP2\Update\Data\DTO\AppDTO;
 use WP2\Update\Config;
+use WP2\Update\Utils\Logger;
 
 /**
  * Class AppsController
@@ -34,106 +35,82 @@ final class AppsController extends AbstractController {
     }
 
     /**
-     * Checks if the user has permission to list apps.
-     *
-     * @return bool True if the user can list apps, false otherwise.
-     */
-    private function can_list_apps(): bool {
-        return current_user_can('manage_options');
-    }
-
-    /**
-     * Checks if the user has permission to create an app.
-     *
-     * @return bool True if the user can create an app, false otherwise.
-     */
-    private function can_create_app(): bool {
-        return current_user_can('manage_options');
-    }
-
-    /**
-     * Checks if the user can update an app.
-     *
-     * @return bool
-     */
-    private function can_update_app(): bool {
-        return current_user_can('manage_options');
-    }
-
-    /**
-     * Checks if the user can delete an app.
-     *
-     * @return bool
-     */
-    private function can_delete_app(): bool {
-        return current_user_can('manage_options');
-    }
-
-    /**
      * Registers the routes for this controller.
      */
     public function register_routes(): void {
-        register_rest_route($this->namespace, '/apps', [
+        register_rest_route(Config::REST_NAMESPACE, '/apps', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'list_apps'],
-            'permission_callback' => $this->permission_callback('wp2_list_apps'),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        register_rest_route($this->namespace, '/apps', [
+        // Route to create an app
+        register_rest_route(Config::REST_NAMESPACE, '/apps/create', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'create_app'],
-            'permission_callback' => $this->permission_callback('wp2_create_app'),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        register_rest_route($this->namespace, '/apps/(?P<id>[\w-]+)', [
+        register_rest_route(Config::REST_NAMESPACE, '/apps/(?P<id>[0-9a-fA-F-]{36})', [
             'methods'             => WP_REST_Server::EDITABLE,
             'callback'            => [$this, 'update_app'],
-            'permission_callback' => $this->permission_callback('wp2_update_app'),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        register_rest_route($this->namespace, '/apps/(?P<id>[\w-]+)', [
+        register_rest_route(Config::REST_NAMESPACE, '/apps/(?P<id>[0-9a-fA-F-]{36})', [
             'methods'             => WP_REST_Server::DELETABLE,
             'callback'            => [$this, 'delete_app'],
-            'permission_callback' => $this->permission_callback('wp2_delete_app'),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        register_rest_route($this->namespace, '/apps/add-existing', [
+        register_rest_route(Config::REST_NAMESPACE, '/apps/connect', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'add_existing_app'],
-            'permission_callback' => $this->permission_callback('wp2_create_app'),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        register_rest_route($this->namespace, '/apps/manifest', [
+        register_rest_route(Config::REST_NAMESPACE, '/apps/manifest', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'generate_manifest'],
-            'permission_callback' => $this->permission_callback('wp2_create_app'),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        register_rest_route($this->namespace, '/apps/exchange-code', [
+        register_rest_route(Config::REST_NAMESPACE, '/apps/code', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'exchange_code'],
-            'permission_callback' => $this->permission_callback('wp2_exchange_code'),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        register_rest_route($this->namespace, '/apps/(?P<id>[\w-]+)/status', [
+        register_rest_route(Config::REST_NAMESPACE, '/apps/(?P<id>[0-9a-fA-F-]{36})/status', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_connection_status'],
-            'permission_callback' => $this->permission_callback('wp2_get_connection_status'),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
 
-        register_rest_route($this->namespace, '/apps/connection-status', [
+        register_rest_route(Config::REST_NAMESPACE, '/apps/status', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_connection_status'],
-            'permission_callback' => $this->permission_callback('wp2_view_connection_status'),
+            'permission_callback' => Permissions::callback('manage_options'),
         ]);
     }
 
     /**
      * Retrieves a list of all configured apps.
      */
-    public function list_apps(): WP_REST_Response {
-        $apps = $this->appService->get_app_summaries();
-        return $this->respond($apps);
+    public function list_apps(WP_REST_Request $request): WP_REST_Response {
+        \WP2\Update\Utils\Logger::start('rest:list_apps');
+        try {
+            $apps = $this->appService->get_all_apps();
+            return $this->respond($apps);
+        } catch (\Exception $e) {
+            \WP2\Update\Utils\Logger::stop('rest:list_apps');
+            Logger::error('Failed to list apps.', [
+                'exception' => $e->getMessage()
+            ]);
+            throw new CustomException(__('Failed to list apps. Please check the logs for more details.', Config::TEXT_DOMAIN), 500);
+        } finally {
+            \WP2\Update\Utils\Logger::stop('rest:list_apps');
+        }
     }
 
     /**
@@ -146,24 +123,10 @@ final class AppsController extends AbstractController {
         }
 
         try {
-            /** @var AppDTO $app */
             $app = $this->appService->create_app_record($name);
-
-            // Provide the app data directly in the response for client-side state management
-            return $this->respond([
-                'status' => 'success',
-                'app'    => [
-                    'id'     => $app->id,
-                    'name'   => $app->name,
-                    'status' => $app->status,
-                ],
-            ], 201);
+            return $this->respond($app, 201);
         } catch (\Exception $e) {
-            // Return error details for client-side handling
-            return $this->respond([
-                'status' => 'failed',
-                'error'  => __('Failed to create app: ', Config::TEXT_DOMAIN) . $e->getMessage(),
-            ], 500);
+            return $this->respond($e->getMessage(), 500);
         }
     }
 
@@ -355,6 +318,25 @@ final class AppsController extends AbstractController {
                 'message' => $e->getMessage(),
                 'data'    => ['status' => 500],
             ], 500);
+        }
+    }
+
+    /**
+     * Retrieves a list of all configured apps with their connection statuses.
+     */
+    public function list_apps_with_status(WP_REST_Request $request): WP_REST_Response {
+        \WP2\Update\Utils\Logger::start('rest:list_apps_with_status');
+        try {
+            $apps = $this->appService->get_apps_with_status();
+            return $this->respond($apps);
+        } catch (\Exception $e) {
+            \WP2\Update\Utils\Logger::stop('rest:list_apps_with_status');
+            Logger::error('Failed to list apps with status.', [
+                'exception' => $e->getMessage()
+            ]);
+            throw new CustomException(__('Failed to list apps with status. Please check the logs for more details.', Config::TEXT_DOMAIN), 500);
+        } finally {
+            \WP2\Update\Utils\Logger::stop('rest:list_apps_with_status');
         }
     }
 

@@ -11,7 +11,10 @@ use WP2\Update\Utils\Logger;
 use WP2\Update\Utils\CustomException;
 use WP2\Update\Config;
 use WP2\Update\Data\DTO\AppDTO;
+use WP2\Update\Data\DTO\PackageDTO;
 use WP2\Update\Utils\Cache;
+use WP2\Update\Repositories\PluginRepository;
+use WP2\Update\Repositories\ThemeRepository;
 
 
 /**
@@ -36,9 +39,14 @@ class PackageService {
     private ClientService $clientService;
 
     /**
-     * @var AppService Handles app-related operations.
+     * @var AppService|null Handles app-related operations.
      */
-    private AppService $appService;
+    private ?AppService $appService;
+
+    private PluginRepository $pluginRepository;
+    private ThemeRepository $themeRepository;
+
+    private AppPackageMediator $mediator;
 
     /**
      * Constructor for PackageService.
@@ -46,33 +54,62 @@ class PackageService {
      * @param RepositoryService $repositoryService Handles repository-related operations.
      * @param ReleaseService $releaseService Handles release-related operations.
      * @param ClientService $clientService Handles GitHub client interactions.
-     * @param AppService $appService Handles app-related operations.
+     * @param PluginRepository $pluginRepository
+     * @param ThemeRepository $themeRepository
+     * @param AppService|null $appService Handles app-related operations.
      */
     public function __construct(
         RepositoryService $repositoryService,
         ReleaseService $releaseService,
         ClientService $clientService,
-        AppService $appService
+        PluginRepository $pluginRepository,
+        ThemeRepository $themeRepository,
+        ?AppService $appService = null
     ) {
         $this->repositoryService = $repositoryService;
         $this->releaseService = $releaseService;
         $this->clientService = $clientService;
+        $this->pluginRepository = $pluginRepository;
+        $this->themeRepository = $themeRepository;
         $this->appService = $appService;
+    }
+
+    public function setMediator(AppPackageMediator $mediator): void {
+        $this->mediator = $mediator;
     }
 
     /**
      * Gets all packages (plugins and themes) and groups them by status.
-     * @return array
+     * Avoids scanning for packages unless explicitly triggered.
+     *
+     * @return array<string, PackageDTO[]>
      */
     public function get_all_packages_grouped(): array {
-        // Implement caching for package data
-        $cacheKey = 'all_packages_grouped';
-        $cachedData = Cache::get($cacheKey);
+		$result = ['all' => []];
+		$local_packages = $this->repositoryService->getLocalPackages();
 
-        if ($cachedData !== false) {
-            return $cachedData;
-        }
+		foreach ($local_packages as $package) {
+			$cacheKey = 'package_' . md5($package['repo']);
+			$cachedPackage = Cache::get($cacheKey);
 
+			if ($cachedPackage !== false) {
+				$result['all'][] = $cachedPackage;
+			} else {
+				$processed_package = $this->process_package($package);
+				Cache::set($cacheKey, $processed_package->toArray(), 3600);
+				$result['all'][] = $processed_package;
+			}
+		}
+
+		return $result;
+	}
+
+    /**
+     * Manually refreshes the package data by scanning for packages.
+     *
+     * @return array The refreshed package data.
+     */
+    public function refresh_packages(): array {
         $local_packages = array_merge($this->getManagedPlugins() ?? [], $this->getManagedThemes() ?? []);
 
         // Validate that $local_packages is iterable
@@ -83,12 +120,14 @@ class PackageService {
         $result = ['all' => []];
 
         foreach ($local_packages as $package) {
+            $cacheKey = 'package_' . md5($package['repo']);
             $processed_package = $this->process_package($package);
+            Cache::set($cacheKey, $processed_package, 3600);
             $result['all'][] = $processed_package;
         }
 
-        // Store the result in cache
-        Cache::set($cacheKey, $result, 3600); // Cache for 1 hour
+        // Cache the entire result
+        Cache::set('wp2_packages_data', $result, 3600);
 
         return $result;
     }
@@ -96,20 +135,20 @@ class PackageService {
     /**
      * Helper method to process a single package.
      */
-    private function process_package(array $package): array {
+    private function process_package(array $package): PackageDTO {
         Logger::assert(!empty($package['repo']), 'Package is missing a repository slug.', $package);
 
         if (empty($package['repo'])) {
             $package['latest'] = null;
             $package['status'] = 'unconnected';
-            return $package;
+            return PackageDTO::fromArray($package);
         }
 
         $latest_release = $this->releaseService->get_latest_release($package['repo']);
         $package['latest'] = $latest_release['tag_name'] ?? null;
         $package['status'] = version_compare($package['version'], $package['latest'], '<') ? 'update_available' : 'up_to_date';
 
-        return $package;
+        return PackageDTO::fromArray($package);
     }
 
     /**
@@ -178,23 +217,7 @@ class PackageService {
                 throw new \RuntimeException("Download URL not found for the latest release of repository: {$repo_slug}");
             }
 
-            Logger::debug('Latest release found.', ['repo_slug' => $repo_slug, 'version' => $latestRelease['tag_name'], 'zip_url' => $zipUrl]);
-
-            $app_id = $this->appService->resolve_app_id(null);
-            $tempFile = $this->releaseService->download_package($zipUrl, $app_id);
-
-            Logger::assert($tempFile && $this->is_valid_package_archive($tempFile, $repo_slug), 'Package archive is invalid or download failed.', ['repo_slug' => $repo_slug, 'temp_file' => $tempFile]);
-
-            $packageType = $this->get_package_type_by_repo($repo_slug);
-            $result = $this->install_from_zip($tempFile, $packageType);
-
-            if (!$result) {
-                throw new \RuntimeException("WordPress upgrader failed to update the package: {$repo_slug}");
-            }
-
-            Logger::info('Package update successful.', ['repo_slug' => $repo_slug]);
-            Logger::stop('package_update_' . str_replace('/', '_', $repo_slug));
-            return true;
+            return $this->install_package_from_zip($repo_slug, $zipUrl);
         } catch (\Throwable $exception) {
             Logger::error('Package update failed.', ['repo_slug' => $repo_slug, 'exception' => $exception->getMessage()]);
             Logger::stop('package_update_' . str_replace('/', '_', $repo_slug));
@@ -202,6 +225,13 @@ class PackageService {
         }
     }
 
+    /**
+     * Rollbacks a package (plugin or theme) to a specific version.
+     *
+     * @param string $repo_slug The repository slug.
+     * @param string $version The version to roll back to.
+     * @return bool True on success, false on failure.
+     */
     public function rollback_package(string $repo_slug, string $version): bool {
         Logger::info('Package rollback process started.', ['repo_slug' => $repo_slug, 'version' => $version]);
         Logger::start('package_rollback_' . str_replace('/', '_', $repo_slug));
@@ -219,23 +249,7 @@ class PackageService {
                 throw new \RuntimeException("Download URL not found for release: {$version} of repository: {$repo_slug}");
             }
 
-            Logger::debug('Release found for rollback.', ['repo_slug' => $repo_slug, 'version' => $version, 'zip_url' => $zipUrl]);
-
-            $app_id = $this->appService->resolve_app_id(null);
-            $tempFile = $this->releaseService->download_package($zipUrl, $app_id);
-
-            Logger::assert($tempFile && $this->is_valid_package_archive($tempFile, $repo_slug), 'Package archive is invalid or download failed.', ['repo_slug' => $repo_slug, 'temp_file' => $tempFile]);
-
-            $packageType = $this->get_package_type_by_repo($repo_slug);
-            $result = $this->install_from_zip($tempFile, $packageType);
-
-            if (!$result) {
-                throw new \RuntimeException("WordPress upgrader failed to roll back the package: {$repo_slug}");
-            }
-
-            Logger::info('Package rollback successful.', ['repo_slug' => $repo_slug, 'version' => $version]);
-            Logger::stop('package_rollback_' . str_replace('/', '_', $repo_slug));
-            return true;
+            return $this->install_package_from_zip($repo_slug, $zipUrl);
         } catch (\Throwable $exception) {
             Logger::error('Package rollback failed.', ['repo_slug' => $repo_slug, 'version' => $version, 'exception' => $exception->getMessage()]);
             Logger::stop('package_rollback_' . str_replace('/', '_', $repo_slug));
@@ -243,16 +257,25 @@ class PackageService {
         }
     }
 
+    private function install_package_from_zip(string $repo_slug, string $zip_url): bool {
+        $app_id = $this->appService->resolve_app_id(null);
+        $tempFile = $this->releaseService->download_package($zip_url, $app_id);
+
+        Logger::assert($tempFile && $this->is_valid_package_archive($tempFile, $repo_slug), 'Package archive is invalid or download failed.', ['repo_slug' => $repo_slug, 'temp_file' => $tempFile]);
+
+        $packageType = $this->get_package_type_by_repo($repo_slug);
+        return $this->install_from_zip($tempFile, $packageType);
+    }
+
     // --- Former PackageFinder Methods ---
 
     /**
-     * Retrieves all managed plugins.
+     * Retrieves all managed plugins using a filterable approach.
      *
      * @return array
      */
     public function getManagedPlugins(): array {
-        // Fetch plugins with the UpdateURI header set to GitHub.
-        $plugins = get_plugins();
+        $plugins = $this->pluginRepository->getAll();
         $managedPlugins = [];
 
         foreach ($plugins as $pluginFile => $pluginData) {
@@ -269,13 +292,12 @@ class PackageService {
     }
 
     /**
-     * Retrieves all managed themes.
+     * Retrieves all managed themes using a filterable approach.
      *
      * @return array
      */
     public function getManagedThemes(): array {
-        // Fetch themes with the UpdateURI header set to GitHub.
-        $themes = wp_get_themes();
+        $themes = $this->themeRepository->getAll();
         $managedThemes = [];
 
         foreach ($themes as $theme) {
@@ -500,17 +522,25 @@ class PackageService {
             return false;
         }
 
-        require_once ABSPATH . 'wp-admin/includes/file.php';
-        require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        require_once ABSPATH . 'wp-admin/includes/theme.php';
-        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+        // Ensure necessary WordPress files are loaded
+        if (!function_exists('get_file_data')) {
+            do_action('admin_init'); // Triggers WordPress admin hooks to load necessary files
+        }
+
+        if (!class_exists('WP_Upgrader')) {
+            throw new \RuntimeException(__('Required WordPress upgrader classes are not available.', 'wp2-update'));
+        }
 
         $upgrader = null;
         if ($packageType === 'plugin') {
-            require_once ABSPATH . 'wp-admin/includes/class-plugin-upgrader.php';
+            if (!class_exists('Plugin_Upgrader')) {
+                throw new \RuntimeException(__('Plugin upgrader class is not available.', 'wp2-update'));
+            }
             $upgrader = new \Plugin_Upgrader();
         } elseif ($packageType === 'theme') {
-            require_once ABSPATH . 'wp-admin/includes/class-theme-upgrader.php';
+            if (!class_exists('Theme_Upgrader')) {
+                throw new \RuntimeException(__('Theme upgrader class is not available.', 'wp2-update'));
+            }
             $upgrader = new \Theme_Upgrader();
         }
 

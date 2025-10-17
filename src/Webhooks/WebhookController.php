@@ -48,31 +48,35 @@ final class WebhookController {
     }
 
     /**
-     * Validates the webhook signature against all known secrets.
+     * Validates the webhook signature against the specific app secret.
      *
      * @param string $payload The raw request body.
      * @param string $signature The X-Hub-Signature-256 header value.
+     * @param string $appId The GitHub App ID.
      * @return bool True if the signature is valid, false otherwise.
      */
-    private function validate_signature(string $payload, string $signature): bool {
+    private function validate_signature(string $payload, string $signature, string $appId): bool {
         $appData = new \WP2\Update\Data\AppData();
-        $apps = $appData->get_all_apps();
+        $app = $appData->find($appId);
 
-        foreach ($apps as $app) {
-            $secret = $app['webhook_secret'] ?? null;
-
-            if (empty($secret)) {
-                continue;
-            }
-
-            $expectedSignature = 'sha256=' . hash_hmac('sha256', $payload, $secret);
-
-            if (hash_equals($expectedSignature, $signature)) {
-                return true;
-            }
+        if (!$app || empty($app->webhook_secret)) {
+            return false;
         }
 
-        return false;
+        $secret = $app->webhook_secret;
+        $expectedSignature = 'sha256=' . hash_hmac('sha256', $payload, $secret);
+
+        return hash_equals($expectedSignature, $signature);
+    }
+
+    /**
+     * Validates the structure of the webhook payload.
+     *
+     * @param array $payload The decoded webhook payload.
+     * @return bool True if the payload is valid, false otherwise.
+     */
+    private function validate_payload(array $payload): bool {
+        return isset($payload['repository']['full_name']) && isset($payload['action']);
     }
 
     /**
@@ -87,7 +91,7 @@ final class WebhookController {
                 $payload = $request->get_body();
                 $appId = $request->get_param('app_id');
 
-                return $this->validate_signature($payload, $signature);
+                return $this->validate_signature($payload, $signature, $appId);
             },
         ]);
     }
@@ -108,7 +112,7 @@ final class WebhookController {
             return new WP_REST_Response(['message' => 'Invalid request.'], 400);
         }
 
-        // Validate the signature against the default secret
+        // Validate the signature against the specific app secret
         $valid = $this->validate_signature($payload, $signature, $appId);
 
         if (!$valid) {
@@ -118,16 +122,28 @@ final class WebhookController {
 
         Logger::info('Webhook signature validated.', ['event' => $event]);
 
+        // Decode and validate the payload
+        $decodedPayload = json_decode($payload, true);
+        if (!$this->validate_payload($decodedPayload)) {
+            Logger::error('Invalid webhook payload structure.', ['payload' => $decodedPayload]);
+            return new WP_REST_Response(['message' => 'Invalid payload structure.'], 400);
+        }
+
         // Schedule an async action instead of processing synchronously
-        as_schedule_single_action(
-            time(),
-            'wp2_update_handle_webhook',
-            [
-                'event'   => $event,
-                'payload' => json_decode($payload, true),
-            ],
-            'wp2-update'
-        );
+        $uniqueActionId = md5(json_encode(['event' => $event, 'payload' => $decodedPayload, 'app_id' => $appId]));
+        if (!as_has_scheduled_action('wp2_update_handle_webhook', ['unique_id' => $uniqueActionId], 'wp2-update')) {
+            as_schedule_single_action(
+                time(),
+                'wp2_update_handle_webhook',
+                [
+                    'event'     => $event,
+                    'payload'   => $decodedPayload,
+                    'app_id'    => $appId,
+                    'unique_id' => $uniqueActionId,
+                ],
+                'wp2-update'
+            );
+        }
 
         return new WP_REST_Response(['message' => 'Webhook received.'], 200);
     }

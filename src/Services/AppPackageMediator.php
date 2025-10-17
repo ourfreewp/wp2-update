@@ -5,6 +5,7 @@ namespace WP2\Update\Services;
 
 use WP2\Update\Services\Github\AppService;
 use WP2\Update\Services\PackageService;
+use WP2\Update\Utils\Logger;
 
 /**
  * Class AppPackageMediator
@@ -42,8 +43,11 @@ class AppPackageMediator {
      * @throws \RuntimeException If the app is not found.
      */
     public function assignPackageToApp(string $app_id, string $repo_slug): void {
+        Logger::info('Assigning package to app.', ['app_id' => $app_id, 'repo_slug' => $repo_slug]);
+
         $app_data = $this->appService->get_app_data($app_id);
         if (!$app_data) {
+            Logger::warning('App not found.', ['app_id' => $app_id]);
             throw new \RuntimeException("App not found: {$app_id}");
         }
 
@@ -53,6 +57,7 @@ class AppPackageMediator {
             $app_data['managed_repositories'] = $managed_repositories;
 
             $this->appService->save_app_data($app_data);
+            Logger::info('Package successfully assigned to app.', ['app_id' => $app_id, 'repo_slug' => $repo_slug]);
         }
     }
 
@@ -62,6 +67,8 @@ class AppPackageMediator {
      * @return array
      */
     public function getAllPackagesGrouped(): array {
+        Logger::info('Retrieving all packages grouped by app status.');
+
         $local_packages = array_merge(
             $this->packageService->getManagedPlugins(),
             $this->packageService->getManagedThemes()
@@ -81,6 +88,35 @@ class AppPackageMediator {
             }
         }
 
+        Logger::info('Packages grouped successfully.', [
+            'managed_count' => count($result['managed']),
+            'unlinked_count' => count($result['unlinked']),
+            'total_count' => count($result['all']),
+        ]);
+
         return $result;
+    }
+
+    /**
+     * Clears the package cache for a given repository slug.
+     */
+    public function clearPackageCache(string $repoSlug): void {
+        Logger::info('Clearing package cache.', ['repo_slug' => $repoSlug]);
+        $this->packageService->refresh_packages();
+        Logger::info('Package cache refreshed successfully.', ['repo_slug' => $repoSlug]);
+    }
+
+    /**
+     * Retrieves app details for a given app ID.
+     */
+    public function getAppDetails(string $appId): array {
+        Logger::info('Retrieving app data.', ['app_id' => $appId]);
+        $details = $this->appService->get_app_data($appId);
+        if ($details === null) {
+            Logger::warning('App data not found.', ['app_id' => $appId]);
+            throw new \RuntimeException("App data not found for ID: {$appId}");
+        }
+        Logger::info('App data retrieved successfully.', ['app_id' => $appId]);
+        return $details;
     }
 }

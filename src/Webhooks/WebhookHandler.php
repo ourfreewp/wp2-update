@@ -14,9 +14,10 @@ class WebhookHandler {
      * @param string $event The GitHub event name.
      * @param array $payload The webhook payload data.
      * @param string $app_id The ID of the app that received the webhook.
+     * @param \WP2\Update\Container $container The container instance to use.
      */
-    public static function handle(string $event, array $payload, string $app_id): void {
-        $container = new \WP2\Update\Container(); // Resolve services via DI container
+    public static function handle(string $event, array $payload, string $app_id, \WP2\Update\Container $container): void {
+        // Use the passed container instance instead of creating a new one
 
         // Handle installation events to automatically save the installation ID.
         if ($event === 'installation' && isset($payload['installation']['id'])) {
@@ -38,9 +39,6 @@ class WebhookHandler {
                     \WP2\Update\Utils\Cache::set($cacheKey, $latestRelease, 5 * MINUTE_IN_SECONDS);
                 }
             }
-
-            do_action('wp2_update_release_published', $payload, $app_id);
-            return;
         }
     }
 }

@@ -36,4 +36,25 @@ class JWT {
             return null;
         }
     }
+
+    /**
+     * Generates a JSON Web Token (JWT) for GitHub App authentication.
+     *
+     * @param string $payload The payload to encode.
+     * @param string $secret The secret key for the JWT.
+     * @return string The generated JWT.
+     */
+    public static function generate(string $payload, string $secret): string {
+        \WP2\Update\Utils\Logger::start('jwt:generate');
+        try {
+            $token = base64_encode(json_encode($payload)) . '.' . base64_encode(hash_hmac('sha256', json_encode($payload), $secret, true));
+            \WP2\Update\Utils\Logger::info('JWT generated successfully.', ['payload' => $payload]);
+            return $token;
+        } catch (\Exception $e) {
+            \WP2\Update\Utils\Logger::error('JWT generation failed.', ['error' => $e->getMessage()]);
+            throw $e;
+        } finally {
+            \WP2\Update\Utils\Logger::stop('jwt:generate');
+        }
+    }
 }

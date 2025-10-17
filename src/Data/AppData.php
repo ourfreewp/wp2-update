@@ -4,6 +4,7 @@ namespace WP2\Update\Data;
 
 use WP2\Update\Config;
 use WP2\Update\Data\DTO\AppDTO;
+use WP2\Update\Utils\Logger;
 
 /**
  * Class AppData
@@ -42,11 +43,13 @@ final class AppData
 
         if ($this->cache === null) {
             $this->cache = $get_option(Config::OPTION_APPS, []);
+            
+            Logger::info('Loaded app data: ' . json_encode($this->cache), ['context' => 'AppData::load']);
         }
 
-        if ($id !== null && !isset($this->cache[$id])) {
-            $all_apps = $get_option(Config::OPTION_APPS, []);
-            $this->cache[$id] = $all_apps[$id] ?? null;
+        // Ensure all app data is loaded into the cache
+        if ($id !== null) {
+            $this->cache[$id] = $this->cache[$id] ?? null;
         }
     }
 
@@ -58,19 +61,20 @@ final class AppData
     public function all(): array
     {
         $this->load();
+        $cache = is_array($this->cache) ? $this->cache : []; // Ensure $this->cache is always an array
+
         return array_values(array_filter(array_map(function ($data) {
+            if (empty($data['id'])) { // Skip records without an ID
+                error_log('Invalid app data: Missing ID. Data: ' . json_encode($data));
+                return null;
+            }
             try {
-                // Ensure installation_id is valid
-                if (empty($data['installation_id']) || !is_string($data['installation_id'])) {
-                    $data['installation_id'] = 'unknown'; // Provide a default value
-                }
                 return AppDTO::fromArray($data);
             } catch (\InvalidArgumentException $e) {
-                // Log the invalid entry for debugging
-                error_log('Invalid app data: ' . json_encode($data));
+                error_log('Invalid app data: ' . $e->getMessage() . '. Data: ' . json_encode($data));
                 return null; // Skip invalid entries
             }
-        }, array_values($this->cache))));
+        }, array_values($cache))));
     }
 
     /**
@@ -157,6 +161,7 @@ final class AppData
      */
     public function find_active_app(): ?array
     {
+        $this->load(); // Ensure the cache is initialized before accessing it
         foreach ($this->cache as $app) {
             if (($app['status'] ?? '') === 'installed') {
                 return $app;
@@ -234,5 +239,20 @@ final class AppData
     private function invalidate_cache(): void
     {
         $this->cache = null;
+    }
+
+    /**
+     * Retrieves all app data from the WordPress options table.
+     *
+     * @return array An array of app data.
+     */
+    public function get_all(): array {
+        $apps = get_option('wp2_apps', []);
+
+        if (!is_array($apps)) {
+            return [];
+        }
+
+        return $apps;
     }
 }

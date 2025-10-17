@@ -13,11 +13,27 @@ class Encryption
     private const CIPHER_METHOD = 'aes-256-cbc';
     private ?string $key;
 
+    private function get_key(): ?string
+    {
+        // Check for key in environment variables
+        $key = getenv('WP2_ENCRYPTION_KEY');
+        if ($key) {
+            return $key;
+        }
+
+        // Check for key in wp-config.php
+        if (defined('WP2_ENCRYPTION_KEY')) {
+            return WP2_ENCRYPTION_KEY;
+        }
+
+        // Fallback to database option
+        $key = get_option(Config::OPTION_ENCRYPTION_SALT);
+        return $key !== false ? $key : null;
+    }
+
     public function __construct(?string $key = null)
     {
-        if ($key === null) {
-            $key = get_option(Config::OPTION_ENCRYPTION_SALT);
-        }
+        $key = $key ?? $this->get_key();
 
         if (!$key) {
             // Log a warning and allow the plugin to continue operating.
