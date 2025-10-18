@@ -18,6 +18,9 @@ final class AppDTO
     public string $status;
     public string $webhook_secret;
     public array $metadata;
+    public string $private_key;
+    public string $appId;
+    public string $privateKey;
 
     public function __construct(
         string $id,
@@ -27,7 +30,10 @@ final class AppDTO
         string $name,
         string $status,
         string $webhook_secret,
-        array $metadata = []
+        array $metadata = [],
+        string $private_key = '',
+        string $appId = '',
+        string $privateKey = ''
     ) {
         $this->id = $id;
         $this->installationId = $installationId;
@@ -37,6 +43,9 @@ final class AppDTO
         $this->status = $status;
         $this->webhook_secret = $webhook_secret;
         $this->metadata = $metadata;
+        $this->private_key = $private_key;
+        $this->appId = $appId;
+        $this->privateKey = $privateKey;
     }
 
     /**
@@ -52,6 +61,7 @@ final class AppDTO
             'created_at' => 'createdAt',
             'updated_at' => 'updatedAt',
             'webhook_secret' => 'webhook_secret',
+            'private_key' => 'private_key',
         ];
 
         foreach ($mapping as $snake => $camel) {
@@ -72,7 +82,7 @@ final class AppDTO
         $data = self::mapKeys($data); // Map keys before validation
 
         // Validate required fields
-        $requiredFields = ['id', 'createdAt', 'updatedAt', 'name', 'status', 'webhook_secret'];
+        $requiredFields = ['id', 'createdAt', 'updatedAt', 'name', 'status'];
 
         // Conditionally require installationId only if the app is considered installed
         if (isset($data['status']) && $data['status'] === 'installed') {
@@ -88,6 +98,8 @@ final class AppDTO
 
         // Ensure installationId is at least an empty string if not set
         $data['installationId'] = $data['installationId'] ?? '';
+        $data['webhook_secret'] = isset($data['webhook_secret']) ? (string) $data['webhook_secret'] : '';
+        $data['metadata'] = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
 
         \WP2\Update\Utils\Logger::assert( isset( $data['id'] ), 'AppDTO missing required id', [ 'data' => $data ] );
         \WP2\Update\Utils\Logger::debug( 'AppDTO initialized', [ 'data' => $data, 'file' => __FILE__, 'line' => __LINE__ ] );
@@ -100,7 +112,10 @@ final class AppDTO
             $data['name'],
             $data['status'],
             $data['webhook_secret'],
-            $data['metadata'] ?? []
+            $data['metadata'] ?? [],
+            (string) ($data['private_key'] ?? ''),
+            (string) ($data['appId'] ?? ''),
+            (string) ($data['privateKey'] ?? '')
         );
     }
 
@@ -126,6 +141,9 @@ final class AppDTO
             'status' => $this->status,
             'webhook_secret' => $this->webhook_secret,
             'metadata' => $this->metadata,
+            'private_key' => $this->private_key,
+            'appId' => $this->appId,
+            'privateKey' => $this->privateKey,
         ];
     }
 }

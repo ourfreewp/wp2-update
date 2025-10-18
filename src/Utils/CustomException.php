@@ -1,8 +1,9 @@
 <?php
-
 declare(strict_types=1);
 
 namespace WP2\Update\Utils;
+
+defined('ABSPATH') || exit;
 
 use Exception;
 

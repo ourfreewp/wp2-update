@@ -1,9 +1,7 @@
 import { LitElement, html } from 'lit';
-import { customElement } from 'lit/decorators.js';
 import { createPackage } from '../../actions/packageActions.js';
 
-@customElement('create-package-modal')
-export class CreatePackageModal extends LitElement {
+class CreatePackageModal extends LitElement {
   render() {
     return html`
       <div class="modal fade" id="createPackageModal" tabindex="-1" aria-labelledby="createPackageModalLabel" aria-hidden="true">
@@ -40,7 +38,7 @@ export class CreatePackageModal extends LitElement {
   }
 
   _handleSave() {
-    const form = this.shadowRoot.querySelector('#create-package-form');
+    const form = this.querySelector('#create-package-form');
     if (!form.checkValidity()) {
       form.reportValidity();
       return;
@@ -68,4 +66,8 @@ export class CreatePackageModal extends LitElement {
       if (triggerButton) triggerButton.focus();
     });
   }
+}
+
+if (!customElements.get('create-package-modal')) {
+  customElements.define('create-package-modal', CreatePackageModal);
 }

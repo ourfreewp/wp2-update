@@ -3,6 +3,10 @@ declare(strict_types=1);
 
 namespace WP2\Update;
 
+defined('ABSPATH') || exit;
+
+use WP2\Update\Utils\Logger;
+
 /**
  * Class Config
  *
@@ -72,7 +76,14 @@ class Config
     /**
      * The required WordPress capability to manage this plugin.
      */
-    public const CAPABILITY = 'manage_options';
+    public const CAPABILITY = 'manage_wp2_updates';
+
+    /**
+     * Custom capabilities for RBAC.
+     */
+    public const CAP_MANAGE = 'manage_wp2_updates';
+    public const CAP_VIEW_LOGS = 'view_wp2_update_logs';
+    public const CAP_RESTORE_BACKUPS = 'restore_wp2_backups';
 
     /**
      * The slug for the main admin menu page.
@@ -100,6 +111,11 @@ class Config
     public const OPTION_PACKAGES_DATA = 'wp2_packages_data';
 
     /**
+     * Option key mapping repo_slug => release channel (stable, beta, develop, alpha).
+     */
+    public const OPTION_RELEASE_CHANNELS = 'wp2_release_channels';
+
+    /**
      * Nonce prefix for manifest validation.
      */
     public const NONCE_MANIFEST_PREFIX = 'wp2_manifest_';
@@ -118,6 +134,25 @@ class Config
      * Debug mode constant to enable or disable detailed logging.
      */
     public const DEBUG_MODE = true;
+
+    /**
+     * Headless mode: when true, the admin UI is not registered. REST/CLI only.
+     * Can be enabled by defining WP2_UPDATE_HEADLESS in wp-config.php
+     */
+    public static function headless(): bool
+    {
+        return defined('WP2_UPDATE_HEADLESS') && WP2_UPDATE_HEADLESS;
+    }
+
+    /**
+     * Developer mode: when true, remote update checks/installs are suppressed to
+     * allow local development without interference.
+     * Can be enabled by defining WP2_UPDATE_DEV_MODE in wp-config.php
+     */
+    public static function dev_mode(): bool
+    {
+        return defined('WP2_UPDATE_DEV_MODE') && WP2_UPDATE_DEV_MODE;
+    }
 
     /**
      * Base directory of the plugin.
@@ -161,4 +196,3 @@ class Config
         return apply_filters("wp2_update_config_{$key}", $value);
     }
 }
-

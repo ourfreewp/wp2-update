@@ -1,6 +1,9 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\REST;
+
+defined('ABSPATH') || exit;
 
 use WP_REST_Request;
 use WP_REST_Response;
@@ -74,7 +77,7 @@ abstract class AbstractController implements ControllerInterface {
 
             if ($requireNonce) {
                 $nonce = $request->get_header('X-WP-Nonce');
-                if (empty($nonce) || !wp_verify_nonce($nonce, $action)) {
+                if (empty($nonce) || !wp_verify_nonce($nonce, 'wp2_update_action')) {
                     Logger::warning('Invalid or missing nonce.', ['action' => $action]);
                     return false;
                 }

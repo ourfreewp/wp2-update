@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace WP2\Update\Utils;
 
+defined('ABSPATH') || exit;
+
 use Firebase\JWT\JWT as FirebaseJWT;
 use WP2\Update\Utils\Logger;
 

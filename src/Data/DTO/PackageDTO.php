@@ -84,6 +84,7 @@ final class PackageDTO
             'version' => $this->version,
             'repo_slug' => $this->repo_slug,
             'last_updated' => $this->lastUpdated,
+            'package_name' => $this->name,
             'metadata' => $this->metadata,
         ];
     }

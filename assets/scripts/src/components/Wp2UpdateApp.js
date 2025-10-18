@@ -2,16 +2,15 @@ import { LitElement, html, css } from 'lit';
 import { customElement } from 'lit/decorators.js';
 import { store, updateState } from '../state/store.js';
 import { StoreController } from '@nanostores/lit';
-
-// Import your view components
-import '../views/DashboardView.js';
-import '../views/HealthView.js';
-import '../views/PackagesView.js';
-import '../views/AppsView.js';
+import { syncAllPackages } from '../actions/packageActions.js';
 
 // Import the new modal manager and notification center
 import './ModalManager.js';
 import './NotificationCenter.js';
+import '../components/shared/UiButton.js';
+
+// Import the router
+import '../router/Router.js';
 
 @customElement('wp2-update-app')
 export class Wp2UpdateApp extends LitElement {
@@ -21,8 +20,24 @@ export class Wp2UpdateApp extends LitElement {
 
   store = new StoreController(this, store);
 
+  syncAll() {
+    syncAllPackages();
+  }
+
   render() {
     const state = store.get();
+    const flags = state.flags || {};
+    const banners = [];
+    if (flags.headless) {
+      banners.push(html`<div class="alert alert-warning mb-3" role="status">
+        <strong>Headless mode:</strong> Admin UI actions are limited; REST/CLI only. Disable <code>WP2_UPDATE_HEADLESS</code> to restore full interface.
+      </div>`);
+    }
+    if (flags.devMode) {
+      banners.push(html`<div class="alert alert-info mb-3" role="status">
+        <strong>Developer mode enabled.</strong> Remote updates are skipped to honor local overrides.
+      </div>`);
+    }
 
     return html`
       <div class="wp2-header d-flex flex-column flex-md-row align-items-md-center justify-content-md-between mb-4">
@@ -31,62 +46,41 @@ export class Wp2UpdateApp extends LitElement {
           <p>Manage your GitHub-hosted plugins and themes with clarity, confidence, and control.</p>
         </div>
         <div class="d-flex gap-2 mt-2 mt-md-0">
-          <button class="btn btn-success" @click="${() => updateState({ activeModal: 'createPackage' })}">
-            <i class="bi bi-plus-lg me-1"></i> Create Package
-          </button>
-          <button class="btn btn-primary" @click="${() => updateState({ activeModal: 'createApp' })}">
-            <i class="bi bi-github me-1"></i> Add GitHub App
-          </button>
-          <button id="sync-all-btn" class="btn btn-outline-secondary">
-            <i class="bi bi-arrow-repeat me-1"></i> Sync All
-          </button>
+          ${window.wp2UpdateData?.caps?.restoreBackups ? html`
+            <ui-button
+              text="Backups"
+              variant="outline-secondary"
+              @click="${() => { window.location.hash = '#/backups'; }}"
+            ></ui-button>
+          `: ''}
+          ${window.wp2UpdateData?.caps?.manage ? html`
+            <ui-button
+              text="Config"
+              variant="outline-secondary"
+              @click="${() => { window.location.hash = '#/config'; }}"
+            ></ui-button>
+          ` : ''}
+          <ui-button
+            text="Create Package"
+            variant="success"
+            @click="${() => updateState({ activeModal: 'createPackage' })}"
+          ></ui-button>
+          <ui-button
+            text="Add GitHub App"
+            variant="primary"
+            @click="${() => updateState({ activeModal: 'createApp' })}"
+          ></ui-button>
+          <ui-button
+            text="Sync All"
+            variant="outline-secondary"
+            @click="${this.syncAll}"
+          ></ui-button>
         </div>
       </div>
-      <nav class="nav nav-tabs" role="tablist">
-        <a
-          class="nav-link ${state.activeTab === 'dashboard' ? 'active' : ''}"
-          role="tab"
-          aria-selected="${state.activeTab === 'dashboard'}"
-          @click=${() => this._setActiveTab('dashboard')}
-        >
-          Dashboard
-        </a>
-        <a
-          class="nav-link ${state.activeTab === 'health' ? 'active' : ''}"
-          role="tab"
-          aria-selected="${state.activeTab === 'health'}"
-          @click=${() => this._setActiveTab('health')}
-        >
-          Health
-        </a>
-        <a
-          class="nav-link ${state.activeTab === 'packages' ? 'active' : ''}"
-          role="tab"
-          aria-selected="${state.activeTab === 'packages'}"
-          @click=${() => this._setActiveTab('packages')}
-        >
-          Packages
-        </a>
-        <a
-          class="nav-link ${state.activeTab === 'apps' ? 'active' : ''}"
-          role="tab"
-          aria-selected="${state.activeTab === 'apps'}"
-          @click=${() => this._setActiveTab('apps')}
-        >
-          Apps
-        </a>
-      </nav>
-
-      <div class="tab-content pt-4">
-          ${state.activeTab === 'dashboard'
-            ? html`<dashboard-view id="dashboard-panel" role="tabpanel"></dashboard-view>`
-            : state.activeTab === 'health'
-            ? html`<health-view id="health-panel" role="tabpanel"></health-view>`
-            : state.activeTab === 'packages'
-            ? html`<packages-view id="packages-panel" role="tabpanel"></packages-view>`
-            : html`<apps-view id="apps-panel" role="tabpanel"></apps-view>`}
-      </div>
-
+      <!-- Visually hidden aria-live region for dynamic status updates -->
+      <div id="wp2-status-live" aria-live="polite" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;">${store.get().statusMessage || ''}</div>
+      ${banners}
+      <wp2-router></wp2-router>
       <modal-manager></modal-manager>
       <notification-center></notification-center>
     `;

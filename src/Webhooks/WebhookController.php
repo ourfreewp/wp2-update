@@ -1,12 +1,14 @@
 <?php
-
 namespace WP2\Update\Webhooks;
+
+defined('ABSPATH') || exit;
 
 use WP2\Update\Services\Github\ClientService;
 use WP2\Update\Services\Github\ReleaseService;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP2\Update\Utils\Logger;
+use WP2\Update\Utils\Encryption;
 
 /**
  * Class WebhookController
@@ -36,18 +38,6 @@ final class WebhookController {
     }
 
     /**
-     * Retrieves the webhook secret for the given app ID.
-     *
-     * @param string $appId The GitHub App ID.
-     * @return string|null The webhook secret, or null if not found.
-     */
-    private function get_webhook_secret(string $appId): ?string {
-        $appData = new \WP2\Update\Data\AppData();
-        $app = $appData->resolve_app_id($appId);
-        return $app['webhook_secret'] ?? null;
-    }
-
-    /**
      * Validates the webhook signature against the specific app secret.
      *
      * @param string $payload The raw request body.
@@ -63,10 +53,21 @@ final class WebhookController {
             return false;
         }
 
-        $secret = $app->webhook_secret;
+        $secret = $app->webhook_secret; // Use the secret directly without decrypting again
         $expectedSignature = 'sha256=' . hash_hmac('sha256', $payload, $secret);
 
-        return hash_equals($expectedSignature, $signature);
+        // Iterate over all stored webhook secrets if app_id is not trusted
+        $allSecrets = $appData->get_all_webhook_secrets();
+        $isValid = false;
+        foreach ($allSecrets as $storedSecret) {
+            $computedSignature = 'sha256=' . hash_hmac('sha256', $payload, $storedSecret);
+            if (hash_equals($computedSignature, $signature)) {
+                $isValid = true;
+                break;
+            }
+        }
+
+        return $isValid;
     }
 
     /**
@@ -137,7 +138,7 @@ final class WebhookController {
                 'wp2_update_handle_webhook',
                 [
                     'event'     => $event,
-                    'payload'   => $decodedPayload,
+                    'payload'   => array_merge($decodedPayload, ['__attempt' => 1]),
                     'app_id'    => $appId,
                     'unique_id' => $uniqueActionId,
                 ],

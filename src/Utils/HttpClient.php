@@ -3,12 +3,19 @@ declare(strict_types=1);
 
 namespace WP2\Update\Utils;
 
+defined('ABSPATH') || exit;
+
 use WP2\Update\Utils\Logger;
 
 /**
  * A simple wrapper around WordPress's HTTP API for making remote requests.
  */
 final class HttpClient {
+
+    /**
+     * Default timeout for HTTP requests in seconds.
+     */
+    private const DEFAULT_TIMEOUT = 30;
 
     /**
      * Sends a GET request.
@@ -20,7 +27,7 @@ final class HttpClient {
         try {
             $args = [
                 'headers' => $headers,
-                'timeout' => 15,
+                'timeout' => self::DEFAULT_TIMEOUT,
             ];
             $result = self::request('GET', $url, $args);
             Logger::stop($timer_name);
@@ -45,7 +52,7 @@ final class HttpClient {
             $args = [
                 'headers' => $headers,
                 'body' => json_encode($data),
-                'timeout' => 15,
+                'timeout' => self::DEFAULT_TIMEOUT,
             ];
             $result = self::request('POST', $url, $args);
             Logger::stop($timer_name);

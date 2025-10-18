@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace WP2\Update\Services\Github;
 
+defined('ABSPATH') || exit;
+
 use WP2\Update\Data\AppData;
 use WP2\Update\Utils\Cache;
 use WP2\Update\Config;
@@ -255,7 +257,17 @@ class RepositoryService {
             throw new \InvalidArgumentException('Invalid release channel provided.');
         }
 
-        // Logic to update the release channel for the repository.
+        $allowed = ['stable','beta','develop','alpha'];
+        if (!in_array(strtolower($channel), $allowed, true)) {
+            throw new \InvalidArgumentException('Unsupported release channel.');
+        }
+
+        // Persist mapping repo_slug => channel
+        $map = get_option(\WP2\Update\Config::OPTION_RELEASE_CHANNELS, []);
+        if (!is_array($map)) { $map = []; }
+        $map[$repo_slug] = strtolower($channel);
+        update_option(\WP2\Update\Config::OPTION_RELEASE_CHANNELS, $map);
+
         Logger::info("Updated release channel for {$repo_slug} to {$channel}.");
     }
 
@@ -272,4 +284,3 @@ class RepositoryService {
         ];
     }
 }
-

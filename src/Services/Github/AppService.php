@@ -102,8 +102,12 @@ class AppService {
 
 	/**
 	 * Exchanges a temporary GitHub code for permanent app credentials.
+	 *
+	 * @param string $code The GitHub code.
+	 * @param string $state The state parameter.
+	 * @return AppDTO The updated AppDTO object.
 	 */
-	public function exchange_code_for_credentials(string $code, string $state): array {
+	public function exchange_code_for_credentials(string $code, string $state): AppDTO {
 		$code = sanitize_text_field($code);
 		$state = sanitize_text_field($state);
 
@@ -140,51 +144,47 @@ class AppService {
 
 	/**
 	 * Stores credentials received from GitHub.
+	 *
+	 * @param string $app_id The ID of the app.
+	 * @param array $credentials The credentials received from GitHub.
+	 * @return AppDTO The updated AppDTO object.
 	 */
-	public function store_app_credentials(string $app_id, array $credentials): array {
+	public function store_app_credentials(string $app_id, array $credentials): AppDTO {
 		Logger::info('Storing app credentials.', ['app_id' => $app_id]);
 
-		$app_data       = $this->app_data->find($app_id) ?? ['id' => $app_id];
-		$encryption_key = $app_data['encryption_key'] ?? bin2hex(random_bytes(16));
-		$app_data['encryption_key'] = $encryption_key;
+        $app = $this->app_data->find($app_id) ?? new AppDTO(
+            $app_id,
+            '',
+            date('Y-m-d H:i:s'),
+            date('Y-m-d H:i:s'),
+            '',
+            'not_configured',
+            '',
+            [],
+            ''
+        );
 
-		$enc = new Encryption($encryption_key);
+        $app->name = sanitize_text_field($credentials['name'] ?? $app->name);
+        $app->installationId = (string) ($credentials['id'] ?? $app->installationId);
+        $app->status = !empty($app->installationId) ? 'installed' : $app->status;
+        $app->updatedAt = current_time('mysql', true);
 
-		$app_data = array_merge(
-			$app_data,
-			[
-				'name'           => sanitize_text_field($credentials['name'] ?? $app_data['name'] ?? ''),
-				'app_id'         => absint($credentials['id'] ?? 0),
-				'private_key'    => $enc->encrypt($credentials['private_key'] ?? ''),
-				'webhook_secret' => $enc->encrypt($credentials['webhook_secret'] ?? ''),
-			]
-		);
+        if (!empty($credentials['webhook_secret'])) {
+            $app->webhook_secret = trim((string) $credentials['webhook_secret']);
+        }
 
-		$this->app_data->save($app_data);
-		return $app_data;
-	}
+        $incomingPrivateKey = $credentials['private_key'] ?? ($credentials['pem'] ?? null);
+        if (!empty($incomingPrivateKey)) {
+            $app->private_key = trim((string) $incomingPrivateKey);
+        }
+
+        $this->app_data->save($app);
+        Cache::delete('wp2_inst_token_' . $app_id);
+        return $app;
+    }
 
 	public function resolve_app_id(?string $app_id): ?string {
 		return $app_id ?: ($this->app_data->find_active_app()['id'] ?? null);
-	}
-
-	public function get_all_webhook_secrets(): array {
-		$secrets = [];
-		foreach ($this->app_data->all() as $app) {
-			if (!empty($app->webhook_secret)) {
-				$secrets[$app->id] = $app->webhook_secret;
-			}
-		}
-		return $secrets;
-	}
-
-	public function update_installation_id(string $app_id, int $installation_id): void {
-		$app = $this->app_data->find($app_id);
-		if (!$app) {
-			return;
-		}
-		$app->installationId = $installation_id;
-		$this->app_data->save($app);
 	}
 
 	/**
@@ -196,11 +196,11 @@ class AppService {
     public function get_connection_status(string $app_id): array {
         $app = $this->app_data->find($app_id);
 
-        if (!$app) {
+        if (!$app instanceof AppDTO) {
             return ['status' => 'not_configured'];
         }
 
-        if (empty($app['installation_id'])) {
+        if (empty($app->installationId)) {
             return ['status' => 'app_created'];
         }
 
@@ -224,22 +224,44 @@ class AppService {
 		if (!$this->validate_app_name_with_github($name)) {
 			throw new \RuntimeException('The app name is invalid or already in use on GitHub.');
 		}
-		$app = new AppDTO(
-			uniqid('app_', true),
-			'', // installationId placeholder
-			date('Y-m-d H:i:s'),
-			date('Y-m-d H:i:s'),
-			$name,
-			'inactive',
-			'' // webhook_secret placeholder
-		);
+        $app = new AppDTO(
+            uniqid('app_', true),
+            '', // installationId placeholder
+            date('Y-m-d H:i:s'),
+            date('Y-m-d H:i:s'),
+            $name,
+            'inactive',
+            '',
+            [],
+            ''
+        );
 		$this->app_data->save($app);
 		return $app;
 	}
 
-	public function get_apps(): array {
-		return $this->app_data->all();
-	}
+	/**
+     * Retrieves all apps.
+     *
+     * @return AppDTO[] List of all AppDTO objects.
+     */
+    public function get_apps(): array {
+        return $this->app_data->get_all();
+    }
+
+    /**
+     * Retrieves managed repositories by app.
+     *
+     * @return array<string, string> Mapping of repository slugs to app IDs.
+     */
+    public function get_managed_repositories_by_app(): array {
+        $managed = [];
+        foreach ($this->app_data->get_all() as $app) {
+            foreach ($app->metadata['managed_repositories'] ?? [] as $repo_slug) {
+                $managed[$repo_slug] = $app->id;
+            }
+        }
+        return $managed;
+    }
 
 	public function get_app_data(string $app_id): ?array {
 		return $this->app_data->find($app_id);
@@ -248,16 +270,6 @@ class AppService {
 	public function save_app_data(array $app_data): void {
 		$appDTO = AppDTO::fromArray($app_data);
 		$this->app_data->save($appDTO);
-	}
-
-	public function get_managed_repositories_by_app(): array {
-		$managed = [];
-		foreach ($this->app_data->all() as $app) {
-			foreach ($app->metadata['managed_repositories'] ?? [] as $repo_slug) {
-				$managed[$repo_slug] = $app->id;
-			}
-		}
-		return $managed;
 	}
 
 	public function generate_webhook_secret(): string {
@@ -280,21 +292,39 @@ class AppService {
 	 * @param string $name The app name to validate.
 	 * @return bool True if the app name is valid, false otherwise.
 	 */
-	private function validate_app_name_with_github(string $name): bool {
-		try {
-			$client = $this->client_service->getClient();
-			$apps = $client->getHttpClient()->get('/app/installations');
-			foreach ($apps as $app) {
-				if ($app['name'] === $name) {
-					return false; // Name already in use.
-				}
-			}
-			return true;
-		} catch (\Exception $e) {
-			Logger::error('Failed to validate app name with GitHub.', ['error' => $e->getMessage()]);
-			return false;
-		}
-	}
+    private function validate_app_name_with_github(string $name): bool {
+        try {
+            $appId = $this->resolve_app_id(null);
+            if (!$appId) {
+                Logger::warning('No active app available to validate name. Skipping remote validation.');
+                return true;
+            }
+
+            $client = $this->client_service->getClient($appId);
+            if (!$client) {
+                Logger::warning('Failed to obtain GitHub client for validation.', ['app_id' => $appId]);
+                return true;
+            }
+
+            $response = $client->getHttpClient()->get('/app/installations');
+            $body = [];
+            if ($response instanceof \Psr\Http\Message\ResponseInterface) {
+                $body = json_decode($response->getBody()->getContents(), true) ?: [];
+            } elseif (is_array($response)) {
+                $body = $response;
+            }
+
+            foreach ($body as $app) {
+                if (($app['name'] ?? '') === $name) {
+                    return false; // Name already in use.
+                }
+            }
+            return true;
+        } catch (\Exception $e) {
+            Logger::error('Failed to validate app name with GitHub.', ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
 
 	public function generate_manifest_data(
 		string $app_id,
@@ -324,18 +354,50 @@ class AppService {
 		$this->app_data->delete_all();
 	}
 
-	public function store_manual_credentials(string $app_id, string $installation_id, string $private_key): void {
-		$app = $this->app_data->find($app_id) ?? ['id' => $app_id];
-		$app = array_merge(
-			$app,
-			[
-				'app_id'          => absint($app_id),
-				'installation_id' => absint($installation_id),
-				'private_key'     => $this->encryption_service->encrypt($private_key),
-			]
-		);
-		$this->app_data->save($app);
-	}
+	/**
+     * Stores manual credentials for a GitHub App.
+     *
+     * @param string $app_id The ID of the app.
+     * @param string $private_key The private key for the app.
+     * @param string $webhook_secret The webhook secret for the app.
+     * @return void
+     */
+    public function store_manual_credentials(string $app_id, string $private_key, string $webhook_secret): void {
+        $app = $this->app_data->find($app_id) ?? new AppDTO(
+            $app_id,
+            '',
+            date('Y-m-d H:i:s'),
+            date('Y-m-d H:i:s'),
+            '',
+            'inactive',
+            '',
+            [],
+            ''
+        );
+
+        $app->webhook_secret = trim($webhook_secret);
+        $app->private_key = trim($private_key);
+        $app->status = !empty($app->installationId) ? 'installed' : 'inactive';
+        $app->updatedAt = current_time('mysql', true);
+
+        $this->app_data->save($app);
+        Cache::delete('wp2_inst_token_' . $app_id);
+    }
+
+    /**
+     * Retrieves all webhook secrets, decrypting them as needed.
+     *
+     * @return array<string, string> An array mapping app IDs to their decrypted webhook secrets.
+     */
+    public function get_all_webhook_secrets(): array {
+        $secrets = [];
+        foreach ($this->app_data->get_all() as $app) {
+            if (!empty($app->webhook_secret)) {
+                $secrets[$app->id] = $app->webhook_secret;
+            }
+        }
+        return $secrets;
+    }
 
 	public function update_app_credentials(string $id, array $credentials): AppDTO {
 		$app = $this->app_data->find($id);
@@ -343,15 +405,18 @@ class AppService {
 			throw new \RuntimeException('App not found.');
 		}
 
-		// Update the AppDTO object with new credentials
-		foreach ($credentials as $key => $value) {
-			if (property_exists($app, $key)) {
-				$app->$key = $value;
-			}
-		}
+        // Update the AppDTO object with new credentials
+        foreach ($credentials as $key => $value) {
+            if (property_exists($app, $key)) {
+                if (in_array($key, ['webhook_secret', 'private_key'], true)) {
+                    $value = trim((string) $value);
+                }
+                $app->$key = $value;
+            }
+        }
 
-		$this->app_data->save($app);
-		return $app;
+        $this->app_data->save($app);
+        return $app;
 	}
 
 	/**
@@ -398,18 +463,7 @@ class AppService {
      * @return array An array of AppDTO objects representing the apps.
      */
     public function get_app_summaries(): array {
-        $apps = $this->app_data->get_all_apps();
-        return array_map(function ($app) {
-            return new AppDTO(
-                $app['id'],
-                $app['installation_id'],
-                $app['created_at'],
-                $app['updated_at'],
-                $app['name'],
-                $app['status'],
-                $app['metadata'] ?? []
-            );
-        }, $apps);
+        return $this->app_data->get_all();
     }
 
 	/**
@@ -447,8 +501,8 @@ class AppService {
         $apps = $this->app_data->get_all();
 
         // Add additional processing or filtering if needed
-        foreach ($apps as &$app) {
-            $app['status'] = $this->get_connection_status($app['id']);
+        foreach ($apps as $app) {
+            $app->status = $this->get_connection_status($app->id)['status'];
         }
 
         return $apps;

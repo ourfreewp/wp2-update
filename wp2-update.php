@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Plugin Name:       WP2 Update
  * Description:       A WordPress plugin that delivers private GitHub theme and plugin updates.
- * Version:           0.0.36
+ * Version:           0.0.37
  * Author:            Vinny S. Green
  * Text Domain:       wp2-update
  * Domain Path:       /languages
@@ -20,27 +20,18 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-
 // Define core plugin constants.
 define( 'WP2_UPDATE_PLUGIN_FILE', __FILE__ );
 define( 'WP2_UPDATE_PLUGIN_DIR', __DIR__ );
 define( 'WP2_UPDATE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-// Ensure Composer autoloader is available.
-$autoloader = WP2_UPDATE_PLUGIN_DIR . '/vendor/autoload.php';
-if ( ! file_exists( $autoloader ) ) {
-    // Add a more informative admin notice for the missing autoloader.
-    add_action( 'admin_notices', function() {
-        echo '<div class="wp2-notice wp2-notice--error"><p>';
-        echo esc_html__( 'WP2 Update Error: Composer autoloader not found. Please run `composer install` in the plugin directory.', \WP2\Update\Config::TEXT_DOMAIN );
-        echo '</p></div>';
-    });
-    return; // Stop execution if the autoloader is missing.
-}
-require_once $autoloader;
-
 // Include Action Scheduler autoloader
 require_once __DIR__ . '/vendor/autoload.php';
+
+// Add Content Security Policy header for admin pages
+add_action('admin_init', function() {
+    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.github.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';");
+});
 
 /**
  * The main function to bootstrap the plugin.
@@ -53,11 +44,9 @@ function wp2_update_run() {
 add_action( 'plugins_loaded', 'wp2_update_run');
 
 /**
- * Register the activation hook to create database tables.
+ * Register the activation hook to create database tables using FQCN.
  */
-use WP2\Update\Database\Schema;
-
-register_activation_hook(__FILE__, [Schema::class, 'create_tables']);
+register_activation_hook(__FILE__, [\WP2\Update\Database\Schema::class, 'create_tables']);
 
 // Declare global $wpdb before usage
 if (!isset($wpdb)) {

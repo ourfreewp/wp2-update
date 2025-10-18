@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace WP2\Update;
 
+defined('ABSPATH') || exit;
+
 // Admin
 use WP2\Update\Admin\Assets;
 use WP2\Update\Admin\Pages;
@@ -20,6 +22,9 @@ use WP2\Update\REST\Router;
 use WP2\Update\REST\Controllers\AppsController;
 use WP2\Update\REST\Controllers\HealthController;
 use WP2\Update\REST\Controllers\PackagesController;
+use WP2\Update\REST\Controllers\BackupController;
+use WP2\Update\REST\Controllers\LogsController;
+use WP2\Update\REST\Controllers\ConfigController;
 
 // Repositories
 use WP2\Update\Repositories\PluginRepository;
@@ -84,8 +89,8 @@ final class Init {
 	/**
 	 * Handles plugin activation.
 	 */
-	public static function activate(): void {
-		Logger::info( 'Activating plugin.' );
+    public static function activate(): void {
+        Logger::info( 'Activating plugin.' );
 
 		// Generate a unique salt for encryption if it doesn't exist.
 		if ( ! get_option( Config::OPTION_ENCRYPTION_SALT ) ) {
@@ -95,9 +100,17 @@ final class Init {
 			Logger::info( 'Encryption salt already exists.' );
 		}
 
-		// Flush rewrite rules to ensure REST API routes are registered.
-		flush_rewrite_rules();
-	}
+        // Flush rewrite rules to ensure REST API routes are registered.
+        flush_rewrite_rules();
+
+        // Add custom capabilities to administrator role for RBAC baseline
+        $admin = get_role('administrator');
+        if ($admin) {
+            $admin->add_cap( Config::CAP_MANAGE );
+            $admin->add_cap( Config::CAP_VIEW_LOGS );
+            $admin->add_cap( Config::CAP_RESTORE_BACKUPS );
+        }
+    }
 
 	/**
 	 * Registers all services and their dependencies with the container.
@@ -166,6 +179,9 @@ final class Init {
 			$c->get( AppsController::class),
 			$c->get( HealthController::class),
 			$c->get( PackagesController::class),
+			$c->get( BackupController::class),
+			$c->get( LogsController::class),
+			$c->get( ConfigController::class),
 		]) );
 		$this->container->register( AppsController::class, fn( $c ) => new AppsController(
             $c->get(AppService::class)
@@ -189,6 +205,9 @@ final class Init {
 		$this->container->register(PackagesController::class, fn($c) => new PackagesController(
             $c->get(PackageService::class)
         ));
+		$this->container->register(BackupController::class, fn() => new BackupController());
+		$this->container->register(LogsController::class, fn() => new LogsController());
+		$this->container->register(ConfigController::class, fn() => new ConfigController());
 		$this->container->register(WebhookController::class, fn($c) => new WebhookController(
             $c->get(ClientService::class),
             $c->get(ReleaseService::class)
@@ -299,10 +318,16 @@ final class Init {
 	/**
 	 * Initializes hooks specific to the WordPress admin area.
 	 */
-	private function initialize_admin_hooks(): void {
-		if ( ! is_admin() ) {
-			return;
-		}
+    private function initialize_admin_hooks(): void {
+        if ( ! is_admin() ) {
+            return;
+        }
+
+        if ( \WP2\Update\Config::headless() ) {
+            // Headless mode: do not register admin assets or pages
+            \WP2\Update\Utils\Logger::info('Headless mode enabled; skipping admin UI hooks.');
+            return;
+        }
 
 		$assets = $this->container->get( Assets::class);
 
@@ -319,38 +344,63 @@ final class Init {
 	 * @param array  $payload The webhook payload.
 	 * @param string $app_id The app ID associated with the webhook.
 	 */
-	public function run_webhook_task( string $event, array $payload, string $app_id ): void {
-		Logger::info('Running webhook task', ['event' => $event, 'app_id' => $app_id]);
-		$packageService = $this->container->get( PackageService::class);
+    public function run_webhook_task( string $event, array $payload, string $app_id ): void {
+        Logger::info('Running webhook task', ['event' => $event, 'app_id' => $app_id]);
+        $packageService = $this->container->get( PackageService::class);
+        $attempt = isset($payload['__attempt']) ? (int)$payload['__attempt'] : 1;
+        $maxAttempts = 5;
 
+        try {
+        switch ( $event ) {
+            case 'push':
+                $repoSlug = $payload['repository']['full_name'] ?? null;
+                if ( $repoSlug ) {
+                    $packageService->clear_release_cache( $repoSlug );
+                }
+                break;
 
-		switch ( $event ) {
-			case 'push':
-				$repoSlug = $payload['repository']['full_name'] ?? null;
-				if ( $repoSlug ) {
-					$packageService->clear_release_cache( $repoSlug );
-				}
-				break;
+            case 'release':
+                $action = $payload['action'] ?? '';
+                if ( $action === 'published' ) {
+                    $repoSlug = $payload['repository']['full_name'] ?? null;
+                    if ( $repoSlug ) {
+                        $releaseService = $this->container->get( ReleaseService::class);
+                        $latestRelease  = $releaseService->get_latest_release( $repoSlug, 'stable' );
 
-			case 'release':
-				$action = $payload['action'] ?? '';
-				if ( $action === 'published' ) {
-					$repoSlug = $payload['repository']['full_name'] ?? null;
-					if ( $repoSlug ) {
-						$releaseService = $this->container->get( ReleaseService::class);
-						$latestRelease  = $releaseService->get_latest_release( $repoSlug, 'stable' );
+                        if ( $latestRelease ) {
+                            $cacheKey = sprintf( Config::TRANSIENT_LATEST_RELEASE, ...explode( '/', $repoSlug ) );
+                            \WP2\Update\Utils\Cache::set( $cacheKey, $latestRelease, 5 * MINUTE_IN_SECONDS );
+                        }
+                    }
+                }
+                break;
 
-						if ( $latestRelease ) {
-							$cacheKey = sprintf( Config::TRANSIENT_LATEST_RELEASE, ...explode( '/', $repoSlug ) );
-							\WP2\Update\Utils\Cache::set( $cacheKey, $latestRelease, 5 * MINUTE_IN_SECONDS );
-						}
-					}
-				}
-				break;
-
-			default:
-		}
-	}
+            default:
+        }
+        } catch (\Throwable $e) {
+            Logger::error('Webhook task failed', [
+                'event' => $event,
+                'app_id' => $app_id,
+                'attempt' => $attempt,
+                'error' => $e->getMessage(),
+            ]);
+            if ($attempt < $maxAttempts) {
+                $delay = (int) pow(2, $attempt) * MINUTE_IN_SECONDS; // exponential backoff
+                $payload['__attempt'] = $attempt + 1;
+                as_schedule_single_action(
+                    time() + $delay,
+                    'wp2_update_handle_webhook',
+                    [
+                        'event'     => $event,
+                        'payload'   => $payload,
+                        'app_id'    => $app_id,
+                        'unique_id' => md5(json_encode(['event' => $event, 'payload' => $payload, 'app_id' => $app_id])),
+                    ],
+                    'wp2-update'
+                );
+            }
+        }
+    }
 }
 
 // Hook into 'plugins_loaded' to ensure all WordPress functions and other plugins are available.

@@ -2,5 +2,11 @@
 	"options": {
 		"autoRename": true,
 		"preserveComments": true
-	}
+	},
+	"plugins": [
+		{
+			"name": "swap-ltr-rtl",
+			"options": {}
+		}
+	]
 }

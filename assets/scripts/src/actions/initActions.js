@@ -23,6 +23,10 @@ export async function fetchInitialData() {
         fetchHealthData(),
       ]);
     }
+    const flags = window.wp2UpdateData?.flags;
+    if (flags) {
+      updateState({ flags: { devMode: !!flags.devMode, headless: !!flags.headless } });
+    }
   } catch (error) {
     NotificationService.showError('Could not load initial application data.');
     console.error('Initial data sync failed:', error);

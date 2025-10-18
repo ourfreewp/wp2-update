@@ -1,4 +1,3 @@
-import { store } from '../state/store.js';
 import { apiFetch } from '../utils/apiFetch.js';
 const { __ } = wp.i18n;
 
@@ -8,17 +7,16 @@ const { __ } = wp.i18n;
 export const HealthService = {
     async fetchHealthStatus() {
         try {
-            const healthData = await apiFetch({ path: '/health' });
-            if (typeof healthData !== 'object' || healthData === null) {
-                console.warn('Unexpected health data format:', healthData);
-                return;
+            const response = await apiFetch({ path: '/health' });
+            const data = response?.data ?? response;
+            if (!Array.isArray(data)) {
+                console.warn('Unexpected health data format:', data);
+                return data;
             }
-            store.update((state) => ({
-                ...state,
-                health: healthData,
-            }));
+            return data;
         } catch (error) {
             console.error('Error fetching health status:', error);
+            throw error;
         }
     },
 
@@ -28,16 +26,15 @@ export const HealthService = {
      */
     async refreshHealthStatus() {
         try {
-            const data = await apiFetch({
+            const response = await apiFetch({
                 path: '/health', // Updated to match backend
                 method: 'POST',
             });
-            store.update((state) => ({
-                ...state,
-                health: data,
-            }));
+            const data = response?.data ?? response;
+            return data;
         } catch (error) {
             console.error('Error refreshing health status:', error);
+            throw error;
         }
     },
 };

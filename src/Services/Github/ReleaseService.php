@@ -1,8 +1,8 @@
 <?php
 declare(strict_types=1);
-
 namespace WP2\Update\Services\Github;
 
+defined('ABSPATH') || exit;
 use WP2\Update\Utils\Cache;
 use WP2\Update\Config;
 use WP2\Update\Data\AppData;
@@ -36,7 +36,7 @@ class ReleaseService
         $this->clientService = $clientService;
         $this->appData = $appData;
     }
-
+    
     /**
      * Fetches the latest release for a repository.
      *
@@ -74,6 +74,39 @@ class ReleaseService
             Logger::error('Error fetching latest release.', ['exception' => $e->getMessage(), 'repo_slug' => $repo_slug]);
             return null;
         }
+    }
+
+    /**
+     * Fetch the latest release by channel preference.
+     *
+     * @param string $repo_slug The repository slug (e.g., "owner/repo").
+     * @param string $channel The release channel (e.g., "stable", "beta").
+     * @param string|null $app_id Optional app ID for authentication.
+     * @return array|null The latest release data or null if not found.
+     */
+    public function get_latest_release_by_channel(string $repo_slug, string $channel, ?string $app_id = null): ?array {
+        $channel = strtolower($channel);
+        $all = $this->get_all_releases($repo_slug, $app_id);
+        if (empty($all)) {
+            return null;
+        }
+
+        if ($channel === 'stable') {
+            foreach ($all as $rel) {
+                if (!($rel['draft'] ?? false) && !($rel['prerelease'] ?? false)) {
+                    return $rel;
+                }
+            }
+            return null;
+        }
+
+        foreach ($all as $rel) {
+            if (!($rel['draft'] ?? false) && ($rel['prerelease'] ?? false)) {
+                return $rel;
+            }
+        }
+
+        return $this->get_latest_release($repo_slug, $app_id);
     }
 
     /**

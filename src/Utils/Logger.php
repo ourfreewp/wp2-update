@@ -2,6 +2,9 @@
 declare(strict_types=1);
 
 namespace WP2\Update\Utils;
+
+defined('ABSPATH') || exit;
+
 use WP2\Update\Config;
 /**
  * Class Logger
@@ -53,6 +56,54 @@ final class Logger
     }
 
     /**
+     * Persists a log message to the database.
+     *
+     * @param string $level   The log level (e.g., 'info', 'error').
+     * @param string $message The log message.
+     * @param array  $context Optional context for the log.
+     */
+    private static function persist_to_db(string $level, string $message, array $context = []): void
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'wp2_update_logs';
+        $contextJson = json_encode($context);
+
+        $wpdb->insert(
+            $table,
+            [
+                'level'   => $level,
+                'message' => $message,
+                'context' => $contextJson,
+                'created_at' => current_time('mysql', 1),
+            ],
+            ['%s', '%s', '%s', '%s']
+        );
+    }
+
+    /**
+     * Rotates the logs by deleting old entries beyond a certain threshold.
+     *
+     * @param int $maxEntries The maximum number of log entries to retain.
+     */
+    public static function rotate_logs(int $maxEntries = 1000): void
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'wp2_update_logs';
+        $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM $table WHERE id NOT IN (
+                    SELECT id FROM (
+                        SELECT id FROM $table ORDER BY created_at DESC LIMIT %d
+                    ) as subquery
+                )",
+                $maxEntries
+            )
+        );
+    }
+
+    /**
      * Logs a message at the specified level dynamically, with optional global context.
      *
      * @param string $level   The PSR-3 log level.
@@ -72,11 +123,11 @@ final class Logger
         if (self::is_qm_active() && defined('WP2_UPDATE_DEBUG') && WP2_UPDATE_DEBUG) {
             if (class_exists('QM') && method_exists('QM', $level)) {
                 \QM::$level($formattedMessage, $mergedContext);
-                return;
             }
         }
 
         error_log($formattedMessage);
+        self::persist_to_db($level, $formattedMessage, $mergedContext);
     }
 
     /** Logs a debug message. */

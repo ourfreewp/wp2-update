@@ -1,49 +1,64 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\REST\Controllers;
 
+defined('ABSPATH') || exit;
+
 use WP2\Update\REST\AbstractController;
-use WP2\Update\Utils\Logger;
-use WP_REST_Request;
-use WP_REST_Response;
-use WP_REST_Server;
-use WP2\Update\Config;
-use WP2\Update\Utils\Permissions;
+use WP2\Update\Utils\Logger as WP2Logger;
 
-/**
- * Class LogsController
- *
- * Handles REST API endpoints for streaming logs.
- */
-final class LogsController extends AbstractController {
-
-    /**
-     * Registers the routes for this controller.
-     */
-    public function register_routes(): void {
-        register_rest_route(Config::REST_NAMESPACE, '/logs/stream', [
-            'methods'             => WP_REST_Server::READABLE,
-            'callback'            => [$this, 'stream_logs'],
-            'permission_callback' => Permissions::callback('manage_options'),
+final class LogsController extends AbstractController
+{
+    public function register_routes(): void
+    {
+        register_rest_route($this->get_namespace(), '/logs', [
+            'methods'  => 'GET',
+            'callback' => [$this, 'recent'],
+            'permission_callback' => function() {
+                return current_user_can(\WP2\Update\Config::CAP_VIEW_LOGS);
+            },
         ]);
     }
 
-    /**
-     * Streams logs to the client.
-     *
-     * @param WP_REST_Request $request The REST request object.
-     * @return WP_REST_Response The response containing the log stream.
-     */
-    public function stream_logs(WP_REST_Request $request): WP_REST_Response {
-        try {
-            $logs = Logger::get_recent_logs(); // Assuming a method exists to fetch recent logs.
-            return new WP_REST_Response($logs, 200);
-        } catch (\Exception $e) {
-            return new WP_REST_Response([
-                'code'    => 'wp2_log_stream_error',
-                'message' => $e->getMessage(),
-                'data'    => ['status' => 500],
-            ], 500);
+    public function recent(): \WP_REST_Response
+    {
+        $logs = WP2Logger::get_recent_logs();
+
+        // Simple filtering support: q (search), level, correlation_id, limit
+        $q = isset($_GET['q']) ? sanitize_text_field((string) $_GET['q']) : '';
+        $level = isset($_GET['level']) ? sanitize_text_field((string) $_GET['level']) : '';
+        $cid = isset($_GET['correlation_id']) ? sanitize_text_field((string) $_GET['correlation_id']) : '';
+        $limit = isset($_GET['limit']) ? max(1, min(200, (int) $_GET['limit'])) : 50;
+
+        $filtered = array_filter($logs, function($entry) use ($q, $level, $cid) {
+            $msg = (string) ($entry['message'] ?? '');
+            $ctx = (array) ($entry['context'] ?? []);
+            $entryLevel = (string) ($entry['level'] ?? ($ctx['level'] ?? 'info'));
+            $entryCid = (string) ($ctx['correlation_id'] ?? '');
+
+            if ($q !== '' && stripos($msg, $q) === false) return false;
+            if ($level !== '' && strtolower($entryLevel) !== strtolower($level)) return false;
+            if ($cid !== '' && $entryCid !== $cid) return false;
+            return true;
+        });
+
+        // Normalize shape and enforce limit (most recent last in options; keep tail)
+        $normalized = array_map(function($e) {
+            $ctx = (array) ($e['context'] ?? []);
+            $lvl = (string) ($e['level'] ?? ($ctx['level'] ?? 'info'));
+            return [
+                'timestamp' => $e['timestamp'] ?? current_time('mysql'),
+                'level' => strtoupper($lvl),
+                'message' => (string) ($e['message'] ?? ''),
+                'context' => $ctx,
+            ];
+        }, $filtered);
+
+        if (count($normalized) > $limit) {
+            $normalized = array_slice($normalized, -1 * $limit);
         }
+
+        return $this->respond(['logs' => array_values($normalized)]);
     }
 }

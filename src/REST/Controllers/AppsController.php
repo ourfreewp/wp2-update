@@ -1,6 +1,9 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\REST\Controllers;
+
+defined('ABSPATH') || exit;
 
 use WP2\Update\REST\AbstractController;
 use WP2\Update\Services\Github\AppService;
@@ -41,66 +44,78 @@ final class AppsController extends AbstractController {
         register_rest_route(Config::REST_NAMESPACE, '/apps', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'list_apps'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         // Route to create an app
         register_rest_route(Config::REST_NAMESPACE, '/apps/create', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'create_app'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/apps/(?P<id>[0-9a-fA-F-]{36})', [
             'methods'             => WP_REST_Server::EDITABLE,
             'callback'            => [$this, 'update_app'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/apps/(?P<id>[0-9a-fA-F-]{36})', [
             'methods'             => WP_REST_Server::DELETABLE,
             'callback'            => [$this, 'delete_app'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/apps/connect', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'add_existing_app'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/apps/manifest', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'generate_manifest'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/apps/code', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'exchange_code'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/apps/(?P<id>[0-9a-fA-F-]{36})/status', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_connection_status'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/apps/status', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_connection_status'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
     }
 
     /**
-     * Retrieves a list of all configured apps.
+     * Retrieves a list of all configured apps with caching.
      */
     public function list_apps(WP_REST_Request $request): WP_REST_Response {
         \WP2\Update\Utils\Logger::start('rest:list_apps');
         try {
+            $cache_key = Config::TRANSIENT_REPOSITORIES_CACHE . '_apps';
+            $cached_apps = \WP2\Update\Utils\Cache::get($cache_key);
+
+            if ($cached_apps) {
+                \WP2\Update\Utils\Logger::info('Returning cached apps.');
+                return $this->respond($cached_apps);
+            }
+
             $apps = $this->appService->get_all_apps();
+
+            // Cache the result for 5 minutes
+            \WP2\Update\Utils\Cache::set($cache_key, $apps, 5 * MINUTE_IN_SECONDS);
+
             return $this->respond($apps);
         } catch (\Exception $e) {
             \WP2\Update\Utils\Logger::stop('rest:list_apps');

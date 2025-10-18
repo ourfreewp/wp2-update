@@ -84,4 +84,6 @@ class ManualCredentialsModal extends LitElement {
     }
 }
 
-customElements.define('manual-credentials-modal', ManualCredentialsModal);
+if (!customElements.get('manual-credentials-modal')) {
+    customElements.define('manual-credentials-modal', ManualCredentialsModal);
+}

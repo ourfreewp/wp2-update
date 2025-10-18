@@ -1,6 +1,9 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\REST\Controllers;
+
+defined('ABSPATH') || exit;
 
 use WP2\Update\REST\AbstractController;
 use WP2\Update\Services\PackageService;
@@ -43,7 +46,7 @@ final class PackagesController extends AbstractController {
      */
     private function verify_action_nonce(WP_REST_Request $request, string $action): bool {
         $nonce = $request->get_header('X-WP-Nonce');
-        return wp_verify_nonce($nonce, $action);
+        return wp_verify_nonce($nonce, 'wp2_update_action');
     }
 
     /**
@@ -53,25 +56,25 @@ final class PackagesController extends AbstractController {
         register_rest_route(Config::REST_NAMESPACE, '/packages', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_packages'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/packages/sync', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'sync_packages'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/packages/assign', [
             'methods'             => WP_REST_Server::EDITABLE,
             'callback'            => [$this, 'assign_package'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/packages/(?P<repo_slug>[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/update', [
             'methods'             => WP_REST_Server::EDITABLE,
             'callback'            => [$this, 'update_package'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/packages/(?P<repo_slug>[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/rollback', [
@@ -83,28 +86,40 @@ final class PackagesController extends AbstractController {
         register_rest_route(Config::REST_NAMESPACE, '/packages/(?P<repo_slug>[^/]+)/release-notes', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_release_notes'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         // Route to update the release channel for a specific package
-        register_rest_route(Config::REST_NAMESPACE, '/packages/(?P<repo_slug>[^/]+)/release-channel', [
+        register_rest_route(Config::REST_NAMESPACE, '/packages/(?P<repo_slug>[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)/release-channel', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'update_release_channel'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         // Route to create a new package
         register_rest_route(Config::REST_NAMESPACE, '/packages/create', [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'create_package'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
         ]);
 
         // Route to refresh packages
         register_rest_route(Config::REST_NAMESPACE, '/packages/refresh', [
             'methods'  => 'POST',
             'callback' => [$this, 'refresh_packages'],
-            'permission_callback' => $this->permission_callback('manage_options'),
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
+        ]);
+
+        // Bulk actions: update many packages or set channel
+        register_rest_route(Config::REST_NAMESPACE, '/packages/bulk', [
+            'methods'  => WP_REST_Server::CREATABLE,
+            'callback' => [$this, 'bulk_packages'],
+            'permission_callback' => Permissions::callback(Config::CAP_MANAGE, 'wp_rest'),
+            'args' => [
+                'action' => ['required' => true, 'type' => 'string'],
+                'repo_slugs' => ['required' => true, 'type' => 'array'],
+                'channel' => ['required' => false, 'type' => 'string'],
+            ],
         ]);
     }
 
@@ -122,7 +137,22 @@ final class PackagesController extends AbstractController {
 
         try {
             $packages = $this->packageService->get_paginated_packages($page, $per_page);
-            return $this->respond($packages);
+            $channels = get_option(Config::OPTION_RELEASE_CHANNELS, []);
+
+            $normalizedPackages = [];
+            if (is_array($packages)) {
+                foreach ($packages as $pkg) {
+                    $normalized = $this->normalize_package($pkg, $channels);
+                    if (!empty($normalized)) {
+                        $normalizedPackages[] = $normalized;
+                    }
+                }
+            }
+
+            return $this->respond([
+                'packages' => $normalizedPackages,
+                'unlinked_packages' => [],
+            ]);
         } catch (\Exception $e) {
             Logger::error('Failed to retrieve packages.', [
                 'exception' => $e->getMessage(),
@@ -131,6 +161,49 @@ final class PackagesController extends AbstractController {
             ]);
             throw new CustomException(__('Failed to retrieve packages. Please check the logs for more details.', Config::TEXT_DOMAIN), 500);
         }
+    }
+
+    /**
+     * Normalize package payload for REST responses.
+     */
+    private function normalize_package($package, array $channels): array
+    {
+        if (is_object($package) && method_exists($package, 'toArray')) {
+            $package = $package->toArray();
+        }
+
+        if (!is_array($package)) {
+            return [];
+        }
+
+        $repo = $package['repo'] ?? $package['repo_slug'] ?? $package['id'] ?? '';
+        if (!$repo) {
+            return [];
+        }
+
+        $channel = $channels[$repo] ?? ($package['channel'] ?? 'stable');
+        $channel = strtolower((string) $channel ?: 'stable');
+
+        $status = $package['status'] ?? ($package['metadata']['status'] ?? 'unknown');
+        $latest = $package['latest'] ?? ($package['metadata']['latest'] ?? null);
+        $name = $package['name'] ?? ($package['metadata']['name'] ?? $repo);
+        $version = $package['version'] ?? ($package['metadata']['version'] ?? null);
+        $type = $package['type'] ?? ($package['metadata']['type'] ?? null);
+        $slug = $package['slug'] ?? basename((string) $repo);
+        $updated = $package['last_updated'] ?? ($package['metadata']['last_updated'] ?? null);
+
+        return [
+            'id' => $package['id'] ?? $repo,
+            'repo' => $repo,
+            'slug' => $slug,
+            'name' => $name,
+            'version' => $version,
+            'latest' => $latest,
+            'status' => $status,
+            'channel' => $channel,
+            'type' => $type,
+            'last_updated' => $updated,
+        ];
     }
 
     /**
@@ -187,6 +260,53 @@ final class PackagesController extends AbstractController {
     }
 
     /**
+     * Performs bulk operations on multiple packages.
+     * Supported actions: update, set-channel
+     */
+    public function bulk_packages(WP_REST_Request $request): WP_REST_Response {
+        $action = strtolower(sanitize_text_field($request->get_param('action') ?? ''));
+        $repo_slugs = (array) ($request->get_param('repo_slugs') ?? []);
+        $repo_slugs = array_filter(array_map('sanitize_text_field', $repo_slugs));
+        $channel = $request->get_param('channel');
+        if (is_string($channel)) { $channel = sanitize_text_field($channel); }
+
+        if (empty($action) || empty($repo_slugs)) {
+            return $this->respond(__('Invalid bulk request.', Config::TEXT_DOMAIN), 400);
+        }
+
+        $results = [];
+        switch ($action) {
+            case 'update':
+                foreach ($repo_slugs as $slug) {
+                    try {
+                        $ok = $this->packageService->update_package($slug);
+                        $results[] = ['repo' => $slug, 'ok' => (bool) $ok];
+                    } catch (\Throwable $e) {
+                        $results[] = ['repo' => $slug, 'ok' => false, 'error' => $e->getMessage()];
+                    }
+                }
+                break;
+            case 'set-channel':
+                if (empty($channel)) {
+                    return $this->respond(__('Channel is required for set-channel.', Config::TEXT_DOMAIN), 400);
+                }
+                foreach ($repo_slugs as $slug) {
+                    try {
+                        $this->packageService->update_release_channel($slug, (string) $channel);
+                        $results[] = ['repo' => $slug, 'ok' => true];
+                    } catch (\Throwable $e) {
+                        $results[] = ['repo' => $slug, 'ok' => false, 'error' => $e->getMessage()];
+                    }
+                }
+                break;
+            default:
+                return $this->respond(__('Unsupported bulk action.', Config::TEXT_DOMAIN), 400);
+        }
+
+        return $this->respond(['results' => $results]);
+    }
+
+    /**
      * Updates a single package with enhanced error handling.
      */
     public function update_package(WP_REST_Request $request): WP_REST_Response {
@@ -195,13 +315,7 @@ final class PackagesController extends AbstractController {
             $success = $this->packageService->update_package($repo_slug);
             $message = $success ? 'Package updated successfully.' : 'Failed to update package.';
             return $this->respond(['message' => __($message, Config::TEXT_DOMAIN)], $success ? 200 : 500);
-        } catch (CustomException $e) {
-            return $this->respondWithError(
-                __('Custom error occurred while updating the package.', Config::TEXT_DOMAIN),
-                $e->getMessage(),
-                400
-            );
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return $this->respondWithError(
                 __('An unexpected error occurred. Please try again later.', Config::TEXT_DOMAIN),
                 $e->getMessage()

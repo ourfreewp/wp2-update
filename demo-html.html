@@ -2,894 +2,1267 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WP2 Update :: Interactive Demo</title>
-    <!-- Bootstrap CSS -->
+    <meta name="viewport" content="width=device-widh, initial-scale=1.0">
+    <title>WP2 Update - UI Demo</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
     <style>
-        /* General Styling */
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f8f9fa;
+            background-color: #f8f9fa; /* Bootstrap bg-light */
         }
-        .wp2-wrap {
-            max-width: 1400px;
-            margin: 2rem auto;
-            padding: 2rem;
-            opacity: 0;
-            transition: opacity 0.5s ease-in-out;
+        #sidebar-nav .nav-link {
+            color: #6c757d; /* Bootstrap text-secondary */
         }
-        .wp2-wrap.loaded {
-            opacity: 1;
-        }
-        .wp2-header {
-            border-bottom: 1px solid #dee2e6;
-            padding-bottom: 1.5rem;
-        }
-        .wp2-main-title {
-            font-weight: 700;
-            color: #212529;
-        }
-
-        /* Tabs */
-        .nav-tabs .nav-link {
-            font-weight: 600;
-            color: #6c757d;
-            cursor: pointer;
-        }
-        .nav-tabs .nav-link.active {
-            color: #0d6efd;
-            background-color: #f8f9fa;
-            border-color: #dee2e6 #dee2e6 #f8f9fa;
-        }
-
-        /* Cards */
-        .card {
-            border-radius: 0.5rem;
-            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-            border: 1px solid #e9ecef;
-        }
-        .stat-card .card-title {
-            font-size: 1rem;
-            font-weight: 600;
-            opacity: 0.8;
-        }
-        .stat-card .card-text {
-            font-size: 2.5rem;
-            font-weight: 700;
-        }
-        .stat-card a {
-            text-decoration: none;
-        }
-        .stat-card a:hover {
-            text-decoration: underline;
-        }
-
-        /* Log Viewer */
-        .log-viewer {
-            background-color: #212529;
-            color: #ced4da;
-            padding: 1rem;
-            border-radius: 0.25rem;
-            font-family: monospace;
-            font-size: 0.875rem;
-            height: 250px;
-            overflow-y: scroll;
-        }
-        .log-entry.error { color: #f97171; }
-        .log-entry.warning { color: #ffca2c; }
-        .log-entry.info { color: #56b6c2; }
-
-        /* General UI Elements */
-        .table-hover tbody tr:hover {
-            background-color: #f1f3f5;
-        }
-        .badge {
+        #sidebar-nav .nav-link.active {
+            background-color: #eef2ff;
+            color: #4f46e5;
             font-weight: 600;
         }
-        .toast-container {
-            z-index: 1090;
+        #sidebar-nav .nav-link.active svg,
+        #sidebar-nav .nav-link:hover svg {
+            color: #4f46e5;
         }
-        .form-label {
-            font-weight: 600;
+        /* Custom scrollbar for a cleaner look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
         }
-        .btn .spinner-border {
-            width: 1rem;
-            height: 1rem;
-            border-width: .2em;
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* Notification transitions */
+        .notification-item {
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            transform: translateX(100%);
+        }
+        .notification-item.visible {
+            transform: translateX(0);
+        }
+        /* Style for the simulated Git history list */
+        .git-history-entry {
+            border-left: 3px solid #6c757d;
+            padding-left: 10px;
         }
     </style>
 </head>
-<body>
-    <!-- Root component for the Lit application -->
-    <div id="app-container">
-        <wp2-update-app></wp2-update-app>
+<body class="text-dark">
+    <!-- Notification Center -->
+    <div id="notification-center" class="fixed-top end-0 p-3" style="z-index: 1056; max-width: 350px;"></div>
+
+    <!-- Modal Container -->
+    <div class="modal fade" id="main-modal" tabindex="-1" aria-labelledby="main-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+            </div>
+        </div>
     </div>
 
-    <!-- Dependencies -->
+    <div class="d-flex vh-100 bg-light">
+        <!-- Sidebar Navigation -->
+        <aside class="bg-white border-end d-none d-md-flex flex-column" style="width: 256px;">
+            <div class="d-flex align-items-center px-4 border-bottom" style="height: 64px;">
+                <svg class="h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l-3 3m3-3l3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.342 0 4.5 4.5 0 01-1.41 8.775H6.75z" />
+                </svg>
+                <span class="ms-3 fs-5 fw-semibold text-dark">WP2 Update</span>
+            </div>
+            <nav id="sidebar-nav" class="flex-grow-1 p-3 nav flex-column nav-pills">
+                <a href="#/" data-view="dashboard" class="nav-link d-flex align-items-center">
+                    <svg class="me-3" width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
+                    Dashboard
+                </a>
+                <a href="#/packages" data-view="packages" class="nav-link d-flex align-items-center">
+                    <svg class="me-3" width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" /></svg>
+                    Packages
+                </a>
+                <a href="#/apps" data-view="apps" class="nav-link d-flex align-items-center">
+                    <svg class="me-3" width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75c0 3.03-2.47 5.5-5.5 5.5S6.25 9.78 6.25 6.75S8.72 1.25 11.75 1.25s5.5 2.47 5.5 5.5zM4.375 19.5a.375.375 0 01.375-.375h14.5a.375.375 0 010 .75H4.75a.375.375 0 01-.375-.375z" /></svg>
+                    GitHub Apps
+                </a>
+                <a href="#/backups" data-view="backups" class="nav-link d-flex align-items-center">
+                    <svg class="me-3" width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
+                    Backups
+                </a>
+                 <a href="#/health" data-view="health" class="nav-link d-flex align-items-center">
+                    <svg class="me-3" width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+                    Health
+                </a>
+                <a href="#/logs" data-view="logs" class="nav-link d-flex align-items-center">
+                    <svg class="me-3" width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" /></svg>
+                    Logs
+                </a>
+                 <a href="#/tasks" data-view="tasks" class="nav-link d-flex align-items-center">
+                    <svg class="me-3" width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+                    Tasks
+                </a>
+                 <a href="#/scheduler" data-view="scheduler" class="nav-link d-flex align-items-center">
+                    <svg class="me-3" width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Scheduler
+                </a>
+                <a href="#/config" data-view="config" class="nav-link d-flex align-items-center">
+                    <svg class="me-3" width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.332c.55 0 1.02.398 1.11.94 1.406.454 2.628 1.488 3.5 2.76.711 1.077.873 2.453.385 3.79-.115.318-.28.609-.464.881l-1.393 2.09c-.27.406-.395.91-.41 1.416v.199c0 .762.383 1.485 1.018 1.916l1.042.708c.504.341.691.983.5 1.549a3.676 3.676 0 01-1.071 1.624c-.754.767-1.854 1.258-3.09 1.258h-2.332c-1.236 0-2.336-.491-3.09-1.258a3.676 3.676 0 01-1.07-1.624c-.19-1.566 0-3.076.5-1.549l1.042-.708c.635-.431 1.018-1.154 1.018-1.916v-.199c-.015-.506-.14-1.01-.41-1.416l-1.393-2.09a2.532 2.532 0 01-.464-.881c-.488-1.337-.326-2.713.385-3.79a5.753 5.753 0 013.5-2.76zM12 10.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" /></svg>
+                    Config
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-grow-1 d-flex flex-column overflow-hidden">
+            <header class="bg-white border-bottom d-flex align-items-center justify-content-between px-4" style="height: 64px;">
+                 <!-- Mobile nav toggle -->
+                <button id="mobile-nav-toggle" class="d-md-none btn btn-light">
+                    <svg width="24" height="24" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                    </svg>
+                </button>
+                <div id="header-content" class="flex-grow-1">
+                    <!-- Header content changes based on view -->
+                </div>
+            </header>
+            <div id="main-view" class="flex-grow-1 overflow-auto p-4 p-md-5">
+                <!-- View content is rendered here -->
+            </div>
+        </main>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="importmap">
-    {
-        "imports": {
-            "lit": "https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js",
-            "lit/decorators.js": "https://cdn.jsdelivr.net/gh/lit/dist@3/all/lit-all.min.js",
-            "nanostores": "https://cdn.jsdelivr.net/npm/nanostores@0.9.5/index.js",
-            "@nanostores/lit": "https://cdn.jsdelivr.net/npm/@nanostores/lit@0.5.0/index.js"
-        }
-    }
-    </script>
-
-    <!-- Main Application Logic -->
     <script type="module">
-        import { LitElement, html } from 'lit';
-        import { customElement, property } from 'lit/decorators.js';
-        import { atom } from 'nanostores';
-        import { StoreController } from '@nanostores/lit';
-
-        // =================================================================
-        // 1. STATE MANAGEMENT (with Nanostores)
-        // =================================================================
-        const store = atom({
-            activeTab: 'dashboard',
-            packages: [],
-            apps: [],
-            health: {},
-            logs: [],
-            stats: { updates: 0, unmanaged: 0, total: 0, apps: 0 },
-            activeModal: null,
-            modalProps: {},
-            notifications: [],
-        });
-
-        // --- Helper functions for state updates ---
-        function updateState(newState) {
-            store.set({ ...store.get(), ...newState });
-        }
-        
-        function recalculateStats() {
-            const { packages, apps } = store.get();
-            updateState({
-                stats: {
-                    updates: packages.filter(p => p.status === 'update').length,
-                    unmanaged: packages.filter(p => p.status === 'unmanaged').length,
-                    total: packages.length,
-                    apps: apps.length,
+        // --- STATE MANAGEMENT & MOCK DATA ---
+        const AppState = {
+            currentView: 'dashboard',
+            // Set to true or false to test the Setup Wizard UI
+            isConfigured: true, 
+            isDevMode: false,
+            packages: [
+                // Added backup: true for demo restore button
+                { id: 'query-monitor', name: 'Query Monitor Extended', type: 'Plugin', repo: 'dev-team/query-monitor-extended', installedVersion: '1.4.2', latestVersion: '1.5.0', status: 'update_available', channel: 'stable', isUpdating: false, hasBackup: true, precheckFails: false },
+                { id: 'wp2-blocks', name: 'WP2 Blocks', type: 'Plugin', repo: 'company/wp2-blocks', installedVersion: '2.1.0', latestVersion: '2.1.0', status: 'up_to_date', channel: 'stable', isUpdating: false, hasBackup: true, precheckFails: false },
+                { id: 'sage-theme', name: 'Company Sage Theme', type: 'Theme', repo: 'company/sage-theme', installedVersion: '10.1.1', latestVersion: '10.2.0', status: 'update_available', channel: 'staging', isUpdating: false, hasBackup: false, precheckFails: true },
+                { id: 'headless-helper', name: 'Headless Helper', type: 'Plugin', repo: 'dev-team/headless-helper', installedVersion: '0.9.0-beta', latestVersion: '0.9.0-beta', status: 'up_to_date', channel: 'beta', isUpdating: false, hasBackup: true, precheckFails: false },
+                { id: 'legacy-sync', name: 'Legacy Sync Tool', type: 'Plugin', repo: '', installedVersion: '3.2.1', latestVersion: null, status: 'unlinked', channel: 'stable', isUpdating: false, hasBackup: false, precheckFails: false },
+                { id: 'base-theme', name: 'Company Base Theme', type: 'Theme', repo: 'company/base-theme', installedVersion: '1.0.0', latestVersion: '1.0.0', status: 'up_to_date', channel: 'production', isUpdating: false, hasBackup: true, precheckFails: false },
+            ],
+            apps: [
+                { id: 'app_1', name: 'Company Production App', status: 'connected' },
+                { id: 'app_2', name: 'Dev Team Staging App', status: 'connected' },
+                { id: 'app_3', name: 'Legacy Projects (Disconnected)', status: 'error' },
+            ],
+            backups: [
+                { file: 'plugin-query-monitor-20251017_193005.zip', size: 1258291, modified: '2025-10-17T19:30:05Z' },
+                { file: 'theme-sage-theme-20251016_112200.zip', size: 5432189, modified: '2025-10-16T11:22:00Z' },
+                { file: 'plugin-wp2-blocks-20251015_090012.zip', size: 2345678, modified: '2025-10-15T09:00:12Z' },
+            ],
+            health: [
+                { 
+                    title: 'System Environment', 
+                    checks: [
+                        { label: 'PHP Version', status: 'pass', message: 'PHP 8.3.1 meets requirements (8.0+).' },
+                        { label: 'WordPress Version', status: 'pass', message: 'WP 6.7.0 meets requirements (6.0+).' },
+                        { label: 'Database Connection', status: 'pass', message: 'Database connection is healthy.' },
+                    ]
+                },
+                {
+                    title: 'Application Integrity & Front-end',
+                    checks: [
+                         { label: 'Data Integrity', status: 'pass', message: 'Data integrity check passed.' },
+                         { label: 'Admin Asset & Localization', status: 'pass', message: 'Vite Assets and localized data successfully prepared for the SPA.' },
+                         { label: 'REST API Registration', status: 'pass', message: 'REST Namespace wp2-update/v1 is active with 12 routes registered.' },
+                    ]
+                },
+                {
+                    title: 'Integration & Connectivity',
+                    checks: [
+                        { label: 'GitHub Connection', status: 'pass', message: 'Successfully connected to GitHub via Company Production App.' },
+                        { label: 'Webhook Endpoint', status: 'warn', message: 'Webhook signature validation is flawed. See Issue #P1-B.' },
+                    ]
                 }
-            });
-        }
-
-        let notificationId = 0;
-        function addNotification(type, message, duration = 4000) {
-            const note = { id: notificationId++, type, message };
-            const currentNotifications = store.get().notifications;
-            updateState({ notifications: [...currentNotifications, note] });
-
-            setTimeout(() => {
-                const current = store.get().notifications;
-                updateState({ notifications: current.filter(n => n.id !== note.id) });
-            }, duration);
-        }
-
-        function setPackageProcessingState(repo, stateKey, isProcessing) {
-            const currentPackages = store.get().packages;
-            const updatedPackages = currentPackages.map(p => 
-                p.repo === repo ? { ...p, [stateKey]: isProcessing } : p
-            );
-            updateState({ packages: updatedPackages });
-        }
-
-
-        // =================================================================
-        // 2. SIMULATED ACTIONS
-        // =================================================================
-        const simulateApiCall = (duration = 1000) => new Promise(res => setTimeout(res, duration));
-        
-        // --- Mock Data ---
-        const MOCK_PACKAGES = [
-            { name: 'Agency Core Plugin', repo: 'agency/core-plugin', version: '1.5.2', latest: '1.6.0', status: 'update', releases: ['1.5.1', '1.5.0', '1.4.8'] },
-            { name: 'Client Project Theme', repo: 'client/project-theme', version: '2.1.0', latest: '2.1.0', status: 'ok', releases: ['2.0.0', '1.9.5'] },
-            { name: 'Unlinked Utility Plugin', repo: 'agency/utility-plugin', version: '1.0.0', latest: '-', status: 'unmanaged', releases: [] },
-            { name: 'Internal Framework', repo: 'agency/internal-framework', version: '3.0.1', latest: '3.0.1', status: 'ok', releases: ['3.0.0'] },
-        ];
-
-        const MOCK_APPS = [
-            { id: 1, name: 'WP-Internal-Tools', account: 'AgencyInc (Organization)', packages: 8, status: 'failed' },
-            { id: 2, name: 'Client-Projects-Access', account: 'johndoe (User)', packages: 4, status: 'connected' }
-        ];
-
-        const MOCK_HEALTH = {
-            environment: [
-                { check: 'PHP Version', message: '8.2.11 meets requirement of 8.0+.', status: 'success' },
-                { check: 'WordPress Version', message: '6.4.1 meets requirement of 6.0+.', status: 'success' },
             ],
-            integrity: [
-                { check: 'Database Schema', message: 'Required tables are correctly installed.', status: 'success' },
-                { check: 'REST API', message: 'Plugin endpoints are registered.', status: 'success' },
+            logs: [],
+            tasks: [
+                { id: 't_001', type: 'package_update', target: 'dev-team/query-monitor-extended', scheduled: new Date(Date.now() + 60000).toLocaleString(), status: 'queued', attempt: 1 },
+                { id: 't_002', type: 'webhook_release', target: 'company/wp2-blocks', scheduled: new Date(Date.now() - 300000).toLocaleString(), status: 'failed', attempt: 3, error: 'GitHub API Rate Limit' },
+                { id: 't_003', type: 'package_update', target: 'company/sage-theme', scheduled: new Date(Date.now() - 7200000).toLocaleString(), status: 'complete', attempt: 1 },
+                { id: 't_004', type: 'webhook_push', target: 'dev-team/headless-helper', scheduled: new Date(Date.now() - 3000000).toLocaleString(), status: 'failed', attempt: 2, error: 'Transient network error' },
             ],
-            connectivity: [
-                { check: 'GitHub App: WP-Internal-Tools', message: 'Could not connect to GitHub. The token may be invalid or expired.', status: 'danger' },
-                { check: 'GitHub App: Client-Projects-Access', message: 'Connection to GitHub succeeded.', status: 'success' },
-            ]
+            gitHistory: [
+                { sha: 'a3d24e1', message: 'Feat: Add Tailwind config support.', author: 'Jane Doe', date: new Date(Date.now() - 86400000).toLocaleString() },
+                { sha: 'b5f9c02', message: 'Fix: Prevent unneeded HTTP requests on dashboard load.', author: 'John Smith', date: new Date(Date.now() - 172800000).toLocaleString() },
+                { sha: 'c7g1b9d', message: 'Chore: Update build dependencies.', author: 'Jane Doe', date: new Date(Date.now() - 259200000).toLocaleString() },
+                { sha: 'd8h4a2e', message: 'Release: Version 1.4.2.', author: 'System Bot', date: new Date(Date.now() - 345600000).toLocaleString() },
+            ],
+            diffContent: `
+                <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; border-radius: 5px;">
+                    <div style="font-family: monospace; font-size: 0.9em;">
+                        <span style="color: #6c757d;">--- a/src/Core/Updater.php</span><br>
+                        <span style="color: #6c757d;">+++ b/src/Core/Updater.php</span><br>
+                        <span style="color: #6c757d;">@@ -12,7 +12,7 @@</span><br>
+                        <span style="color: #a40000; background-color: #ffe8e8;">- class Updater extends Base {</span><br>
+                        <span style="color: #008000; background-color: #e6ffed;">+ class Updater extends ModernBase {</span><br>
+                        <span style="color: #6c757d;"> class UpdateService {</span><br>
+                    </div>
+                </div>
+            `,
+            integrityStatus: 'pass', // 'pass', 'warn', 'error'
         };
 
-        const MOCK_LOGS = [
-            { level: 'info', message: '[2025-10-15 17:45:10] Package sync initiated via REST API.' },
-            { level: 'info', message: '[2025-10-15 17:42:05] Package update successful. repo_slug: agency/site-plugin' },
-            { level: 'error', message: '[2025-10-15 17:41:50] Package update failed. repo_slug: client/project-theme, exception: Download failed: Not Found' },
-            { level: 'info', message: '[2025-10-15 17:40:00] Incoming webhook received. event: release' },
-            { level: 'warning', message: '[2025-10-15 17:35:12] Permission denied: Invalid nonce. action: wp2_assign_package, user_id: 1' },
-        ];
+        // --- UI COMPONENTS & TEMPLATES ---
 
-
-        async function fetchInitialData() {
-            await simulateApiCall(800);
-            updateState({ 
-                packages: MOCK_PACKAGES,
-                apps: MOCK_APPS,
-                health: MOCK_HEALTH,
-                logs: MOCK_LOGS,
-            });
-            recalculateStats();
-            document.querySelector('.wp2-wrap').classList.add('loaded');
-        }
-
-        async function syncAllPackages() {
-            addNotification('info', 'Syncing all packages...');
-            await simulateApiCall(2000);
-            addNotification('success', `Sync complete. ${store.get().packages.length} packages found.`);
-        }
-        
-        async function updatePackage(pkg) {
-            setPackageProcessingState(pkg.repo, 'isUpdating', true);
-            await simulateApiCall(1500);
-            const currentPackages = store.get().packages;
-            const updatedPackages = currentPackages.map(p =>
-                p.repo === pkg.repo ? { ...p, version: p.latest, status: 'ok' } : p
-            );
-            updateState({ packages: updatedPackages });
-            recalculateStats();
-            addNotification('success', `${pkg.name} updated to version ${pkg.latest}.`);
-            setPackageProcessingState(pkg.repo, 'isUpdating', false);
-        }
-        
-        async function rollbackPackage(pkg, version) {
-            updateState({ activeModal: null });
-            addNotification('info', `Rolling back ${pkg.name} to ${version}...`);
-            await simulateApiCall(1500);
-            const currentPackages = store.get().packages;
-            const updatedPackages = currentPackages.map(p =>
-                p.repo === pkg.repo ? { ...p, version, status: p.version === p.latest ? 'ok' : 'update' } : p
-            );
-            updateState({ packages: updatedPackages });
-            recalculateStats();
-            addNotification('success', `${pkg.name} rolled back to version ${version}.`);
-        }
-
-        async function assignAppToPackage(pkg, appId) {
-            updateState({ activeModal: null });
-            addNotification('info', `Assigning app to ${pkg.name}...`);
-            await simulateApiCall(1200);
-            const currentPackages = store.get().packages;
-            const updatedPackages = currentPackages.map(p =>
-                p.repo === pkg.repo ? { ...p, status: 'ok' } : p
-            );
-            updateState({ packages: updatedPackages });
-            recalculateStats();
-            addNotification('success', `App assigned to ${pkg.name}.`);
-        }
-        
-        async function deleteApp(appToDelete) {
-             if (!confirm(`Are you sure you want to delete the app "${appToDelete.name}"?`)) return;
-             addNotification('info', `Deleting ${appToDelete.name}...`);
-             await simulateApiCall(1000);
-             const currentApps = store.get().apps;
-             updateState({ apps: currentApps.filter(a => a.id !== appToDelete.id) });
-             recalculateStats();
-             addNotification('success', `${appToDelete.name} has been deleted.`);
-        }
-
-        async function createPackage(newPackageData) {
-            updateState({ activeModal: null });
-            addNotification('info', `Creating repository for ${newPackageData.repoName}...`);
-            await simulateApiCall(2000);
-            const newPackage = {
-                name: newPackageData.repoName.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-                repo: `${newPackageData.assignApp}/${newPackageData.repoName}`,
-                version: '1.0.0',
-                latest: '1.0.0',
-                status: 'ok',
-                releases: []
+        const getStatusBadge = (status) => {
+            const styles = {
+                up_to_date: 'bg-success-subtle text-success-emphasis',
+                update_available: 'bg-info-subtle text-info-emphasis',
+                unlinked: 'bg-light text-dark',
             };
-            const currentPackages = store.get().packages;
-            updateState({ packages: [newPackage, ...currentPackages] });
-            recalculateStats();
-            addNotification('success', `Package ${newPackage.name} created successfully.`);
-        }
-
-
-        // =================================================================
-        // 3. LIT COMPONENTS & VIEWS
-        // =================================================================
+            const text = {
+                up_to_date: 'Up to date',
+                update_available: 'Update available',
+                unlinked: 'Unlinked'
+            };
+            return `<span class="badge rounded-pill ${styles[status] || ''}">${text[status] || 'Unknown'}</span>`;
+        };
         
-        // --- Main Application Shell ---
-        @customElement('wp2-update-app')
-        class Wp2UpdateApp extends LitElement {
-            store = new StoreController(this, store);
+        const getHealthStatusIcon = (status) => {
+            const icons = {
+                pass: `<svg class="text-success" width="20" height="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" /></svg>`,
+                warn: `<svg class="text-warning" width="20" height="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>`,
+                error: `<svg class="text-danger" width="20" height="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>`,
+            };
+            return icons[status] || '';
+        }
+        
+        const getChannelDropdown = (pkg) => {
+            const channels = ['stable', 'beta', 'staging', 'production'];
+            // Determine a safe ID for the dropdown
+            const dropdownId = `channel-${pkg.id}`;
+            
+            let options = channels.map(channel => `
+                <li><a class="dropdown-item" href="#" data-action="change-channel" data-id="${pkg.id}" data-channel="${channel}">${channel.charAt(0).toUpperCase() + channel.slice(1)}</a></li>
+            `).join('');
 
-            render() {
-                const { activeTab } = this.store.value;
-
-                return html`
-                    <div class="wp2-wrap">
-                        <!-- Header -->
-                        <header class="wp2-header d-flex flex-column flex-md-row align-items-md-center justify-content-md-between mb-4">
-                            <div>
-                                <h1 class="wp2-main-title">WP2 Update</h1>
-                                <p class="text-muted">Manage your GitHub-hosted plugins and themes with clarity, confidence, and control.</p>
-                            </div>
-                            <div class="d-flex gap-2 mt-3 mt-md-0">
-                                <button class="btn btn-success" @click=${() => updateState({ activeModal: 'createPackage' })}>
-                                    <i class="bi bi-plus-lg me-1"></i> Create Package
-                                </button>
-                                <button class="btn btn-primary" @click=${() => updateState({ activeModal: 'addApp' })}>
-                                    <i class="bi bi-github me-1"></i> Add GitHub App
-                                </button>
-                                <button id="sync-all-btn" class="btn btn-outline-secondary" @click=${syncAllPackages}>
-                                    <i class="bi bi-arrow-repeat me-1"></i> Sync All
-                                </button>
-                            </div>
-                        </header>
-
-                        <!-- Tabs Navigation -->
-                        <ul class="nav nav-tabs" id="mainTab" role="tablist">
-                            ${['dashboard', 'packages', 'apps', 'health'].map(tab => html`
-                                <li class="nav-item" role="presentation">
-                                    <a class="nav-link ${activeTab === tab ? 'active' : ''}" @click=${() => updateState({ activeTab: tab })}>${tab.charAt(0).toUpperCase() + tab.slice(1)}</a>
-                                </li>
-                            `)}
-                        </ul>
-
-                        <!-- Tab Content -->
-                        <div class="tab-content pt-4">
-                            ${activeTab === 'dashboard' ? html`<dashboard-view></dashboard-view>` : ''}
-                            ${activeTab === 'packages' ? html`<packages-view></packages-view>` : ''}
-                            ${activeTab === 'apps' ? html`<apps-view></apps-view>` : ''}
-                            ${activeTab === 'health' ? html`<health-view></health-view>` : ''}
-                        </div>
-                    </div>
-                    <modal-manager></modal-manager>
-                    <notification-center></notification-center>
-                `;
-            }
-
-            createRenderRoot() { return this; }
+            return `
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="${dropdownId}" data-bs-toggle="dropdown" aria-expanded="false">
+                        ${pkg.channel.charAt(0).toUpperCase() + pkg.channel.slice(1)}
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="${dropdownId}">
+                        ${options}
+                    </ul>
+                </div>
+            `;
         }
 
-        // --- Views ---
-        @customElement('dashboard-view')
-        class DashboardView extends LitElement {
-            store = new StoreController(this, store);
-            
-            _viewTab(tab) {
-                updateState({ activeTab: tab });
+        const createPackageRow = (pkg) => `
+            <tr class="bg-white">
+                <td class="px-3 align-middle">
+                    <input type="checkbox" data-id="${pkg.id}" class="form-check-input package-checkbox">
+                </td>
+                <td class="px-4 py-3 align-middle">
+                    <div>${pkg.name}</div>
+                    <div class="small text-muted">${pkg.repo || 'N/A'}</div>
+                </td>
+                <td class="px-4 py-3 align-middle">${pkg.type}</td>
+                <td class="px-4 py-3 align-middle">${pkg.installedVersion}</td>
+                <td class="px-4 py-3 align-middle">${pkg.latestVersion || 'N/A'}</td>
+                <td class="px-4 py-3 align-middle">${getStatusBadge(pkg.status)}</td>
+                <td class="px-4 py-3 align-middle">
+                    ${getChannelDropdown(pkg)}
+                </td>
+                <td class="px-4 py-3 text-end align-middle d-flex justify-content-end align-items-center gap-2">
+                    ${pkg.status === 'update_available' ? `<button data-action="update" data-id="${pkg.id}" class="btn btn-primary btn-sm ${pkg.isUpdating ? 'disabled' : ''}">${pkg.isUpdating ? 'Updating...' : 'Update'}</button>` : ''}
+                    ${pkg.hasBackup ? `<button data-action="restore-package" data-id="${pkg.id}" class="btn btn-success-subtle btn-sm text-success">Restore</button>` : ''}
+                    ${pkg.status !== 'unlinked' ? `<button data-action="rollback" data-id="${pkg.id}" class="btn btn-link btn-sm">Rollback</button>` : ''}
+                    <button data-action="details" data-id="${pkg.id}" class="btn btn-link btn-sm">Details</button>
+                </td>
+            </tr>
+        `;
+
+        const createBackupRow = (backup) => `
+             <tr class="bg-white">
+                <td class="px-4 py-3 align-middle">${backup.file}</td>
+                <td class="px-4 py-3 align-middle">${(backup.size / 1024 / 1024).toFixed(2)} MB</td>
+                <td class="px-4 py-3 align-middle">${new Date(backup.modified).toLocaleString()}</td>
+                <td class="px-4 py-3 text-end align-middle">
+                     <button data-action="restore" data-file="${backup.file}" class="btn btn-link btn-sm">Restore</button>
+                </td>
+            </tr>
+        `;
+
+        const getTaskStatusBadge = (status, attempt, error) => {
+            const styles = {
+                queued: 'bg-info-subtle text-info-emphasis',
+                complete: 'bg-success-subtle text-success-emphasis',
+                failed: 'bg-danger-subtle text-danger-emphasis',
+            };
+            let text = status.charAt(0).toUpperCase() + status.slice(1);
+            if (status === 'failed') {
+                text += ` (Attempt ${attempt})`;
             }
+            
+            return `<span class="badge rounded-pill ${styles[status] || 'bg-secondary-subtle text-secondary-emphasis'}">${text}</span>`;
+        };
 
-            render() {
-                const { stats, logs, apps } = this.store.value;
-                const failingApp = apps.find(a => a.status === 'failed');
+        const createTaskRow = (task) => `
+            <tr class="bg-white">
+                <td class="px-4 py-3 align-middle"><code>${task.id}</code></td>
+                <td class="px-4 py-3 align-middle">${task.type.replace('_', ' ')}</td>
+                <td class="px-4 py-3 align-middle">${task.target}</td>
+                <td class="px-4 py-3 align-middle">${task.scheduled}</td>
+                <td class="px-4 py-3 align-middle">${getTaskStatusBadge(task.status, task.attempt, task.error)}</td>
+                <td class="px-4 py-3 text-end align-middle">
+                    ${task.status === 'failed' ? `<button data-action="retry-task" data-id="${task.id}" class="btn btn-warning btn-sm">Retry</button>` : ''}
+                    <button data-action="view-task-log" data-id="${task.id}" class="btn btn-link btn-sm">View Log</button>
+                </td>
+            </tr>
+        `;
 
-                return html`
-                <div class="row">
-                    <div class="col-md-6 col-lg-3 mb-4">
-                        <div class="card stat-card text-white bg-primary h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Updates Available</h5>
-                                <p class="card-text">${stats.updates}</p>
-                                <a href="#" class="text-white stretched-link" @click=${() => this._viewTab('packages')}>View Packages</a>
-                            </div>
+        const createLogEntry = (log) => {
+             const colors = {
+                INFO: 'text-primary',
+                WARN: 'text-warning',
+                ERROR: 'text-danger',
+                DEBUG: 'text-muted',
+            };
+            return `<div class="d-flex gap-3 py-2 border-bottom">
+                <span class="small text-muted text-nowrap">${log.time}</span>
+                <span class="font-monospace small fw-bold ${colors[log.level] || 'text-dark'}">${log.level}</span>
+                <p class="small text-secondary flex-grow-1 mb-0">${log.message}</p>
+            </div>`;
+        }
+
+        // --- ROUTING & VIEW RENDERING ---
+        
+        const renderHeader = () => {
+            const headerEl = document.getElementById('header-content');
+            let content = '';
+            switch (AppState.currentView) {
+                case 'dashboard':
+                    content = `<h1 class="h4 mb-0">Dashboard</h1>`;
+                    break;
+                case 'packages':
+                    content = `
+                        <div class="d-flex align-items-center justify-content-between">
+                             <h1 class="h4 mb-0">Packages</h1>
+                             <button data-action="sync-all" class="btn btn-outline-secondary">Sync All</button>
                         </div>
-                    </div>
-                    <div class="col-md-6 col-lg-3 mb-4">
-                        <div class="card stat-card text-white bg-warning h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Unmanaged Packages</h5>
-                                <p class="card-text">${stats.unmanaged}</p>
-                                <a href="#" class="text-white stretched-link" @click=${() => this._viewTab('packages')}>Assign Now</a>
-                            </div>
+                    `;
+                    break;
+                case 'apps':
+                     content = `
+                        <div class="d-flex align-items-center justify-content-between">
+                             <h1 class="h4 mb-0">GitHub Apps</h1>
+                             <button data-action="add-app" class="btn btn-primary">Add App</button>
                         </div>
-                    </div>
-                    <div class="col-md-6 col-lg-3 mb-4">
-                        <div class="card stat-card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title text-muted">Total Packages</h5>
-                                <p class="card-text">${stats.total}</p>
-                                <a href="#" class="stretched-link" @click=${() => this._viewTab('packages')}>Manage</a>
-                            </div>
+                    `;
+                    break;
+                case 'backups':
+                     content = `<h1 class="h4 mb-0">Backups</h1>`;
+                     break;
+                case 'health':
+                     content = `
+                        <div class="d-flex align-items-center justify-content-between">
+                             <h1 class="h4 mb-0">System Health</h1>
+                             <button data-action="refresh-health" class="btn btn-outline-secondary">Refresh</button>
                         </div>
-                    </div>
-                    <div class="col-md-6 col-lg-3 mb-4">
-                        <div class="card stat-card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title text-muted">Connected Apps</h5>
-                                <p class="card-text">${stats.apps}</p>
-                                <a href="#" class="stretched-link" @click=${() => this._viewTab('apps')}>Configure</a>
-                            </div>
+                    `;
+                    break;
+                case 'logs':
+                    content = `<h1 class="h4 mb-0">Real-Time Logs</h1>`;
+                    break;
+                case 'tasks':
+                    content = `
+                        <div class="d-flex align-items-center justify-content-between">
+                             <h1 class="h4 mb-0">Background Tasks</h1>
+                             <button data-action="refresh-tasks" class="btn btn-outline-secondary">Refresh Queue</button>
                         </div>
+                    `;
+                    break;
+                case 'scheduler':
+                    content = `
+                        <h1 class="h4 mb-0">Scheduler & Maintenance Windows</h1>
+                    `;
+                    break;
+                case 'config':
+                    content = `<h1 class="h4 mb-0">Configuration</h1>`;
+                    break;
+            }
+            headerEl.innerHTML = content;
+        };
+
+        const renderPackagesView = () => {
+             return `
+                <div class="d-flex justify-content-between mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="bulk-action-select" class="form-select form-select-sm" style="width: 200px;">
+                            <option value="">Bulk Actions</option>
+                            <option value="update">Update Selected</option>
+                            <option value="rollback">Rollback Selected</option>
+                            <option value="assign-app">Assign App</option>
+                        </select>
+                        <button data-action="apply-bulk" class="btn btn-sm btn-outline-secondary">Apply</button>
                     </div>
+                    <button data-action="add-package" class="btn btn-success btn-sm">Add New Package</button>
                 </div>
-                ${failingApp ? html`
-                <div class="card my-4">
-                    <div class="card-body">
-                        <h5 class="card-title d-flex justify-content-between align-items-center">
-                            System Status
-                            <a href="#" class="btn btn-sm btn-outline-secondary" @click=${() => this._viewTab('health')}>View Details <i class="bi bi-arrow-right"></i></a>
-                        </h5>
-                        <p class="card-text">
-                            <span class="badge bg-danger me-2 fs-6">⚠️</span>
-                            Connection to GitHub App "${failingApp.name}" is failing.
-                        </p>
-                    </div>
-                </div>` : ''}
                 <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Recent Activity</h5>
-                        <div class="log-viewer">
-                            ${logs.map(log => html`<div class="log-entry ${log.level}">${log.message}</div>`)}
-                        </div>
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col" class="px-3" style="width: 1%"><input type="checkbox" id="select-all-packages" class="form-check-input"></th>
+                                <th scope="col" class="px-4 py-3">Name</th>
+                                <th scope="col" class="px-4 py-3">Type</th>
+                                <th scope="col" class="px-4 py-3">Installed</th>
+                                <th scope="col" class="px-4 py-3">Latest</th>
+                                <th scope="col" class="px-4 py-3">Status</th>
+                                <th scope="col" class="px-4 py-3">Release Channel</th>
+                                <th scope="col" class="px-4 py-3 text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>${AppState.packages.map(createPackageRow).join('')}</tbody>
+                    </table>
+                </div>
+            `;
+        };
+
+        const renderLogsView = () => {
+            return `
+                <div class="card mb-3">
+                    <div class="card-body d-flex gap-3 align-items-center">
+                        <input id="log-search-input" type="text" class="form-control form-control-sm" style="max-width: 300px;" placeholder="Search by message or Correlation ID">
+                        <select id="log-severity-filter" class="form-select form-select-sm" style="width: 150px;">
+                            <option value="">All Severity</option>
+                            <option value="ERROR">Error</option>
+                            <option value="WARN">Warning</option>
+                            <option value="INFO">Info</option>
+                            <option value="DEBUG">Debug</option>
+                        </select>
+                        <button data-action="clear-logs" class="btn btn-sm btn-outline-danger">Clear Logs</button>
                     </div>
-                </div>`;
-            }
-
-            createRenderRoot() { return this; }
-        }
-
-        @customElement('packages-view')
-        class PackagesView extends LitElement {
-            store = new StoreController(this, store);
-            
-            render() {
-                const { packages } = this.store.value;
-                return html`
-                 <div class="card">
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle">
-                                <thead>
-                                    <tr>
-                                        <th>Package</th>
-                                        <th>Installed Version</th>
-                                        <th>Latest Version</th>
-                                        <th>Status</th>
-                                        <th class="text-end">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${packages.map(pkg => html`<package-row .pkg=${pkg}></package-row>`)}
-                                </tbody>
-                            </table>
-                        </div>
+                </div>
+                <div class="card">
+                    <div id="log-container" class="card-body font-monospace" style="height: 60vh; overflow-y: scroll; display: flex; flex-direction: column-reverse;">
+                        <!-- Logs will be prepended here -->
                     </div>
-                </div>`;
-            }
+                </div>
+            `;
+        };
 
-            createRenderRoot() { return this; }
-        }
-        
-        @customElement('package-row')
-        class PackageRow extends LitElement {
-            @property({ type: Object }) pkg;
-
-            renderStatus() {
-                switch(this.pkg.status) {
-                    case 'update': return html`<span class="badge rounded-pill bg-warning">Update Available</span>`;
-                    case 'ok': return html`<span class="badge rounded-pill bg-success">Up to date</span>`;
-                    case 'unmanaged': return html`<span class="badge rounded-pill bg-secondary">Unmanaged</span>`;
-                    default: return html``;
-                }
-            }
-            
-            renderActions() {
-                if (this.pkg.status === 'unmanaged') {
-                    return html`<button class="btn btn-primary btn-sm" @click=${() => updateState({ activeModal: 'assignApp', modalProps: { pkg: this.pkg } })}>Assign App</button>`;
-                }
-
-                return html`
-                    <div class="btn-group">
-                        ${this.pkg.status === 'update' ? html`
-                            <button class="btn btn-primary btn-sm" @click=${() => updatePackage(this.pkg)} ?disabled=${this.pkg.isUpdating}>
-                                ${this.pkg.isUpdating ? html`<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>` : html`Update to ${this.pkg.latest}`}
-                            </button>
-                        ` : ''}
-                        <button class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#" @click=${() => updateState({ activeModal: 'rollback', modalProps: { pkg: this.pkg } })}>Rollback</a></li>
+        const renderTasksView = () => {
+            const taskTable = `
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <ul class="nav nav-tabs card-header-tabs" id="taskTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="queued-tab" data-bs-toggle="tab" data-bs-target="#queued" type="button" role="tab" aria-controls="queued" aria-selected="true">Queued (${AppState.tasks.filter(t => t.status === 'queued').length})</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="failed-tab" data-bs-toggle="tab" data-bs-target="#failed" type="button" role="tab" aria-controls="failed" aria-selected="false">Failed (${AppState.tasks.filter(t => t.status === 'failed').length})</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="complete-tab" data-bs-toggle="tab" data-bs-target="#complete" type="button" role="tab" aria-controls="complete" aria-selected="false">Completed (${AppState.tasks.filter(t => t.status === 'complete').length})</button>
+                            </li>
                         </ul>
                     </div>
-                `;
-            }
-
-            render() {
-                return html`
-                    <tr>
-                        <td><strong>${this.pkg.name}</strong><div class="text-muted small">${this.pkg.repo}</div></td>
-                        <td>${this.pkg.version}</td>
-                        <td>${this.pkg.latest}</td>
-                        <td>${this.renderStatus()}</td>
-                        <td class="text-end">${this.renderActions()}</td>
-                    </tr>
-                `;
-            }
-            createRenderRoot() { return this; }
-        }
-
-        @customElement('apps-view')
-        class AppsView extends LitElement {
-            store = new StoreController(this, store);
-            render() {
-                const { apps } = this.store.value;
-                return html`
-                 <div class="card">
-                    <div class="card-body">
-                        <h2 class="card-title">GitHub Apps</h2>
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle">
-                                <thead>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="queued" role="tabpanel" aria-labelledby="queued-tab">
+                             <table class="table table-hover mb-0">
+                                <thead class="table-light">
                                     <tr>
-                                        <th>App Name</th>
-                                        <th>Account</th>
-                                        <th>Managed Packages</th>
-                                        <th>Status</th>
-                                        <th class="text-end">Actions</th>
+                                        <th scope="col" class="px-4 py-3">ID</th>
+                                        <th scope="col" class="px-4 py-3">Type</th>
+                                        <th scope="col" class="px-4 py-3">Target</th>
+                                        <th scope="col" class="px-4 py-3">Scheduled For</th>
+                                        <th scope="col" class="px-4 py-3">Status</th>
+                                        <th scope="col" class="px-4 py-3 text-end">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    ${apps.map(app => html`<app-row .app=${app}></app-row>`)}
-                                </tbody>
+                                <tbody>${AppState.tasks.filter(t => t.status === 'queued').map(createTaskRow).join('')}</tbody>
+                            </table>
+                        </div>
+                        <div class="tab-pane fade" id="failed" role="tabpanel" aria-labelledby="failed-tab">
+                             <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-3">ID</th>
+                                        <th scope="col" class="px-4 py-3">Type</th>
+                                        <th scope="col" class="px-4 py-3">Target</th>
+                                        <th scope="col" class="px-4 py-3">Last Run</th>
+                                        <th scope="col" class="px-4 py-3">Status</th>
+                                        <th scope="col" class="px-4 py-3 text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${AppState.tasks.filter(t => t.status === 'failed').map(createTaskRow).join('')}</tbody>
+                            </table>
+                        </div>
+                        <div class="tab-pane fade" id="complete" role="tabpanel" aria-labelledby="complete-tab">
+                             <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-3">ID</th>
+                                        <th scope="col" class="px-4 py-3">Type</th>
+                                        <th scope="col" class="px-4 py-3">Target</th>
+                                        <th scope="col" class="px-4 py-3">Completed On</th>
+                                        <th scope="col" class="px-4 py-3">Status</th>
+                                        <th scope="col" class="px-4 py-3 text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${AppState.tasks.filter(t => t.status === 'complete').map(createTaskRow).join('')}</tbody>
                             </table>
                         </div>
                     </div>
                 </div>
-                `;
-            }
-            createRenderRoot() { return this; }
-        }
+            `;
+            return taskTable;
+        };
 
-        @customElement('app-row')
-        class AppRow extends LitElement {
-            @property({ type: Object }) app;
-
-            render() {
-                return html`
-                    <tr>
-                        <td><strong>${this.app.name}</strong></td>
-                        <td>${this.app.account}</td>
-                        <td>${this.app.packages}</td>
-                        <td>
-                            ${this.app.status === 'connected' 
-                                ? html`<span class="badge rounded-pill bg-success">Connected</span>`
-                                : html`<span class="badge rounded-pill bg-danger">Connection Failed</span>`
-                            }
-                        </td>
-                        <td class="text-end">
-                            <button class="btn btn-outline-secondary btn-sm">Settings</button>
-                            <button class="btn btn-danger btn-sm" @click=${() => deleteApp(this.app)}>Delete</button>
-                        </td>
-                    </tr>
-                `;
-            }
-            createRenderRoot() { return this; }
-        }
-
-        @customElement('health-view')
-        class HealthView extends LitElement {
-            store = new StoreController(this, store);
-            
-            renderCheck(check) {
-                const badgeClass = check.status === 'success' ? 'bg-success' : 'bg-danger';
-                const icon = check.status === 'success' ? '✔' : '✖';
-                return html`
-                <li class="list-group-item d-flex justify-content-between align-items-start">
-                    <div>
-                        <strong>${check.check}</strong>
-                        <p class="text-muted small mb-0">${check.message}</p>
-                    </div>
-                    <span class="badge ${badgeClass}">${icon}</span>
-                </li>`;
-            }
-
-            render() {
-                const { health } = this.store.value;
-                if (!health.environment) return html`<p>Loading health status...</p>`;
-                
-                return html`
+        const renderSchedulerView = () => {
+             return `
                 <div class="row">
-                    <div class="col-lg-6 mb-4">
+                    <div class="col-md-6 mb-4">
                         <div class="card h-100">
+                            <div class="card-header"><h3 class="h5 mb-0">Scheduled Update Windows</h3></div>
                             <div class="card-body">
-                                <h5 class="card-title">System Environment</h5>
-                                <ul class="list-group list-group-flush">${health.environment.map(c => this.renderCheck(c))}</ul>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-lg-6 mb-4">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Application Integrity</h5>
-                                <ul class="list-group list-group-flush">${health.integrity.map(c => this.renderCheck(c))}</ul>
-                            </div>
-                        </div>
-                    </div>
-                     <div class="col-lg-6 mb-4">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Connectivity</h5>
-                                <ul class="list-group list-group-flush">${health.connectivity.map(c => this.renderCheck(c))}</ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-            }
-            createRenderRoot() { return this; }
-        }
-
-        // --- Modals & Managers ---
-        @customElement('modal-manager')
-        class ModalManager extends LitElement {
-            store = new StoreController(this, store);
-            modalInstance = null;
-            
-            updated() {
-                const { activeModal } = this.store.value;
-                const modalElement = this.querySelector('.modal');
-                
-                // If a modal is already active, hide and destroy it before showing a new one
-                if (this.modalInstance) {
-                    this.modalInstance.hide();
-                    this.modalInstance.dispose();
-                    this.modalInstance = null;
-                }
-                
-                if (activeModal && modalElement) {
-                    this.modalInstance = new bootstrap.Modal(modalElement);
-                    this.modalInstance.show();
-
-                    // Listen for the hide event to reset state
-                    modalElement.addEventListener('hidden.bs.modal', () => {
-                        updateState({ activeModal: null, modalProps: {} });
-                    }, { once: true });
-                }
-            }
-
-            render() {
-                const { activeModal, modalProps } = this.store.value;
-                switch (activeModal) {
-                    case 'addApp': return html`<add-app-modal .props=${modalProps}></add-app-modal>`;
-                    case 'rollback': return html`<rollback-modal .props=${modalProps}></rollback-modal>`;
-                    case 'assignApp': return html`<assign-app-modal .props=${modalProps}></assign-app-modal>`;
-                    case 'createPackage': return html`<create-package-modal .props=${modalProps}></create-package-modal>`;
-                    default: return html``;
-                }
-            }
-            createRenderRoot() { return this; }
-        }
-
-        @customElement('add-app-modal')
-        class AddAppModal extends LitElement {
-            render() {
-                return html`
-                <div class="modal fade" tabindex="-1">
-                    <div class="modal-dialog modal-dialog-centered modal-lg">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Add GitHub App</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <p>Connect a new GitHub App to manage your private packages.</p>
-                                <div class="d-grid gap-3">
-                                     <button class="btn btn-primary btn-lg" type="button" data-bs-dismiss="modal">Create New App with Manifest</button>
-                                     <button class="btn btn-secondary btn-lg" type="button" data-bs-dismiss="modal">Connect an Existing App Manually</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-            }
-            createRenderRoot() { return this; }
-        }
-
-        @customElement('rollback-modal')
-        class RollbackModal extends LitElement {
-            @property({ type: Object }) props;
-            
-            _handleConfirm() {
-                const select = this.querySelector('select');
-                if (select.value) {
-                    rollbackPackage(this.props.pkg, select.value);
-                }
-            }
-            
-            render() {
-                const { pkg } = this.props;
-                return html`
-                <div class="modal fade" tabindex="-1">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Rollback ${pkg.name}</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <p>Select a version to roll back to. The current version is ${pkg.version}.</p>
-                                <select class="form-select">
-                                    ${pkg.releases.map(r => html`<option value=${r}>${r}</option>`)}
-                                </select>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <button type="button" class="btn btn-danger" @click=${this._handleConfirm}>Confirm Rollback</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-            }
-            createRenderRoot() { return this; }
-        }
-        
-        @customElement('assign-app-modal')
-        class AssignAppModal extends LitElement {
-            @property({ type: Object }) props;
-            store = new StoreController(this, store);
-
-            _handleConfirm() {
-                const select = this.querySelector('select');
-                if (select.value) {
-                    assignAppToPackage(this.props.pkg, select.value);
-                }
-            }
-
-            render() {
-                const { pkg } = this.props;
-                const { apps } = this.store.value;
-                return html`
-                <div class="modal fade" tabindex="-1">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Assign App to ${pkg.name}</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <p>Select a GitHub App to manage this package.</p>
-                                <select class="form-select">
-                                    ${apps.map(app => html`<option value=${app.id}>${app.name}</option>`)}
-                                </select>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <button type="button" class="btn btn-primary" @click=${this._handleConfirm}>Save Assignment</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-            }
-            createRenderRoot() { return this; }
-        }
-
-        @customElement('create-package-modal')
-        class CreatePackageModal extends LitElement {
-            store = new StoreController(this, store);
-
-            _handleConfirm(e) {
-                e.preventDefault();
-                const form = this.querySelector('form');
-                const formData = new FormData(form);
-                const data = Object.fromEntries(formData.entries());
-                if (form.checkValidity()) {
-                    createPackage(data);
-                } else {
-                    form.classList.add('was-validated');
-                }
-            }
-
-            render() {
-                const { apps } = this.store.value;
-                return html`
-                <div class="modal fade" tabindex="-1">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content">
-                            <form class="needs-validation" novalidate @submit=${this._handleConfirm}>
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Create New Package</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                </div>
-                                <div class="modal-body">
+                                <p class="card-text">Define specific days and times when WP2 Update is allowed to perform automatic updates and maintenance.</p>
+                                <form>
                                     <div class="mb-3">
-                                        <label for="repoName" class="form-label">Repository Name</label>
-                                        <input type="text" class="form-control" name="repoName" placeholder="my-awesome-plugin" required>
-                                        <div class="invalid-feedback">Please provide a repository name.</div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label for="assignApp" class="form-label">Assign to App</label>
-                                        <select name="assignApp" class="form-select" required>
-                                            <option value="" selected disabled>Choose...</option>
-                                            ${apps.map(app => html`<option value=${app.account.split(' ')[0]}>${app.name}</option>`)}
+                                        <label for="maintenance-day" class="form-label">Day of Week</label>
+                                        <select id="maintenance-day" class="form-select">
+                                            <option>Sunday</option>
+                                            <option>Monday</option>
+                                            <option>Tuesday (Recommended)</option>
+                                            <option>Wednesday</option>
                                         </select>
-                                        <div class="invalid-feedback">Please assign the package to an app.</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="maintenance-time" class="form-label">Start Time (UTC)</label>
+                                        <input type="time" id="maintenance-time" class="form-control" value="02:00">
+                                    </div>
+                                    <div class="form-check mb-4">
+                                        <input class="form-check-input" type="checkbox" value="" id="maintenance-mode-check" checked>
+                                        <label class="form-check-label" for="maintenance-mode-check">
+                                            Enable WordPress Maintenance Mode during update.
+                                        </label>
+                                    </div>
+                                    <button type="button" class="btn btn-success">Save Schedule</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header"><h3 class="h5 mb-0">Queue Scheduled Update</h3></div>
+                            <div class="card-body">
+                                <p class="card-text">Select a package and schedule it for update during the next available maintenance window.</p>
+                                <form>
+                                    <div class="mb-3">
+                                        <label for="package-select" class="form-label">Select Package</label>
+                                        <select id="package-select" class="form-select">
+                                            ${AppState.packages.map(p => `<option>${p.name} (${p.repo})</option>`).join('')}
+                                        </select>
+                                    </div>
+                                     <div class="mb-3">
+                                        <label for="window-preview" class="form-label">Next Window Preview</label>
+                                        <input type="text" id="window-preview" class="form-control" value="Tues, Nov 5th at 02:00 UTC" disabled>
+                                    </div>
+                                    <button type="button" class="btn btn-primary">Schedule Update</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderConfigView = () => {
+             return `
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header"><h3 class="h5 mb-0">Export Configuration (JSON)</h3></div>
+                            <div class="card-body">
+                                <p class="card-text">Export all application settings, GitHub App details (encrypted keys excluded), and package mappings into a single JSON file. Ideal for version control or environment migration.</p>
+                                <button data-action="export-config" class="btn btn-primary">Download wp2-config.json</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header"><h3 class="h5 mb-0">Import Configuration (JSON)</h3></div>
+                            <div class="card-body">
+                                <p class="card-text">Upload a previously exported <code>wp2-config.json</code> file to quickly set up this environment or restore settings.</p>
+                                <form data-action="import-config">
+                                    <input type="file" id="config-file-upload" class="form-control mb-3" accept=".json" required>
+                                    <button type="submit" class="btn btn-outline-primary">Import Settings</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-info mt-4">
+                    <strong>Note on Secrets:</strong> Configuration export/import is designed for environment parity (Wave 1: #9). Encrypted private keys are never included in the export for security reasons. You must re-add private keys manually after import.
+                </div>
+            `;
+        };
+
+        const renderDashboardContent = () => {
+            // Check if any apps are configured to show the Setup Wizard
+            if (!AppState.isConfigured) {
+                return `
+                    <div class="card text-center py-5 border-primary bg-primary-subtle shadow-sm mb-4">
+                        <div class="card-body">
+                            <h2 class="h3 card-title text-primary">👋 Welcome to WP2 Update!</h2>
+                            <p class="card-text mb-4">You need to connect a GitHub App to start managing packages.</p>
+                            <button data-action="start-wizard" class="btn btn-lg btn-primary">Start Setup Wizard (1/3)</button>
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <strong>Try It:</strong> Click "Start Setup Wizard" to see the simulated flow. Toggle <code>AppState.isConfigured = true</code> in the code to see the full dashboard.
+                    </div>
+                `;
+            }
+
+            const updatesAvailable = AppState.packages.filter(p => p.status === 'update_available').length;
+            const unlinkedPackages = AppState.packages.filter(p => p.status === 'unlinked').length;
+            const healthStatus = AppState.health.some(g => g.checks.some(c => c.status !== 'pass')) ? 'warn' : 'pass';
+            
+            // Integrity Check Status (Wave 2: #7)
+            const integrityStatus = AppState.integrityStatus;
+            const integrityIcon = integrityStatus === 'pass' ? `<svg class="text-success" width="24" height="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" /></svg>` : `<svg class="text-danger" width="24" height="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>`;
+            const integrityMessage = integrityStatus === 'pass' ? 'Lockfile verification succeeded' : 'ALERT: Files modified since last update';
+            const integrityColor = integrityStatus === 'pass' ? 'text-success' : 'text-danger';
+
+            return `
+                <div class="row mb-4">
+                    <!-- Metric Cards Row -->
+                    <div class="col-md-6 col-lg-3 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h3 class="card-title h5">Updates Available</h3>
+                                <p class="display-4 fw-bold text-primary mt-2">${updatesAvailable}</p>
+                                <p class="text-muted mt-1">${AppState.packages.length} total packages</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-3 mb-4">
+                         <div class="card h-100">
+                            <div class="card-body">
+                                <h3 class="card-title h5">Unlinked Packages</h3>
+                                <p class="display-4 fw-bold ${unlinkedPackages > 0 ? 'text-warning' : 'text-dark'} mt-2">${unlinkedPackages}</p>
+                                <p class="text-muted mt-1">Require a GitHub App connection</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-3 mb-4">
+                         <div class="card h-100">
+                             <div class="card-body">
+                                <h3 class="card-title h5">System Health</h3>
+                                ${healthStatus === 'pass' ? `
+                                    <p class="display-4 fw-bold text-success mt-2">Healthy</p>
+                                    <p class="text-muted mt-1">All systems operational</p>
+                                ` : `
+                                    <p class="display-4 fw-bold text-warning mt-2">Warning</p>
+                                    <p class="text-muted mt-1">Some checks require attention</p>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-3 mb-4">
+                         <div class="card h-100 border ${integrityStatus === 'pass' ? 'border-success' : 'border-danger'}">
+                            <div class="card-body">
+                                <h3 class="card-title h5">Integrity Check</h3>
+                                <div class="d-flex align-items-center mt-2">
+                                    ${integrityIcon}
+                                    <p class="display-6 fw-bold ${integrityColor} mb-0 ms-2">${integrityStatus === 'pass' ? 'PASS' : 'FAIL'}</p>
+                                </div>
+                                <p class="text-muted small mt-1">${integrityMessage}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Developer Mode Toggle -->
+                    <div class="col-md-12 mb-4">
+                         <div class="card shadow-sm border-0">
+                            <div class="card-body d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h4 class="h5 mb-1">Developer Mode: Local Override</h4>
+                                    <p class="text-muted small mb-0">Ignore remote GitHub updates and use local package version metadata. **For development only.**</p>
+                                </div>
+                                <div class="form-check form-switch ms-3">
+                                    <input data-action="toggle-dev-mode" class="form-check-input" type="checkbox" role="switch" id="devModeSwitch" ${AppState.isDevMode ? 'checked' : ''}>
+                                    <label class="form-check-label" for="devModeSwitch">${AppState.isDevMode ? 'ON' : 'OFF'}</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Historical Analytics (Wave 2: #6) -->
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header"><h3 class="h5 mb-0">Update Velocity Analytics (Simulated)</h3></div>
+                            <div class="card-body text-center p-5">
+                                <div class="text-muted">
+                                    <svg class="mb-3" width="60" height="60" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+                                </div>
+                                <p class="mb-0 text-muted">Placeholder for **Historical Analytics & Reporting**. This chart would show update frequency, success rate, and rollback trends.</p>
+                                <span class="badge bg-secondary-subtle text-secondary mt-2">Roadmap Wave 2: Growth</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+        
+        const renderView = () => {
+            const viewEl = document.getElementById('main-view');
+            let content = '';
+            
+            // Render header and nav based on the new view
+            renderHeader();
+            updateNav();
+
+            switch (AppState.currentView) {
+                case 'dashboard':
+                    content = renderDashboardContent();
+                    break;
+                case 'packages':
+                    content = renderPackagesView();
+                    break;
+                case 'apps':
+                     content = `<div class="list-group">`;
+                     AppState.apps.forEach(app => {
+                         const statusColor = app.status === 'connected' ? 'bg-success-subtle text-success-emphasis' : 'bg-danger-subtle text-danger-emphasis';
+                         const statusText = app.status === 'connected' ? 'Connected' : 'Error';
+                         content += `
+                            <div class="list-group-item d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <div class="p-3 bg-primary-subtle rounded-circle">
+                                        <svg class="text-primary" width="24" height="24" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75c0 3.03-2.47 5.5-5.5 5.5S6.25 9.78 6.25 6.75S8.72 1.25 11.75 1.25s5.5 2.47 5.5 5.5zM4.375 19.5a.375.375 0 01.375-.375h14.5a.375.375 0 010 .75H4.75a.375.375 0 01-.375-.375z" /></svg>
+                                    </div>
+                                    <div class="ms-3">
+                                        <p class="fw-semibold text-dark mb-0">${app.name}</p>
+                                        <p class="badge rounded-pill ${statusColor} mb-0">${statusText}</p>
                                     </div>
                                 </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                    <button type="submit" class="btn btn-primary">Create Repository</button>
+                                <div>
+                                    <button data-action="delete-app" data-id="${app.id}" class="btn btn-link text-danger">Delete</button>
                                 </div>
-                            </form>
+                            </div>
+                         `;
+                     });
+                     content += `</div>`;
+                     break;
+                case 'backups':
+                     content = `
+                        <div class="card">
+                           <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-3">File</th>
+                                        <th scope="col" class="px-4 py-3">Size</th>
+                                        <th scope="col" class="px-4 py-3">Date</th>
+                                        <th scope="col" class="px-4 py-3 text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${AppState.backups.map(createBackupRow).join('')}</tbody>
+                           </table>
                         </div>
-                    </div>
-                </div>`;
+                    `;
+                    break;
+                case 'health':
+                    content = `<div class="vstack gap-4">`;
+                    AppState.health.forEach(group => {
+                        content += `
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="h5 mb-0">${group.title}</h3>
+                                </div>
+                                <ul class="list-group list-group-flush">
+                        `;
+                        group.checks.forEach(check => {
+                            content += `
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        ${getHealthStatusIcon(check.status)}
+                                        <p class="ms-3 mb-0">${check.label}</p>
+                                    </div>
+                                    <p class="text-muted mb-0 small">${check.message}</p>
+                                </li>
+                            `;
+                        });
+                        content += `</ul></div>`;
+                    });
+                    content += `</div>`;
+                    break;
+                case 'logs':
+                    content = renderLogsView();
+                    break;
+                case 'tasks':
+                    content = renderTasksView();
+                    break;
+                case 'scheduler':
+                    content = renderSchedulerView();
+                    break;
+                case 'config':
+                    content = renderConfigView();
+                    break;
             }
-            createRenderRoot() { return this; }
-        }
+            viewEl.innerHTML = content;
+        };
 
-
-        @customElement('notification-center')
-        class NotificationCenter extends LitElement {
-            store = new StoreController(this, store);
-
-            render() {
-                return html`
-                <div class="toast-container position-fixed bottom-0 end-0 p-3">
-                    ${this.store.value.notifications.map(note => html`
-                        <notification-toast .note=${note}></notification-toast>
-                    `)}
-                </div>`;
-            }
-
-            createRenderRoot() { return this; }
-        }
-
-        @customElement('notification-toast')
-        class NotificationToast extends LitElement {
-            @property({ type: Object }) note;
+        const updateNav = () => {
+            document.querySelectorAll('#sidebar-nav .nav-link').forEach(link => {
+                link.classList.toggle('active', link.dataset.view === AppState.currentView);
+            });
+        };
+        
+        const router = () => {
+            const hash = window.location.hash.slice(2) || '/';
+            const view = hash.split('/')[0] || 'dashboard';
             
-            firstUpdated() {
-                const toastEl = this.querySelector('.toast');
-                const toast = new bootstrap.Toast(toastEl);
-                toast.show();
+            if (AppState.currentView !== view) {
+                // Clear log stream interval on navigation away from logs
+                if (AppState.currentView === 'logs' && logInterval) {
+                     clearInterval(logInterval);
+                }
+                AppState.currentView = view;
+                renderView();
             }
+        };
 
-            render() {
-                const icon = {
-                    success: 'bi-check-circle-fill text-success',
-                    info: 'bi-info-circle-fill text-info',
-                    danger: 'bi-x-circle-fill text-danger'
-                }[this.note.type];
-
-                return html`
-                 <div class="toast align-items-center text-bg-${this.note.type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
-                    <div class="d-flex">
-                        <div class="toast-body">
-                           <i class="bi ${icon} me-2"></i> ${this.note.message}
-                        </div>
-                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-                    </div>
-                </div>`;
-            }
-            createRenderRoot() { return this; }
+        // --- EVENT HANDLING & ACTIONS ---
+        
+        const getSelectedPackageIds = () => {
+            return Array.from(document.querySelectorAll('.package-checkbox:checked'))
+                        .map(cb => cb.dataset.id);
         }
         
-        // =================================================================
-        // 4. INITIALIZATION
-        // =================================================================
-        document.addEventListener('DOMContentLoaded', fetchInitialData);
+        // Helper to render the Package Details Modal Body
+        const renderPackageDetailsBody = (pkg) => {
+            const historyList = AppState.gitHistory.map(commit => `
+                <div class="git-history-entry mb-2 ps-3">
+                    <p class="mb-0 small">
+                        <strong>${commit.message}</strong>
+                        <span class="badge bg-secondary-subtle text-secondary ms-2">${commit.sha.substring(0, 7)}</span>
+                    </p>
+                    <p class="small text-muted mb-1">
+                        Committed by ${commit.author} on ${commit.date}
+                    </p>
+                </div>
+            `).join('');
 
+            return `
+                <ul class="nav nav-tabs" id="packageDetailsTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="details-tab" data-bs-toggle="tab" data-bs-target="#tab-details" type="button" role="tab" aria-controls="tab-details" aria-selected="true">Details</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#tab-history" type="button" role="tab" aria-controls="tab-history" aria-selected="false">Git History (Wave 2)</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="diff-tab" data-bs-toggle="tab" data-bs-target="#tab-diff" type="button" role="tab" aria-controls="tab-diff" aria-selected="false">File Diff (Wave 2)</button>
+                    </li>
+                </ul>
+                <div class="tab-content pt-3">
+                    <div class="tab-pane fade show active" id="tab-details" role="tabpanel" aria-labelledby="details-tab">
+                        <h6>Package Information</h6>
+                        <dl class="row small">
+                            <dt class="col-sm-4">Repository</dt><dd class="col-sm-8">${pkg.repo}</dd>
+                            <dt class="col-sm-4">Type</dt><dd class="col-sm-8">${pkg.type}</dd>
+                            <dt class="col-sm-4">Installed Version</dt><dd class="col-sm-8">${pkg.installedVersion}</dd>
+                            <dt class="col-sm-4">Latest Version</dt><dd class="col-sm-8">${pkg.latestVersion}</dd>
+                            <dt class="col-sm-4">Current Channel</dt><dd class="col-sm-8">${pkg.channel}</dd>
+                        </dl>
+                    </div>
+                    <div class="tab-pane fade" id="tab-history" role="tabpanel" aria-labelledby="history-tab">
+                        <h6 class="mb-3">Commits Between ${pkg.installedVersion} and ${pkg.latestVersion}</h6>
+                        <div class="overflow-auto" style="max-height: 400px;">
+                            ${historyList}
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="tab-diff" role="tabpanel" aria-labelledby="diff-tab">
+                        <h6 class="mb-3">Simulated Diff: ${pkg.installedVersion} vs ${pkg.latestVersion}</h6>
+                        ${AppState.diffContent}
+                        <p class="small text-muted mt-3">This pane would contain an actual line-by-line comparison showing changes between the installed code and the candidate update.</p>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Helper to render the Add App Modal Body (VCS Agnostic - Wave 2: #3)
+        const renderAddAppBody = () => {
+            return `
+                <ul class="nav nav-pills mb-3" id="vcsProviderTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="github-tab" data-bs-toggle="tab" data-bs-target="#tab-github" type="button" role="tab" aria-controls="tab-github" aria-selected="true">
+                             <svg width="20" height="20" class="me-2" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 0.297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.207 11.387 0.6.11 0.82-0.258 0.82-0.577 0-0.285-0.01-1.04-0.015-2.04-3.344 0.728-4.04-1.61-4.04-1.61-0.546-1.385-1.332-1.755-1.332-1.755-1.09-0.742 0.082-0.727 0.082-0.727 1.205 0.084 1.838 1.238 1.838 1.238 1.07 1.833 2.802 1.304 3.49-1.002 0.108-0.776 0.418-1.304 0.762-1.602-2.665-0.304-5.466-1.332-5.466-5.93 0-1.312 0.468-2.385 1.237-3.232-0.124-0.306-0.535-1.523 0.117-3.176 0 0 1.008-0.323 3.301 1.236 0.957-0.266 1.983-0.4 3.003-0.404 1.02 0 2.046 0.138 3.003 0.404 2.29-1.559 3.298-1.236 3.298-1.236 0.65 1.653 0.24 2.87 0.118 3.176 0.77 0.847 1.236 1.92 1.236 3.232 0 4.61-2.805 5.625-5.475 5.923 0.428 0.369 0.812 1.101 0.812 2.219 0 1.604-0.015 2.898-0.015 3.284 0 0.322 0.218 0.692 0.823 0.575C20.565 22.096 24 17.597 24 12.297c0-6.627-5.373-12-12-12z"/></svg>
+                             GitHub (App Integration)
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="gitlab-tab" data-bs-toggle="tab" data-bs-target="#tab-gitlab" type="button" role="tab" aria-controls="tab-gitlab" aria-selected="false">
+                             <svg width="20" height="20" class="me-2" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M22.062 10.985c0-1.897-1.536-3.432-3.434-3.432-1.564 0-2.866 1.042-3.267 2.441-0.218 0.778-0.217 1.584 0 2.361 0.4 1.399 1.703 2.441 3.267 2.441 1.898 0 3.434-1.535 3.434-3.432zM15.368 11.234c0-0.781-0.634-1.416-1.416-1.416s-1.416 0.635-1.416 1.416 0.634 1.416 1.416 1.416 1.416-0.635 1.416-1.416zM11.967 0c-0.104 0-0.207 0.041-0.285 0.119l-4.708 4.708c-0.134 0.134-0.17 0.323-0.102 0.493l2.844 7.085c0.165 0.412 0.58 0.669 1.026 0.669h2.364c0.446 0 0.861-0.257 1.026-0.669l2.844-7.085c0.068-0.17 0.032-0.359-0.102-0.493l-4.708-4.708c-0.078-0.078-0.181-0.119-0.285-0.119zM15.176 17.56c0-0.781-0.634-1.416-1.416-1.416s-1.416 0.635-1.416 1.416 0.634 1.416 1.416 1.416 1.416-0.635 1.416-1.416zM12 15.696c-0.89 0-1.611 0.722-1.611 1.611s0.722 1.611 1.611 1.611 1.611-0.722 1.611-1.611-0.722-1.611-1.611-1.611zM24 10.985c0-3.328-2.702-6.03-6.033-6.03s-6.033 2.702-6.033 6.03 2.702 6.03 6.033 6.03 6.033-2.702 6.033-6.03z"/></svg>
+                             GitLab (Token Access)
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="bitbucket-tab" data-bs-toggle="tab" data-bs-target="#tab-bitbucket" type="button" role="tab" aria-controls="tab-bitbucket" aria-selected="false">
+                             <svg width="20" height="20" class="me-2" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M21.996 11.233c0-0.669-0.542-1.211-1.211-1.211h-0.207c-0.334 0-0.648 0.134-0.881 0.367l-2.052 2.052c-0.233 0.233-0.547 0.367-0.881 0.367h-3.52c-0.669 0-1.211 0.542-1.211 1.211 0 0.669 0.542 1.211 1.211 1.211h3.52c0.334 0 0.648 0.134 0.881 0.367l2.052 2.052c0.233 0.233 0.547 0.367 0.881 0.367h0.207c0.669 0 1.211-0.542 1.211-1.211v-4.939zM12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zM11.666 17.065c-0.233-0.233-0.547-0.367-0.881-0.367h-3.52c-0.669 0-1.211-0.542-1.211-1.211 0-0.669 0.542-1.211 1.211-1.211h3.52c0.334 0 0.648-0.134 0.881-0.367l2.052-2.052c0.233-0.233 0.547-0.367 0.881-0.367h0.207c0.669 0 1.211 0.542 1.211 1.211v4.939c0 0.669-0.542 1.211-1.211 1.211h-0.207c-0.334 0-0.648-0.134-0.881-0.367l-2.052-2.052z"/></svg>
+                             Bitbucket (Token Access)
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content border bg-light p-4 rounded">
+                    <div class="tab-pane fade show active" id="tab-github" role="tabpanel" aria-labelledby="github-tab">
+                        <h6 class="text-primary mb-3">GitHub App Integration (Recommended)</h6>
+                        <p>Use the **GitHub App** model for secure, granular, and tokenless authentication.</p>
+                        <form data-action="github-setup">
+                            <div class="mb-3">
+                                <label for="appName" class="form-label">App Name</label>
+                                <input type="text" class="form-control" id="appName" name="appName" placeholder="e.g., WP2-Prod-App" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Connect via GitHub App</button>
+                        </form>
+                    </div>
+                    <div class="tab-pane fade" id="tab-gitlab" role="tabpanel" aria-labelledby="gitlab-tab">
+                        <h6 class="text-secondary mb-3">GitLab Setup (Personal Access Token)</h6>
+                        <p>Authenticate using a **Personal Access Token (PAT)** with <code>read_repository</code> scope.</p>
+                        <div class="alert alert-warning small">
+                            Token authentication is less secure than the App model. Use dedicated PATs only.
+                        </div>
+                        <form data-action="gitlab-setup">
+                            <div class="mb-3">
+                                <label for="gitlabToken" class="form-label">GitLab Personal Access Token</label>
+                                <input type="password" class="form-control" id="gitlabToken" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="gitlabUsername" class="form-label">GitLab Username</label>
+                                <input type="text" class="form-control" id="gitlabUsername" required>
+                            </div>
+                            <button type="submit" class="btn btn-outline-secondary">Connect to GitLab</button>
+                        </form>
+                    </div>
+                    <div class="tab-pane fade" id="tab-bitbucket" role="tabpanel" aria-labelledby="bitbucket-tab">
+                        <h6 class="text-secondary mb-3">Bitbucket Setup (App Password)</h6>
+                        <p>Use an **App Password** with **Read** access to the repository contents.</p>
+                        <form data-action="bitbucket-setup">
+                            <div class="mb-3">
+                                <label for="bitbucketUsername" class="form-label">Workspace/Username</label>
+                                <input type="text" class="form-control" id="bitbucketUsername" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="bitbucketAppPassword" class="form-label">App Password</label>
+                                <input type="password" class="form-control" id="bitbucketAppPassword" required>
+                            </div>
+                            <button type="submit" class="btn btn-outline-secondary">Connect to Bitbucket</button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        const showNotification = (message, type = 'success') => {
+            const id = `notif-${Date.now()}`;
+            const notificationEl = document.createElement('div');
+            notificationEl.id = id;
+            notificationEl.className = `notification-item alert alert-dismissible fade show`;
+            notificationEl.role = 'alert';
+            
+            const colors = {
+                success: 'alert-success',
+                error: 'alert-danger',
+                info: 'alert-info',
+            };
+            notificationEl.classList.add(colors[type] || 'alert-secondary');
+            
+            notificationEl.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
+            
+            document.getElementById('notification-center').appendChild(notificationEl);
+            
+            // Animate in
+            setTimeout(() => notificationEl.classList.add('visible'), 10);
+            
+            // Auto-dismiss
+            setTimeout(() => {
+                const alert = bootstrap.Alert.getOrCreateInstance(notificationEl);
+                if (alert) {
+                    alert.close();
+                }
+            }, 4000);
+        };
+        
+        let modalInstance = null;
+        const showModal = (title, body, isLarge = true) => {
+            const modalEl = document.getElementById('main-modal');
+            const contentEl = modalEl.querySelector('.modal-content');
+            const dialogEl = modalEl.querySelector('.modal-dialog');
+            
+            if (isLarge) {
+                dialogEl.classList.add('modal-lg');
+            } else {
+                 dialogEl.classList.remove('modal-lg');
+            }
+
+            contentEl.innerHTML = `
+                <div class="modal-header">
+                    <h5 class="modal-title" id="main-modal-label">${title}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    ${body}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        Close
+                    </button>
+                </div>
+            `;
+            
+            modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modalInstance.show();
+        };
+
+        const hideModal = () => {
+             if(modalInstance) {
+                modalInstance.hide();
+             }
+        };
+        
+        const handleAction = (e) => {
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+            
+            const action = target.dataset.action;
+            const id = target.dataset.id;
+            
+            switch(action) {
+                case 'toggle-dev-mode':
+                    // Checkbox is already toggled by browser, just read the new state
+                    AppState.isDevMode = e.target.checked;
+                    showNotification(`Developer Mode ${AppState.isDevMode ? 'Enabled' : 'Disabled'} (Local override is ${AppState.isDevMode ? 'active' : 'inactive'}).`, 'info');
+                    renderView(); // Re-render to update the checkbox
+                    break;
+                case 'start-wizard':
+                    showNotification('Setup Wizard initiated. Redirecting to GitHub App creation...', 'info');
+                    // Simulate step 1 of the wizard
+                    showModal('Setup Wizard Step 1', `
+                        <p>Simulating redirection to GitHub App setup and manifest generation.</p>
+                        <p>After setup, you would return here to complete the process.</p>
+                        <button class="btn btn-primary" onclick="showNotification('Step 2: Authenticating...'); hideModal();">Continue to Step 2 (Simulated)</button>
+                    `, false);
+                    break;
+                case 'select-all-packages':
+                    const isChecked = e.target.checked;
+                    document.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = isChecked);
+                    break;
+                case 'apply-bulk':
+                    const bulkAction = document.getElementById('bulk-action-select').value;
+                    const selectedIds = getSelectedPackageIds();
+                    if (selectedIds.length === 0 || !bulkAction) {
+                         showNotification('Please select packages and a bulk action.', 'error');
+                         return;
+                    }
+                    showNotification(`Bulk action "${bulkAction}" applied to ${selectedIds.length} packages (simulated).`, 'info');
+                    // Reset selection after action
+                    document.getElementById('select-all-packages').checked = false;
+                    document.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = false);
+                    break;
+                case 'change-channel':
+                    const channel = target.dataset.channel;
+                    const pkgToUpdate = AppState.packages.find(p => p.id === id);
+                    if(pkgToUpdate) {
+                         pkgToUpdate.channel = channel;
+                         showNotification(`Channel for ${pkgToUpdate.name} set to ${channel}.`, 'info');
+                         renderView(); // Re-render to update the dropdown text
+                    }
+                    break;
+                case 'update':
+                    const pkg = AppState.packages.find(p => p.id === id);
+                    if (pkg) {
+                        if (pkg.precheckFails) {
+                             showModal('Update Blocked: Pre-Check Failure', `
+                                <p>Cannot update <strong>${pkg.name}</strong> due to pre-update sanity check failure.</p>
+                                <p class="text-danger"><strong>Reason:</strong> Insufficient disk space for backup/update process (Simulated Wave 1: #2 Sanity Check).</p>
+                                <p class="small text-muted">Please check your server environment (Health view) or manually clear space before retrying.</p>
+                            `, false);
+                            return;
+                        }
+
+                        pkg.isUpdating = true;
+                        renderView();
+                        showNotification(`Updating ${pkg.name}...`, 'info');
+                        setTimeout(() => {
+                            pkg.isUpdating = false;
+                            pkg.status = 'up_to_date';
+                            pkg.installedVersion = pkg.latestVersion;
+                            renderView();
+                            showNotification(`${pkg.name} updated successfully!`);
+                        }, 2500);
+                    }
+                    break;
+                case 'rollback':
+                    showModal('Rollback Package', `<p>This would show a list of previous versions for package <strong>${id}</strong> to select for rollback.</p>`, false);
+                    break;
+                case 'restore-package':
+                     showModal('Restore Package from Backup', `<p>Are you sure you want to restore **${id}** from its last automatic backup? This is a system-level file restore (Simulated Wave 1: #2 Restore).</p>`, false);
+                    break;
+                case 'details':
+                    const pkgDetails = AppState.packages.find(p => p.id === id);
+                     showModal(`Package Details: ${pkgDetails.name}`, renderPackageDetailsBody(pkgDetails), true);
+                    break;
+                case 'sync-all':
+                     showNotification(`Syncing all packages...`, 'info');
+                    break;
+                case 'add-app':
+                    // VCS Agnostic Modal Trigger
+                    showModal('Connect New Version Control', renderAddAppBody(), true);
+                    break;
+                case 'github-setup':
+                    e.preventDefault();
+                    showNotification('GitHub App setup flow initiated (simulated).', 'info');
+                    hideModal();
+                    break;
+                case 'gitlab-setup':
+                    e.preventDefault();
+                    showNotification('GitLab token credentials stored (simulated).', 'info');
+                    hideModal();
+                    break;
+                case 'bitbucket-setup':
+                    e.preventDefault();
+                    showNotification('Bitbucket App Password stored (simulated).', 'info');
+                    hideModal();
+                    break;
+                case 'add-package':
+                    showModal('Add New Package', `<p>This would open the form for **creating a new package** by providing the repository URL and release channel.</p>`, false);
+                    break;
+                case 'delete-app':
+                     showNotification(`App ${id} deleted.`);
+                     AppState.apps = AppState.apps.filter(a => a.id !== id);
+                     renderView();
+                    break;
+                case 'refresh-health':
+                     showNotification(`Refreshing system health...`, 'info');
+                    break;
+                case 'restore':
+                    const file = target.dataset.file;
+                    showModal('Confirm Restore', `<p>Are you sure you want to restore from <strong>${file}</strong>? This will overwrite the current version.</p>`, false);
+                    break;
+                case 'clear-logs':
+                    AppState.logs = [];
+                    renderView();
+                    showNotification('Logs cleared.', 'info');
+                    break;
+                case 'retry-task':
+                     const task = AppState.tasks.find(t => t.id === id);
+                     if (task) {
+                        task.status = 'queued';
+                        task.scheduled = new Date(Date.now() + 5000).toLocaleString();
+                        renderView();
+                        showNotification(`Task ${id} re-queued for retry.`, 'info');
+                     }
+                    break;
+                case 'refresh-tasks':
+                     showNotification('Background task queue refreshing...', 'info');
+                     renderView();
+                     break;
+                case 'export-config':
+                     showNotification('Configuration export simulated. Downloading wp2-config.json...', 'success');
+                     break;
+                case 'import-config':
+                    e.preventDefault();
+                    showNotification('Configuration import simulated. Settings applied!', 'success');
+                    break;
+                case 'view-task-log':
+                    const taskLog = AppState.tasks.find(t => t.id === id);
+                    showModal(`Task Log: ${taskLog.id}`, `
+                        <p class="${taskLog.error ? 'text-danger' : 'text-success'}">${taskLog.error || 'Task completed successfully.'}</p>
+                        <hr>
+                        <h6>Details</h6>
+                        <dl class="row small">
+                            <dt class="col-sm-4">Target</dt><dd class="col-sm-8">${taskLog.target}</dd>
+                            <dt class="col-sm-4">Type</dt><dd class="col-sm-8">${taskLog.type}</dd>
+                            <dt class="col-sm-4">Attempts</dt><dd class="col-sm-8">${taskLog.attempt}</dd>
+                        </dl>
+                    `, false);
+                    break;
+            }
+        };
+
+        // --- INITIALIZATION ---
+        
+        let logInterval;
+        
+        const startLogStream = () => {
+            const logContainer = document.getElementById('log-container');
+            if(!logContainer) {
+                if(logInterval) clearInterval(logInterval);
+                return;
+            };
+
+            if(logInterval) clearInterval(logInterval);
+
+            logInterval = setInterval(() => {
+                const levels = ['INFO', 'INFO', 'INFO', 'WARN', 'DEBUG', 'ERROR'];
+                const messages = [
+                    'Webhook received: release published for company/sage-theme.',
+                    'Cache cleared for company/sage-theme.',
+                    'Update check triggered for 2 packages.',
+                    'GitHub API rate limit approaching: 87 remaining.',
+                    'Resolved app_id for company/sage-theme: app_1.',
+                    'Failed to download package from GitHub: Signature expired.'
+                ];
+
+                const log = {
+                    time: new Date().toLocaleTimeString(),
+                    level: levels[Math.floor(Math.random() * levels.length)],
+                    message: messages[Math.floor(Math.random() * messages.length)],
+                };
+                AppState.logs.unshift(log);
+                if (AppState.logs.length > 100) AppState.logs.pop();
+
+                const logEl = document.createElement('div');
+                logEl.innerHTML = createLogEntry(log);
+                logContainer.prepend(logEl.firstChild);
+                
+            }, 2000);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            window.addEventListener('hashchange', router);
+            document.body.addEventListener('click', handleAction);
+            router(); // Initial call
+            
+            // Handle select all checkbox in Packages view
+            document.getElementById('main-view').addEventListener('change', (e) => {
+                if (e.target.id === 'select-all-packages') {
+                    handleAction(e);
+                }
+            });
+
+            // Re-initialize log stream on view change
+            const observer = new MutationObserver((mutations) => {
+                for(let mutation of mutations) {
+                    if (mutation.type === 'childList') {
+                        // Check if the log container is present before starting the stream
+                        if (document.getElementById('log-container')) {
+                            startLogStream();
+                        } else {
+                            if(logInterval) clearInterval(logInterval);
+                        }
+                    }
+                }
+            });
+            observer.observe(document.getElementById('main-view'), { childList: true });
+
+        });
     </script>
 </body>
 </html>
-

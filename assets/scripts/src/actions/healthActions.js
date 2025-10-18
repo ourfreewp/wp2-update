@@ -8,8 +8,10 @@ import { NotificationService } from '../services/NotificationService.js';
 export async function fetchHealthData() {
   updateState({ isProcessing: true });
   try {
-    const healthData = await HealthService.fetchHealthStatus();
-    updateState({ health: healthData });
+    const groups = await HealthService.fetchHealthStatus();
+    if (groups) {
+      updateState({ health: { groups } });
+    }
   } catch (error) {
     NotificationService.showError('Failed to fetch health data.');
     console.error(error);
@@ -24,8 +26,10 @@ export async function fetchHealthData() {
 export async function refreshHealthData() {
   updateState({ isProcessing: true });
   try {
-    const healthData = await HealthService.refreshHealthStatus();
-    updateState({ health: healthData });
+    const groups = await HealthService.refreshHealthStatus();
+    if (groups) {
+      updateState({ health: { groups } });
+    }
   } catch (error) {
     NotificationService.showError('Failed to refresh health data.');
     console.error(error);

@@ -1,7 +1,9 @@
 <?php
-declare(strict_types=1);
 
+declare(strict_types=1);
 namespace WP2\Update\Services;
+
+defined('ABSPATH') || exit;
 
 use WP2\Update\Services\Github\AppService;
 use WP2\Update\Services\PackageService;

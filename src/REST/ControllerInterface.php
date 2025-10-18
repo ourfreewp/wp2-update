@@ -1,6 +1,9 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\REST;
+
+defined('ABSPATH') || exit;
 
 /**
  * Defines the contract for all REST controllers in the plugin.

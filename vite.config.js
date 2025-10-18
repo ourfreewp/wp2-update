@@ -102,6 +102,7 @@ export default defineConfig(({ command }) => {
 
     resolve: {
       alias: {
+        '@components': path.resolve(__dirname, 'assets/scripts/src/components'),
         '@modals': path.resolve(__dirname, 'assets/scripts/src/components/modals'),
       },
     },

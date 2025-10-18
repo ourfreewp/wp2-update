@@ -1,0 +1,1 @@
+Adding a new PHPUnit test file for AppService to test credential handling and secure operations.

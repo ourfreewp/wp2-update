@@ -2,6 +2,8 @@
 
 namespace WP2\Update\Admin;
 
+defined('ABSPATH') || exit;
+
 use WP2\Update\Utils\Logger;
 use WP2\Update\Config;
 
@@ -58,11 +60,21 @@ final class Assets {
 
         // Localize REST API root and nonce for use in JavaScript
         wp_localize_script(
-            $main_script_handle,
+            'wp-api-fetch', // Use the correct handle for wp-api-fetch
             'wpApiSettings',
             [
                 'root'  => esc_url_raw(rest_url()),
-                'nonce' => wp_create_nonce('wp_rest'),
+                'nonce' => wp_create_nonce('wp_rest'), // Standardize on wp_rest nonce
+            ]
+        );
+
+        // Remove redundant nonce action for main handle
+        wp_localize_script(
+            $main_script_handle,
+            'wp2UpdateData',
+            [
+                'apiRoot' => esc_url_raw(rest_url(Config::REST_NAMESPACE)),
+                'nonce'   => wp_create_nonce('wp_rest'), // Use consistent wp_rest nonce
             ]
         );
     }
@@ -75,7 +87,16 @@ final class Assets {
         $data = [
             // Provide the REST API root URL for the client-side apiFetch utility.
             'apiRoot'           => esc_url_raw( rest_url( Config::REST_NAMESPACE ) ),
-            'nonce'             => wp_create_nonce('wp_rest'), // Use a single nonce for all routes
+            'nonce'             => wp_create_nonce('wp2_update_action'), // Consistent nonce action
+            'caps'              => [
+                'manage' => current_user_can( Config::CAP_MANAGE ),
+                'viewLogs' => current_user_can( Config::CAP_VIEW_LOGS ),
+                'restoreBackups' => current_user_can( Config::CAP_RESTORE_BACKUPS ),
+            ],
+            'flags' => [
+                'devMode' => Config::dev_mode(),
+                'headless' => Config::headless(),
+            ],
             // Provide internationalization strings.
             'i18n'              => [
                 'loading' => __( 'Loading', 'wp2-update' ),
@@ -113,6 +134,9 @@ final class Assets {
 
         if (!file_exists($manifest_path)) {
             Logger::warning('Manifest file does not exist.', ['path' => $manifest_path]);
+            add_action('admin_notices', function() use ($manifest_path) {
+                echo '<div class="notice notice-error"><p>' . esc_html__('Manifest file is missing. Please ensure the build process is complete.', 'wp2-update') . '</p></div>';
+            });
             return null;
         }
 
@@ -180,6 +204,25 @@ final class Assets {
                 }'
             );
 
+        }
+    }
+
+    /**
+     * Enqueues dynamically imported scripts based on the manifest data.
+     * @param array $manifest The Vite manifest.
+     * @param string $view The name of the dynamically imported view.
+     */
+    private function enqueue_dynamic_scripts_from_manifest( array $manifest, string $view ): void {
+        $entry_key = "assets/scripts/src/views/{$view}.js";
+        if ( isset( $manifest[ $entry_key ]['file'] ) ) {
+            $file = $manifest[ $entry_key ]['file'];
+            wp_enqueue_script(
+                "wp2-update-{$view}",
+                WP2_UPDATE_PLUGIN_URL . 'dist/' . $file,
+                ['wp2-update-admin-main'],
+                filemtime( WP2_UPDATE_PLUGIN_DIR . '/dist/' . $file ),
+                true // Load in footer
+            );
         }
     }
 

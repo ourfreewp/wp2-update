@@ -5,10 +5,12 @@ let notificationId = 0;
 export const NotificationService = {
     showSuccess(message) {
         this._addNotification('success', message);
+        updateState({ statusMessage: message });
     },
 
     showError(message) {
         this._addNotification('danger', message);
+        updateState({ statusMessage: message });
     },
 
     _addNotification(type, message) {
@@ -20,6 +22,8 @@ export const NotificationService = {
         setTimeout(() => {
             const current = store.get().notifications;
             updateState({ notifications: current.filter(n => n.id !== note.id) });
+            // Clear statusMessage after notification is dismissed
+            updateState({ statusMessage: '' });
         }, 5000);
     }
 };

@@ -1,6 +1,9 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\Admin;
+
+defined('ABSPATH') || exit;
 
 use WP2\Update\Config;
 use WP2\Update\Utils\Logger;
@@ -28,7 +31,7 @@ final class Pages {
      * Consolidates logic for single-site and multisite environments.
      */
     public function register_menu(): void {
-        $capability = is_multisite() ? 'manage_network_options' : 'manage_options';
+        $capability = \WP2\Update\Config::CAPABILITY;
 
         add_menu_page(
             __('WP2 Update', Config::TEXT_DOMAIN), // Page Title
@@ -49,5 +52,15 @@ final class Pages {
             'wp2-update-github-callback',
             [$this, 'render_github_callback']
         );
+    }
+
+    /**
+     * Renders the GitHub callback page.
+     */
+    public function render_github_callback(): void {
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__( 'GitHub Callback', Config::TEXT_DOMAIN ) . '</h1>';
+        echo '<p>' . esc_html__( 'This page handles the GitHub App setup callback.', Config::TEXT_DOMAIN ) . '</p>';
+        echo '</div>';
     }
 }

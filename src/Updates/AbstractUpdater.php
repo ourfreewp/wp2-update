@@ -1,6 +1,7 @@
 <?php
-
 namespace WP2\Update\Updates;
+
+defined('ABSPATH') || exit;
 
 use WP2\Update\Services\PackageService;
 use WP2\Update\Services\Github\ReleaseService;
@@ -51,6 +52,10 @@ abstract class AbstractUpdater {
      * Checks for updates for all managed packages of this type with enhanced caching.
      */
     public function check_for_updates($transient) {
+        if (\WP2\Update\Config::dev_mode()) {
+            \WP2\Update\Utils\Logger::info('Dev mode active; skipping remote update checks.', ['type' => $this->type]);
+            return $transient;
+        }
         if (empty($transient->checked)) {
             return $transient;
         }
@@ -91,8 +96,11 @@ abstract class AbstractUpdater {
      * Gets update data for a single package if an update is available, considering the release channel.
      */
     private function get_update_data(array $package, string $installed_version): ?array {
-        $release_channel = $package['release_channel'] ?? 'stable'; // Default to stable if not set
-        $latest_release = $this->releaseService->get_latest_release($package['repo'], $release_channel);
+        // Determine channel from stored mapping; default to stable
+        $channels = get_option(\WP2\Update\Config::OPTION_RELEASE_CHANNELS, []);
+        $repo = $package['repo'] ?? '';
+        $release_channel = is_array($channels) && isset($channels[$repo]) ? (string) $channels[$repo] : (string) ($package['release_channel'] ?? 'stable');
+        $latest_release = $this->releaseService->get_latest_release_by_channel($repo, $release_channel);
 
         if (!$latest_release || version_compare($installed_version, $latest_release['tag_name'], '>=')) {
             return null;
@@ -102,7 +110,7 @@ abstract class AbstractUpdater {
         $download_url = apply_filters('wp2/update/download_url', $this->releaseService->get_zip_url_from_release($latest_release), $package);
 
         return [
-            'slug'        => $package['slug'],
+            'slug'        => $package['slug'] ?? ($package['name'] ?? ''),
             'new_version' => $latest_release['tag_name'],
             'url'         => $latest_release['html_url'],
             'package'     => $download_url,

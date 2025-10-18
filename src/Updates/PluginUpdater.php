@@ -1,6 +1,7 @@
 <?php
-
 namespace WP2\Update\Updates;
+
+defined('ABSPATH') || exit;
 
 use WP2\Update\Services\PackageService;
 use WP2\Update\Services\Github\ReleaseService;

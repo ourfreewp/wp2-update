@@ -1,13 +1,13 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { fetchReleases } from '../../actions/packageActions.js';
+import { fetchReleases, updatePackage } from '../../actions/packageActions.js';
 
 @customElement('release-dropdown')
 export class ReleaseDropdown extends LitElement {
   @property({ type: Object }) pkg;
   @state() _releases = [];
   @state() _isLoading = false;
-  
+
   static styles = css`
     .release-dropdown {
       position: relative;
@@ -26,7 +26,7 @@ export class ReleaseDropdown extends LitElement {
 
   async _onUpdate(releaseTag) {
     if (confirm(`Are you sure you want to update ${this.pkg.name} to ${releaseTag}?`)) {
-      updatePackage(this.pkg.id, releaseTag);
+      await updatePackage(this.pkg.id, releaseTag);
     }
   }
 
@@ -55,8 +55,7 @@ export class ReleaseDropdown extends LitElement {
     `;
   }
 
-
-    createRenderRoot() {
-        return this; // Disable shadow DOM
-    }
+  createRenderRoot() {
+    return this; // Disable shadow DOM
+  }
 }

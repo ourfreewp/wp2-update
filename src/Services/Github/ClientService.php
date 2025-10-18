@@ -1,8 +1,8 @@
 <?php
 declare(strict_types=1);
-
 namespace WP2\Update\Services\Github;
 
+defined('ABSPATH') || exit;
 use Github\Client as GitHubClient;
 use Github\AuthMethod;
 use Github\Exception\ExceptionInterface;
@@ -12,6 +12,7 @@ use WP2\Update\Data\AppData;
 use WP2\Update\Utils\Encryption;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Utils\CustomException;
+use WP2\Update\Data\DTO\AppDTO;
 
 /**
  * Class ClientService
@@ -94,13 +95,17 @@ class ClientService {
     }
 
     /**
-     * Returns a GitHub client instance.
-     *
-     * @return GitHubClient
+     * Returns a GitHub client instance for a given app installation.
      */
-    public function getClient(): GitHubClient {
+    public function getClient(string $app_id): ?GitHubClient {
+        $token = $this->getInstallationToken($app_id);
+        if (!$token) {
+            $this->logger->error('Failed to retrieve installation token.', ['app_id' => $app_id]);
+            return null;
+        }
+
         $client = new GitHubClient();
-        $client->authenticate('your-token-here', 'http_token');
+        $client->authenticate($token, AuthMethod::ACCESS_TOKEN);
         return $client;
     }
 
@@ -122,13 +127,17 @@ class ClientService {
         $this->logger->start('token_generation');
 
         $credentials = $this->fetchStoredCredentials($app_id);
-        if (empty($credentials['app_id']) || empty($credentials['private_key']) || empty($credentials['installation_id'])) {
+        if (is_array($credentials)) {
+            $credentials = AppDTO::fromArray($credentials);
+        }
+
+        if (empty($credentials->appId) || empty($credentials->privateKey) || empty($credentials->installationId)) {
             $this->logger->error('Token generation failed: Missing credentials.', [
                 'app_id' => $app_id,
                 'missing_fields' => [
-                    'app_id' => empty($credentials['app_id']),
-                    'private_key' => empty($credentials['private_key']),
-                    'installation_id' => empty($credentials['installation_id'])
+                    'app_id' => empty($credentials->appId),
+                    'private_key' => empty($credentials->privateKey),
+                    'installation_id' => empty($credentials->installationId)
                 ]
             ]);
             return null;
@@ -151,11 +160,11 @@ class ClientService {
 
     /**
      * Generates a new installation token from the GitHub API.
-     * @param array $credentials The app credentials.
+     * @param AppDTO $credentials The app credentials.
      * @return array|null An array with the token and expiry time, or null on failure.
      */
-    private function createInstallationToken(array $credentials): ?array {
-        $jwt = $this->jwtService->generate_jwt($credentials['app_id'], $credentials['private_key']);
+    private function createInstallationToken(AppDTO $credentials): ?array {
+        $jwt = $this->jwtService->generate_jwt($credentials->appId, $credentials->privateKey);
         if (!$jwt) {
             return null;
         }
@@ -164,7 +173,9 @@ class ClientService {
         $client->authenticate($jwt, AuthMethod::JWT);
 
         try {
-            $result = $client->apps()->createInstallationToken((int) $credentials['installation_id']);
+            $result = $this->withRetry(function() use ($client, $credentials) {
+                return $client->apps()->createInstallationToken((int) $credentials->installationId);
+            }, 3);
             if (empty($result['token'])) {
                 return null;
             }
@@ -172,8 +183,9 @@ class ClientService {
                 'token'   => $result['token'],
                 'expires' => isset($result['expires_at']) ? strtotime($result['expires_at']) : time() + 3540,
             ];
-        } catch (ExceptionInterface $e) {
-            throw new CustomException('Failed to retrieve token.', 500);
+        } catch (\Exception $e) {
+            $this->logger->error('Failed to create installation token.', ['error' => $e->getMessage()]);
+            return null;
         }
     }
 
@@ -189,11 +201,9 @@ class ClientService {
             return null;
         }
 
-        try {
-            // Attempt to decrypt the private key
-            $privateKey = $this->encryption->decrypt($credentials->private_key);
-        } catch (\Exception $e) {
-            $this->logger->error('Failed to decrypt private key.', ['app_id' => $app_id, 'error' => $e->getMessage()]);
+        $privateKey = $credentials->private_key;
+        if ($privateKey === '') {
+            $this->logger->error('Private key is missing for the given app ID.', ['app_id' => $app_id]);
             return null;
         }
 
@@ -227,8 +237,13 @@ class ClientService {
                     'wait_time' => $waitTime
                 ]);
 
-                // Pause operations until reset time
-                sleep($waitTime);
+                // Use a non-blocking alternative to sleep
+                $transientKey = 'github_rate_limit_wait';
+                set_transient($transientKey, true, $waitTime);
+                while (get_transient($transientKey)) {
+                    usleep(500000); // Check every 0.5 seconds
+                }
+
                 return false;
             }
 
@@ -237,5 +252,37 @@ class ClientService {
             $this->logger->error('Failed to check GitHub API rate limits.', ['error' => $e->getMessage()]);
             return true; // Allow operations to proceed in case of error
         }
+    }
+
+    /**
+     * Runs a callable with simple exponential backoff on GitHub exceptions.
+     *
+     * @template T
+     * @param callable():T $fn
+     * @param int $maxAttempts
+     * @return mixed
+     * @throws ExceptionInterface
+     */
+    private function withRetry(callable $fn, int $maxAttempts = 3) {
+        $attempt = 0;
+        $delayMs = 250; // start at 250ms
+        do {
+            try {
+                $attempt++;
+                return $fn();
+            } catch (ExceptionInterface $e) {
+                $this->logger->warning('GitHub API call failed; retrying', [
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
+                ]);
+                if ($attempt >= $maxAttempts) {
+                    throw $e;
+                }
+                usleep($delayMs * 1000);
+                $delayMs *= 2;
+            }
+        } while ($attempt < $maxAttempts);
+        // Should not reach here
+        return $fn();
     }
 }

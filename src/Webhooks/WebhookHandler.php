@@ -1,6 +1,7 @@
 <?php
-
 namespace WP2\Update\Webhooks;
+
+defined('ABSPATH') || exit;
 
 use WP2\Update\Config;
 

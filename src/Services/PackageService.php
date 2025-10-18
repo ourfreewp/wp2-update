@@ -1,12 +1,14 @@
 <?php
 declare(strict_types=1);
-
 namespace WP2\Update\Services;
+
+defined('ABSPATH') || exit;
 
 use WP2\Update\Services\Github\RepositoryService;
 use WP2\Update\Services\Github\ReleaseService;
 use WP2\Update\Services\Github\ClientService;
 use WP2\Update\Services\Github\AppService;
+use WP2\Update\Services\AppPackageMediator;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Utils\CustomException;
 use WP2\Update\Config;
@@ -79,30 +81,13 @@ class PackageService {
     }
 
     /**
-     * Gets all packages (plugins and themes) and groups them by status.
      * Avoids scanning for packages unless explicitly triggered.
      *
      * @return array<string, PackageDTO[]>
      */
     public function get_all_packages_grouped(): array {
-		$result = ['all' => []];
-		$local_packages = $this->repositoryService->getLocalPackages();
-
-		foreach ($local_packages as $package) {
-			$cacheKey = 'package_' . md5($package['repo']);
-			$cachedPackage = Cache::get($cacheKey);
-
-			if ($cachedPackage !== false) {
-				$result['all'][] = $cachedPackage;
-			} else {
-				$processed_package = $this->process_package($package);
-				Cache::set($cacheKey, $processed_package->toArray(), 3600);
-				$result['all'][] = $processed_package;
-			}
-		}
-
-		return $result;
-	}
+        return ['all' => $this->fetch_all_packages()['all']];
+    }
 
     /**
      * Manually refreshes the package data by scanning for packages.
@@ -117,19 +102,27 @@ class PackageService {
             return ['all' => []];
         }
 
+        // Flush all existing package cache entries
+        $this->flush_package_cache();
+
         $result = ['all' => []];
 
         foreach ($local_packages as $package) {
             $cacheKey = 'package_' . md5($package['repo']);
-            $processed_package = $this->process_package($package);
+            $processed_package = $this->process_package($package)->toArray();
             Cache::set($cacheKey, $processed_package, 3600);
             $result['all'][] = $processed_package;
         }
 
-        // Cache the entire result
-        Cache::set('wp2_packages_data', $result, 3600);
-
         return $result;
+    }
+
+    /**
+     * Flushes all package-related cache entries.
+     */
+    private function flush_package_cache(): void {
+        $cache_prefix = 'package_';
+        Cache::flush_by_prefix($cache_prefix);
     }
 
     /**
@@ -139,16 +132,49 @@ class PackageService {
         Logger::assert(!empty($package['repo']), 'Package is missing a repository slug.', $package);
 
         if (empty($package['repo'])) {
-            $package['latest'] = null;
-            $package['status'] = 'unconnected';
-            return PackageDTO::fromArray($package);
+            $name = $package['name'] ?? 'Unknown Package';
+            return PackageDTO::fromArray([
+                'name' => $name,
+                'version' => $package['version'] ?? '0.0.0',
+                'repo_slug' => '',
+                'last_updated' => current_time('mysql'),
+                'package_name' => $name,
+                'metadata' => [
+                    'status' => 'unconnected',
+                    'channel' => 'stable',
+                ],
+            ]);
         }
 
-        $latest_release = $this->releaseService->get_latest_release($package['repo']);
-        $package['latest'] = $latest_release['tag_name'] ?? null;
-        $package['status'] = version_compare($package['version'], $package['latest'], '<') ? 'update_available' : 'up_to_date';
+        $repo = $package['repo'];
+        $name = $package['name'] ?? ($package['metadata']['name'] ?? basename((string) $repo));
+        $version = $package['version'] ?? ($package['metadata']['version'] ?? '0.0.0');
+        $slug = $package['slug'] ?? ($package['metadata']['slug'] ?? basename((string) $repo));
+        $type = $package['type'] ?? ($package['metadata']['type'] ?? null);
+        $lastUpdated = $package['last_updated'] ?? ($package['metadata']['last_updated'] ?? current_time('mysql'));
 
-        return PackageDTO::fromArray($package);
+        $channels = get_option(Config::OPTION_RELEASE_CHANNELS, []);
+        $channel = is_array($channels) && isset($channels[$repo]) ? (string) $channels[$repo] : 'stable';
+        $latestRelease = $this->releaseService->get_latest_release_by_channel($repo, $channel);
+        $latest = $latestRelease['tag_name'] ?? null;
+        $status = ($latest && $version) ? (version_compare($version, $latest, '<') ? 'update_available' : 'up_to_date') : 'unknown';
+
+        $metadata = array_merge($package['metadata'] ?? [], [
+            'slug' => $slug,
+            'type' => $type,
+            'latest' => $latest,
+            'status' => $status,
+            'channel' => $channel,
+        ]);
+
+        return PackageDTO::fromArray([
+            'name' => $name,
+            'version' => $version,
+            'repo_slug' => $repo,
+            'last_updated' => is_string($lastUpdated) ? $lastUpdated : current_time('mysql'),
+            'package_name' => $name,
+            'metadata' => $metadata,
+        ]);
     }
 
     /**
@@ -196,6 +222,10 @@ class PackageService {
      * @return bool True on success, false on failure.
      */
     public function update_package(string $repo_slug): bool {
+        if (\WP2\Update\Config::dev_mode()) {
+            Logger::info('Dev mode active; suppressing update_package.', ['repo_slug' => $repo_slug]);
+            return false;
+        }
         // Validate input
         if (empty($repo_slug) || !is_string($repo_slug)) {
             throw new \InvalidArgumentException('Invalid repository slug provided.');
@@ -381,9 +411,31 @@ class PackageService {
      * @return array The paginated packages.
      */
     public function get_paginated_packages(int $page, int $perPage): array {
-        $allPackages = $this->get_all_packages_grouped()['all'];
+        $allPackages = $this->fetch_all_packages()['all'];
         $offset = ($page - 1) * $perPage;
-        return array_slice($allPackages, $offset, $perPage);
+        $sliced = array_slice($allPackages, $offset, $perPage);
+
+        return array_map(function ($pkg) {
+            if (is_object($pkg) && method_exists($pkg, 'toArray')) {
+                $pkg = $pkg->toArray();
+            }
+            if (!is_array($pkg)) {
+                return $pkg;
+            }
+
+            $repo = $pkg['repo'] ?? ($pkg['repo_slug'] ?? null);
+            $pkg['id'] = $pkg['id'] ?? $repo;
+            $pkg['repo'] = $repo;
+            $pkg['slug'] = $pkg['slug'] ?? basename((string) $repo);
+            $pkg['status'] = $pkg['status'] ?? ($pkg['metadata']['status'] ?? 'unknown');
+            $pkg['latest'] = $pkg['latest'] ?? ($pkg['metadata']['latest'] ?? null);
+            $pkg['channel'] = $pkg['channel'] ?? ($pkg['metadata']['channel'] ?? 'stable');
+            $pkg['version'] = $pkg['version'] ?? ($pkg['metadata']['version'] ?? null);
+            $pkg['type'] = $pkg['type'] ?? ($pkg['metadata']['type'] ?? null);
+            $pkg['last_updated'] = $pkg['last_updated'] ?? ($pkg['metadata']['last_updated'] ?? null);
+
+            return $pkg;
+        }, $sliced);
     }
 
     /**
@@ -392,7 +444,7 @@ class PackageService {
      * @return array The list of all packages.
      */
     public function get_all_packages(): array {
-        return $this->get_all_packages_grouped()['all'];
+        return $this->fetch_all_packages()['all'];
     }
 
     /**
@@ -518,6 +570,10 @@ class PackageService {
      * @return bool True on success, false on failure.
      */
     public function install_from_zip(string $zipFilePath, string $packageType): bool {
+        if (\WP2\Update\Config::dev_mode()) {
+            Logger::info('Dev mode active; suppressing install_from_zip.');
+            return false;
+        }
         if (!file_exists($zipFilePath)) {
             return false;
         }
@@ -528,18 +584,39 @@ class PackageService {
         }
 
         if (!class_exists('WP_Upgrader')) {
-            throw new \RuntimeException(__('Required WordPress upgrader classes are not available.', 'wp2-update'));
+            throw new \RuntimeException(esc_html__(
+                'Required WordPress upgrader classes are not available.',
+                Config::TEXT_DOMAIN
+            ));
+        }
+
+        // Pre-update backup with sanity checks
+        try {
+            $backupService = new \WP2\Update\Services\BackupService();
+            // Best-effort identifier: zip filename without extension
+            $identifier = basename($zipFilePath);
+            $identifier = preg_replace('/\.[^.]+$/', '', (string) $identifier) ?: $identifier;
+            $backupService->create_backup($packageType, (string) $identifier);
+        } catch (\Throwable $e) {
+            // Non-fatal: proceed but log
+            \WP2\Update\Utils\Logger::warning('Pre-update backup failed.', ['error' => $e->getMessage()]);
         }
 
         $upgrader = null;
         if ($packageType === 'plugin') {
             if (!class_exists('Plugin_Upgrader')) {
-                throw new \RuntimeException(__('Plugin upgrader class is not available.', 'wp2-update'));
+                throw new \RuntimeException(esc_html__(
+                    'Plugin upgrader class is not available.',
+                    Config::TEXT_DOMAIN
+                ));
             }
             $upgrader = new \Plugin_Upgrader();
         } elseif ($packageType === 'theme') {
             if (!class_exists('Theme_Upgrader')) {
-                throw new \RuntimeException(__('Theme upgrader class is not available.', 'wp2-update'));
+                throw new \RuntimeException(esc_html__(
+                    'Theme upgrader class is not available.',
+                    Config::TEXT_DOMAIN
+                ));
             }
             $upgrader = new \Theme_Upgrader();
         }
@@ -567,7 +644,7 @@ class PackageService {
             return !empty($repo);
         } catch (\Exception $e) {
             throw new CustomException(
-                __('Failed to check repository availability: ', Config::TEXT_DOMAIN) . $e->getMessage(),
+                __('Failed to check repository availability: ', Config::TEXT_DOMAIN ) . $e->getMessage(),
                 500
             );
         }
@@ -595,5 +672,30 @@ class PackageService {
     public function update_release_channel(string $repo_slug, string $channel): void {
         // Logic to update the release channel for the package.
         $this->repositoryService->update_channel($repo_slug, $channel);
+    }
+
+    /**
+     * Consolidated method to fetch all packages.
+     *
+     * @return array<string, PackageDTO[]>
+     */
+    private function fetch_all_packages(): array {
+        $result = ['all' => []];
+        $local_packages = $this->repositoryService->getLocalPackages();
+
+        foreach ($local_packages as $package) {
+            $cacheKey = 'package_' . md5($package['repo']);
+            $cachedPackage = Cache::get($cacheKey);
+
+            if ($cachedPackage !== false) {
+                $result['all'][] = $cachedPackage;
+            } else {
+                $processed_package = $this->process_package($package)->toArray();
+                Cache::set($cacheKey, $processed_package, 3600);
+                $result['all'][] = $processed_package;
+            }
+        }
+
+        return $result;
     }
 }

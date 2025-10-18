@@ -10,11 +10,9 @@ const packageService = new PackageService();
 export async function fetchPackages() {
   updateState({ isProcessing: true });
   try {
-    const packages = await packageService.fetchPackages();
-    updateState({ packages });
+    await packageService.fetchPackages();
   } catch (error) {
     NotificationService.showError(error.message || 'An unexpected error occurred while fetching packages.');
-    updateState({ packages: [] }); // Clear packages to show an empty state
   } finally {
     updateState({ isProcessing: false });
   }
@@ -104,6 +102,23 @@ export async function syncPackage(packageId) {
 }
 
 /**
+ * Synchronizes all packages.
+ */
+export async function syncAllPackages() {
+  updateState({ isProcessing: true });
+  try {
+    await packageService.syncAllPackages();
+    NotificationService.showSuccess('All packages synchronized successfully!');
+    await fetchPackages();
+  } catch (error) {
+    NotificationService.showError('Failed to synchronize all packages.');
+    console.error(error);
+  } finally {
+    updateState({ isProcessing: false });
+  }
+}
+
+/**
  * Assigns an app to a specific package.
  * @param {string} packageId - The ID of the package.
  * @param {string} appId - The ID of the app to assign.
@@ -139,5 +154,21 @@ export async function createPackage(packageData) {
     console.error(error);
   } finally {
     updateState({ isProcessing: false });
+  }
+}
+
+/**
+ * Fetches releases for a specific repository.
+ * @param {string} repo - The repository name (e.g., 'owner/repo').
+ * @returns {Promise<Array>} - A list of releases.
+ */
+export async function fetchReleases(repo) {
+  try {
+    const releases = await packageService.fetchReleases(repo);
+    return releases;
+  } catch (error) {
+    NotificationService.showError('Failed to fetch releases.');
+    console.error(error);
+    return [];
   }
 }

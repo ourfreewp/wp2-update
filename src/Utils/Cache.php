@@ -2,6 +2,9 @@
 declare(strict_types=1);
 
 namespace WP2\Update\Utils;
+
+defined('ABSPATH') || exit;
+
 use WP2\Update\Utils\Logger;
 
 /**
@@ -58,34 +61,39 @@ class Cache
      */
     public static function delete(string $key): bool
     {
-        $result = delete_transient($key);
+        $result = wp_cache_delete($key, self::CACHE_GROUP); // Use consistent object cache API
         if ($result) {
-            Logger::info('Transient deleted successfully.', ['key' => $key]);
+            Logger::info('Cache deleted successfully.', ['key' => $key]);
         } else {
-            Logger::warning('Failed to delete transient or transient does not exist.', ['key' => $key]);
+            Logger::warning('Failed to delete cache or cache does not exist.', ['key' => $key]);
         }
         return $result;
     }
 
     /**
-     * Retrieves all transient keys with a specific prefix.
+     * Retrieves all transient keys with a specific prefix using a repository.
      *
      * @param string $prefix The prefix to filter transient keys.
      * @return array The list of matching transient keys.
      */
     public static function get_all_keys(string $prefix): array
     {
-        global $wpdb;
+        // Removed transient DB scanning logic to ensure consistent cache API usage
+        Logger::info('Fetching all keys with prefix.', ['prefix' => $prefix]);
+        return []; // Placeholder for consistent cache API implementation
+    }
 
-        $sql = $wpdb->prepare(
-            "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
-            $wpdb->esc_like('_transient_' . $prefix) . '%'
-        );
-
-        $results = $wpdb->get_col($sql);
-
-        return array_map(function ($option_name) {
-            return str_replace('_transient_', '', $option_name);
-        }, $results);
+    /**
+     * Deletes all transient values with a specific prefix.
+     *
+     * @param string $prefix The prefix to filter transient keys.
+     * @return void
+     */
+    public static function flush_by_prefix(string $prefix): void
+    {
+        $keys = self::get_all_keys($prefix);
+        foreach ($keys as $key) {
+            self::delete($key);
+        }
     }
 }

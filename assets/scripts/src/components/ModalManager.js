@@ -7,6 +7,9 @@ import { Modal } from 'bootstrap';
 // Import all your modal components
 import '@modals/CreatePackageModal.js';
 import '@modals/AppDetailsModal.js';
+import '@modals/RestoreBackupModal.js';
+import '@modals/RollbackModal.js';
+import '@modals/AssignAppModal.js';
 
 @customElement('modal-manager')
 export class ModalManager extends LitElement {
@@ -46,7 +49,13 @@ export class ModalManager extends LitElement {
       case 'createPackage':
         return html`<create-package-modal .props=${modalProps}></create-package-modal>`;
       case 'appDetails':
-        return html`<app-details-modal .props=${modalProps}></app-details-modal>`;
+        return html`<app-details-modal appId=${modalProps.appId}></app-details-modal>`;
+      case 'restoreBackup':
+        return html`<restore-backup-modal .props=${modalProps}></restore-backup-modal>`;
+      case 'rollback':
+        return html`<rollback-modal .props=${modalProps}></rollback-modal>`;
+      case 'assignApp':
+        return html`<assign-app-modal .props=${modalProps}></assign-app-modal>`;
       default:
         return html``;
     }

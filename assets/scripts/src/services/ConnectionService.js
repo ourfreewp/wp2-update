@@ -60,6 +60,7 @@ export class ConnectionService {
         }
 
         try {
+            console.debug('Using nonce:', window.wp2UpdateData?.nonce);
             const response = await apiFetch({ path: '/apps/status' }); // Updated to relative path
             const data = response || {};
             let status = data.status || STATUS.NOT_CONFIGURED;
@@ -101,5 +102,30 @@ export class ConnectionService {
 
     setProcessingState(isProcessing) {
         updateState({ isProcessing });
+    }
+
+    // Backups API
+    async listBackups(query = '') {
+        const path = query ? `/backups?q=${encodeURIComponent(query)}` : '/backups';
+        const res = await apiFetch({ path });
+        return res?.data?.backups || res?.backups || [];
+    }
+
+    async restoreBackup(file, type) {
+        if (!file || !type) throw new Error('file and type are required');
+        const res = await apiFetch({ path: '/backups/restore', method: 'POST', data: { file, type } });
+        return !!(res?.data?.restored || res?.restored);
+    }
+
+    async deleteBackup(file) {
+        if (!file) throw new Error('file is required');
+        const res = await apiFetch({ path: `/backups/delete?file=${encodeURIComponent(file)}`, method: 'DELETE' });
+        return !!(res?.data?.deleted || res?.deleted);
+    }
+
+    async deleteBackups(files = []) {
+        if (!Array.isArray(files) || files.length === 0) throw new Error('files are required');
+        const res = await apiFetch({ path: '/backups/delete-bulk', method: 'POST', data: { files } });
+        return res?.data?.results || res?.results || [];
     }
 }

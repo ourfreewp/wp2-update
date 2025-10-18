@@ -1,8 +1,8 @@
 <?php
-
 namespace WP2\Update\CLI;
 
-use WP_CLI;
+defined('ABSPATH') || exit;
+
 use WP2\Update\Services\PackageService;
 use WP2\Update\Utils\Logger;
 use WP2\Update\Config;
@@ -10,6 +10,10 @@ use WP2\Update\Config;
 /**
  * Handles WP-CLI commands for the WP2 Update plugin.
  */
+if (!class_exists('\\WP_CLI') || !class_exists('\\WP_CLI_Command')) {
+    return;
+}
+
 class Commands extends \WP_CLI_Command {
 
     private PackageService $packageService;
@@ -23,7 +27,7 @@ class Commands extends \WP_CLI_Command {
      * @param PackageService $packageService The instantiated package service.
      */
     public static function register(PackageService $packageService): void {
-        WP_CLI::add_command(Config::TEXT_DOMAIN, new self($packageService));
+        \WP_CLI::add_command(Config::TEXT_DOMAIN, new self($packageService));
     }
 
     /**
@@ -45,34 +49,34 @@ class Commands extends \WP_CLI_Command {
         $apply_updates = isset($assoc_args['apply-updates']);
         Logger::info('Package sync initiated via WP-CLI.', ['apply_updates' => $apply_updates]);
 
-        WP_CLI::line('Starting package synchronization...');
+        \WP_CLI::line('Starting package synchronization...');
         try {
             $packages = $this->packageService->get_all_packages();
             $total_count = count($packages);
 
-            WP_CLI::success("Synchronization complete. Found {$total_count} packages.");
+            \WP_CLI::success("Synchronization complete. Found {$total_count} packages.");
 
             if (!empty($packages)) {
-                WP_CLI::line('The following packages were found:');
+                \WP_CLI::line('The following packages were found:');
                 $items = array_map(function($pkg) {
                     return ['name' => $pkg['name'], 'repo' => $pkg['repo'], 'status' => $pkg['status']];
                 }, $packages);
-                WP_CLI::table($items, ['name', 'repo', 'status']);
+                \WP_CLI::table($items, ['name', 'repo', 'status']);
             }
 
             if ($apply_updates) {
-                WP_CLI::line('Applying updates to managed packages...');
+                \WP_CLI::line('Applying updates to managed packages...');
                 foreach ($packages as $package) {
                     $success = $this->packageService->update_package($package['repo']);
                     if ($success) {
-                        WP_CLI::success("Package '{$package['name']}' updated successfully.");
+                        \WP_CLI::success("Package '{$package['name']}' updated successfully.");
                     } else {
-                        WP_CLI::warning("Failed to update package '{$package['name']}'. Check logs for details.");
+                        \WP_CLI::warning("Failed to update package '{$package['name']}'. Check logs for details.");
                     }
                 }
             }
         } catch (\Exception $e) {
-            WP_CLI::error('Failed to sync packages: ' . $e->getMessage());
+            \WP_CLI::error('Failed to sync packages: ' . $e->getMessage());
         }
     }
 
@@ -131,18 +135,18 @@ class Commands extends \WP_CLI_Command {
         Logger::info('Package rollback initiated via WP-CLI.', ['repo_slug' => $repo_slug, 'version' => $version]);
 
         if (!$version) {
-            WP_CLI::error('The --version flag is required for rollback.');
+            \WP_CLI::error('The --version flag is required for rollback.');
             return;
         }
 
-        WP_CLI::line("Attempting to roll back '{$repo_slug}' to version '{$version}'...");
+        \WP_CLI::line("Attempting to roll back '{$repo_slug}' to version '{$version}'...");
 
         $success = $this->packageService->rollback_package($repo_slug, $version);
 
         if ($success) {
-            WP_CLI::success("Package '{$repo_slug}' was successfully rolled back to version '{$version}'.");
+            \WP_CLI::success("Package '{$repo_slug}' was successfully rolled back to version '{$version}'.");
         } else {
-            WP_CLI::error("Failed to roll back package '{$repo_slug}'. Check logs for details.");
+            \WP_CLI::error("Failed to roll back package '{$repo_slug}'. Check logs for details.");
         }
     }
 }

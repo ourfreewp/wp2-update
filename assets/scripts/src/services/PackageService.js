@@ -1,5 +1,5 @@
 import { apiFetch } from '../utils/apiFetch.js';
-import { updateState } from '../state/store.js';
+import { updateState, store, STATUS } from '../state/store.js';
 import { logger } from '../utils/logger.js';
 import { NotificationService } from './NotificationService.js';
 
@@ -10,8 +10,9 @@ export class PackageService {
     async fetchPackages() {
         try {
             const response = await apiFetch({ path: '/packages' });
-            const packages = Array.isArray(response?.packages) ? response.packages : [];
-            const unlinkedPackages = Array.isArray(response?.unlinked_packages) ? response.unlinked_packages : [];
+            const payload = response?.data ?? response;
+            const packages = Array.isArray(payload?.packages) ? payload.packages : (Array.isArray(payload) ? payload : []);
+            const unlinkedPackages = Array.isArray(payload?.unlinked_packages) ? payload.unlinked_packages : [];
 
             if (!Array.isArray(packages) || !Array.isArray(unlinkedPackages)) {
                 logger.warn('Unexpected packages format:', response);
@@ -19,7 +20,12 @@ export class PackageService {
                 return;
             }
 
-            updateState({ packages: [...packages, ...unlinkedPackages] });
+            const combined = [...packages, ...unlinkedPackages];
+            const ids = new Set(combined.map(pkg => pkg?.id ?? pkg?.repo));
+            const previousSelected = store.get().selectedPackages || [];
+            const selectedPackages = previousSelected.filter(id => ids.has(id));
+
+            updateState({ packages: combined, selectedPackages });
         } catch (error) {
             logger.error('Failed to fetch packages:', error);
 
@@ -30,6 +36,7 @@ export class PackageService {
             updateState({
                 status: STATUS.ERROR,
                 message: errorMessage,
+                packages: [],
                 isProcessing: false
             });
         }
@@ -49,6 +56,19 @@ export class PackageService {
             NotificationService.showError('An error occurred while syncing packages. Please try again.');
         } finally {
             updateState({ isProcessing: false });
+        }
+    }
+
+    /**
+     * Syncs all packages without updating the UI state.
+     * This is a low-level method, use with caution.
+     */
+    async syncAllPackages() {
+        try {
+            await apiFetch({ path: '/packages/sync', method: 'POST' });
+        } catch (error) {
+            logger.error('Failed to sync all packages:', error);
+            throw error;
         }
     }
 
@@ -227,6 +247,26 @@ export class PackageService {
         } catch (error) {
             logger.error(`Failed to update release channel for package ${packageRepo}:`, error);
             NotificationService.showError(`An error occurred while updating the release channel for package ${packageRepo}. Please try again.`);
+        }
+    }
+
+    /**
+     * Performs a bulk action on multiple packages.
+     * @param {string[]} repoSlugs
+     * @param {'update'|'set-channel'} action
+     * @param {string} [channel]
+     */
+    async bulkAction(repoSlugs, action, channel) {
+        try {
+            const res = await apiFetch({
+                path: '/packages/bulk',
+                method: 'POST',
+                data: { repo_slugs: repoSlugs, action, channel },
+            });
+            return res?.data || res;
+        } catch (error) {
+            logger.error('Bulk action failed', error);
+            throw error;
         }
     }
 }

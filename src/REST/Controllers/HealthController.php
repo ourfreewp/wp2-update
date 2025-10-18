@@ -1,6 +1,9 @@
 <?php
+declare(strict_types=1);
 
 namespace WP2\Update\REST\Controllers;
+
+defined('ABSPATH') || exit;
 
 use WP2\Update\Health\Checks\ConnectivityCheck;
 use WP2\Update\Health\Checks\DataIntegrityCheck;
@@ -52,17 +55,15 @@ final class HealthController extends AbstractController {
         register_rest_route(Config::REST_NAMESPACE, '/health', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_health_status'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => function() { return current_user_can(Config::CAP_MANAGE); },
         ]);
 
         register_rest_route(Config::REST_NAMESPACE, '/health/connection', [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'get_connection_status'],
-            'permission_callback' => Permissions::callback('manage_options'),
+            'permission_callback' => function() { return current_user_can(Config::CAP_MANAGE); },
         ]);
 
-        // Improved logging for route registration
-        Logger::info('HealthController routes registered.');
     }
 
     /**

@@ -2,9 +2,12 @@
 
 namespace WP2\Update\Data;
 
+defined('ABSPATH') || exit;
+
 use WP2\Update\Config;
 use WP2\Update\Data\DTO\AppDTO;
 use WP2\Update\Utils\Logger;
+use WP2\Update\Utils\Encryption;
 
 /**
  * Class AppData
@@ -14,6 +17,17 @@ use WP2\Update\Utils\Logger;
  */
 final class AppData
 {
+    /**
+     * Encryption utility for sensitive fields.
+     *
+     * @var Encryption
+     */
+    private Encryption $encryption;
+
+    public function __construct(?Encryption $encryption = null)
+    {
+        $this->encryption = $encryption ?? new Encryption();
+    }
     /**
      * In-memory cache of connection records to reduce database reads.
      *
@@ -42,11 +56,32 @@ final class AppData
         $get_option = $this->get_option_function();
 
         if ($this->cache === null) {
-            $this->cache = $get_option(Config::OPTION_APPS, []);
-            
-            Logger::info('Loaded app data: ' . json_encode($this->cache), ['context' => 'AppData::load']);
+            $raw = $get_option(Config::OPTION_APPS, []);
+            // Decrypt webhook_secret and private_key if present
+            foreach ($raw as $appId => $data) {
+                if (!empty($data['webhook_secret'])) {
+                    $decrypted = $this->encryption->decrypt($data['webhook_secret']);
+                    if ($decrypted !== false) {
+                        $data['webhook_secret'] = $decrypted;
+                    }
+                }
+                if (!empty($data['private_key'])) {
+                    $decryptedKey = $this->encryption->decrypt($data['private_key']);
+                    if ($decryptedKey !== false) {
+                        $data['private_key'] = $decryptedKey;
+                    }
+                }
+                if (empty($data['private_key']) && !empty($data['metadata']['private_key'])) {
+                    $fallbackKey = $this->encryption->decrypt($data['metadata']['private_key']);
+                    if ($fallbackKey !== false) {
+                        $data['private_key'] = $fallbackKey;
+                        unset($data['metadata']['private_key']);
+                    }
+                }
+                $raw[$appId] = $data;
+            }
+            $this->cache = $raw;
         }
-
         // Ensure all app data is loaded into the cache
         if ($id !== null) {
             $this->cache[$id] = $this->cache[$id] ?? null;
@@ -58,7 +93,7 @@ final class AppData
      *
      * @return AppDTO[] Indexed array of AppDTO objects.
      */
-    public function all(): array
+    public function get_all(): array
     {
         $this->load();
         $cache = is_array($this->cache) ? $this->cache : []; // Ensure $this->cache is always an array
@@ -94,14 +129,17 @@ final class AppData
      *
      * @param string $field The field name to search by (e.g., 'installation_id').
      * @param mixed $value The value to match.
-     * @return array<int, array<string, mixed>> A list of matching connection records.
+     * @return AppDTO[] A list of matching connection records as AppDTO objects.
      */
     public function find_by_field(string $field, $value): array
     {
         $this->load();
-        return array_values(array_filter($this->cache, function ($connection) use ($field, $value) {
-            return isset($connection[$field]) && $connection[$field] == $value;
-        }));
+        return array_values(array_filter(array_map(function ($connection) use ($field, $value) {
+            if (isset($connection[$field]) && $connection[$field] == $value) {
+                return AppDTO::fromArray($connection);
+            }
+            return null;
+        }, $this->cache)));
     }
 
     /**
@@ -112,7 +150,23 @@ final class AppData
      */
     public function save(AppDTO $appDTO): AppDTO
     {
-        $this->cache[$appDTO->id] = $appDTO->toArray();
+        $arr = $appDTO->toArray();
+        unset($arr['metadata']['private_key']);
+        // Encrypt webhook_secret before saving
+        if (!empty($arr['webhook_secret'])) {
+            $encrypted = $this->encryption->encrypt($arr['webhook_secret']);
+            if ($encrypted !== false) {
+                $arr['webhook_secret'] = $encrypted;
+            }
+        }
+        // Updated AppData to handle private_key encryption
+        if (!empty($arr['private_key'])) {
+            $encryptedKey = $this->encryption->encrypt($arr['private_key']);
+            if ($encryptedKey !== false) {
+                $arr['private_key'] = $encryptedKey;
+            }
+        }
+        $this->cache[$appDTO->id] = $arr;
         $this->persist();
         return $appDTO;
     }
@@ -149,8 +203,26 @@ final class AppData
      */
     private function persist(): void
     {
+        // Encrypt webhook_secret for all apps before persisting
+        $to_save = [];
+        foreach ($this->cache as $id => $data) {
+            unset($data['metadata']['private_key']);
+            if (!empty($data['webhook_secret'])) {
+                $encrypted = $this->encryption->encrypt($data['webhook_secret']);
+                if ($encrypted !== false) {
+                    $data['webhook_secret'] = $encrypted;
+                }
+            }
+            if (!empty($data['private_key'])) {
+                $encryptedKey = $this->encryption->encrypt($data['private_key']);
+                if ($encryptedKey !== false) {
+                    $data['private_key'] = $encryptedKey;
+                }
+            }
+            $to_save[$id] = $data;
+        }
         $update_option = is_multisite() ? 'update_site_option' : 'update_option';
-        $update_option(Config::OPTION_APPS, $this->cache, false);
+        $update_option(Config::OPTION_APPS, $to_save, false);
     }
 
     /**
@@ -242,17 +314,37 @@ final class AppData
     }
 
     /**
-     * Retrieves all app data from the WordPress options table.
+     * Handles legacy metadata for backward compatibility.
      *
-     * @return array An array of app data.
+     * @param array $metadata The metadata to process.
+     * @return array The updated metadata.
      */
-    public function get_all(): array {
-        $apps = get_option('wp2_apps', []);
-
-        if (!is_array($apps)) {
-            return [];
+    public function handleLegacyMetadata(array $metadata): array
+    {
+        if (isset($metadata['private_key'])) {
+            $decryptedKey = $this->encryption->decrypt($metadata['private_key']);
+            if ($decryptedKey !== false) {
+                $metadata['private_key'] = $decryptedKey;
+            }
         }
 
-        return $apps;
+        return $metadata;
+    }
+
+    /**
+     * Retrieve all webhook secrets.
+     *
+     * @return string[] Array of webhook secrets.
+     */
+    public function get_all_webhook_secrets(): array
+    {
+        $this->load();
+        $secrets = [];
+        foreach ($this->cache as $data) {
+            if (!empty($data['webhook_secret'])) {
+                $secrets[] = $data['webhook_secret'];
+            }
+        }
+        return $secrets;
     }
 }

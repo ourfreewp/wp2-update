@@ -1,32 +1,40 @@
 import { debounce } from '../utils/debounce.js';
 
 export const PollingService = {
-    startPolling: (url, interval, callback) => {
+    // Supports both legacy signature (url, interval, callback)
+    // and object signature { endpoint, interval, onSuccess, onError }
+    startPolling: (arg1, arg2, arg3) => {
+        let endpoint, interval, onSuccess, onError;
+        if (typeof arg1 === 'object') {
+            ({ endpoint, interval, onSuccess, onError } = arg1);
+        } else {
+            endpoint = arg1;
+            interval = arg2;
+            onSuccess = arg3;
+        }
+
         let pollingInterval = null;
         let isPaused = false;
         let lastFetchedData = null;
 
-        const debouncedCallback = debounce(callback, 300);
+        const debouncedSuccess = debounce((data) => onSuccess && onSuccess(data), 300);
 
         async function poll() {
             if (isPaused) return;
 
             try {
-                const data = await apiFetch({ path: url });
-
-                // Avoid redundant updates if data hasn't changed
+                const data = await apiFetch({ path: endpoint });
                 if (JSON.stringify(data) !== JSON.stringify(lastFetchedData)) {
                     lastFetchedData = data;
-                    debouncedCallback(null, data);
+                    debouncedSuccess(data);
                 }
             } catch (error) {
-                debouncedCallback(error, null);
+                if (onError) onError(error);
             }
         }
 
-        // Start the polling loop
         pollingInterval = setInterval(poll, interval);
-        poll(); // Initial call
+        poll();
 
         return {
             stopPolling: () => clearInterval(pollingInterval),

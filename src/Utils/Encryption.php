@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace WP2\Update\Utils;
 
+defined('ABSPATH') || exit;
+
 use WP2\Update\Config;
 
 /**
@@ -26,9 +28,7 @@ class Encryption
             return WP2_ENCRYPTION_KEY;
         }
 
-        // Fallback to database option
-        $key = get_option(Config::OPTION_ENCRYPTION_SALT);
-        return $key !== false ? $key : null;
+        return null;
     }
 
     public function __construct(?string $key = null)

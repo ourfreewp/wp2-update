@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace WP2\Update\Utils;
 
+defined('ABSPATH') || exit;
+
 /**
  * A collection of static helper methods for formatting and normalizing data.
  */

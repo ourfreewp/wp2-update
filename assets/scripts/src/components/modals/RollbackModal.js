@@ -7,9 +7,10 @@ import '../shared/UiModal.js';
 @customElement('rollback-modal')
 export class RollbackModal extends LitElement {
   @property({ type: Object }) pkg;
+  @property({ type: Boolean }) isSaving = false;
 
   render() {
-    const { pkg } = this;
+    const { pkg, isSaving } = this;
     if (!pkg) return html``;
 
     return html`
@@ -19,17 +20,24 @@ export class RollbackModal extends LitElement {
           <release-dropdown .pkg=${pkg}></release-dropdown>
         </div>
         <div slot="footer">
-          <button type="button" class="btn btn-secondary" @click=${this._closeModal}>Cancel</button>
-          <button type="button" class="btn btn-danger" @click=${this._handleConfirm}>Confirm Rollback</button>
+          <button type="button" class="btn btn-secondary" @click=${this._closeModal} ?disabled=${isSaving}>Cancel</button>
+          <button type="button" class="btn btn-danger" @click=${this._handleConfirm} ?disabled=${isSaving}>
+            ${isSaving ? 'Rolling back...' : 'Confirm Rollback'}
+          </button>
         </div>
       </ui-modal>
     `;
   }
 
-  _handleConfirm() {
+  async _handleConfirm() {
     const select = this.renderRoot.querySelector('release-dropdown');
     if (select && select.value) {
-      rollbackPackage(this.pkg.repo, select.value);
+      this.isSaving = true;
+      try {
+        await rollbackPackage(this.pkg.repo, select.value);
+      } finally {
+        this.isSaving = false;
+      }
     }
   }
 

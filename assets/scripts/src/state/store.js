@@ -1,4 +1,4 @@
-import { atom } from 'nanostores';
+import { atom, computed } from 'nanostores';
 
 // Define STATUS as an object with possible states
 export const STATUS = {
@@ -6,6 +6,8 @@ export const STATUS = {
     SUCCESS: 'success',
     ERROR: 'error',
     INSTALLED: 'installed',
+    NOT_CONFIGURED: 'not_configured',
+    NOT_CONFIGURED_WITH_PACKAGES: 'not_configured_with_packages',
 };
 
 /**
@@ -25,12 +27,17 @@ export const store = atom({
     status: STATUS.LOADING,
     isProcessing: false,
     message: '',
+    statusMessage: '', // For ARIA live region
     details: {},
-    apps: [],
-    selectedAppId: null,
-    packages: [],
     health: {},
     stats: {},
+    packages: [],
+    backups: [],
+    selectedPackages: [],
+    flags: {
+        devMode: !!window.wp2UpdateData?.flags?.devMode,
+        headless: !!window.wp2UpdateData?.flags?.headless,
+    },
     modal: {
         isOpen: false,
         content: null,
@@ -49,15 +56,9 @@ export const updateState = (newState) => {
     store.set({ ...store.get(), ...newState });
 };
 
-// Add granular in-progress states for packages
-store.set({
-    ...store.get(),
-    packages: store.get().packages.map((pkg) => ({
-        ...pkg,
-        isUpdating: false, // Default state for tracking updates
-        isRollingBack: false, // Default state for tracking rollbacks
-    })),
-});
+// Import modularized states
+import { packages } from './packages';
+import { apps } from './apps';
 
 /**
  * Updates the in-progress state for a specific package.
@@ -102,3 +103,34 @@ export const setPackageLoadingState = (packageId, isLoading) => {
         return { packages: updatedPackages };
     });
 };
+
+/**
+ * Updates the state of a specific package.
+ * @param {string} packageId - The ID of the package to update.
+ * @param {Partial<Package>} newPackageState - The new state values for the package.
+ */
+export const updatePackageState = (packageId, newPackageState) => {
+    updateState((state) => {
+        const updatedPackages = state.packages.map((pkg) => {
+            if (pkg.id === packageId) {
+                return { ...pkg, ...newPackageState };
+            }
+            return pkg;
+        });
+        return { packages: updatedPackages };
+    });
+}
+
+/**
+ * Computed property to check if any package is updating.
+ */
+export const isAnyPackageUpdating = computed(store, ($store) =>
+  $store.packages.some((pkg) => pkg.isUpdating)
+);
+
+/**
+ * Computed property for overall loading state.
+ */
+export const isLoading = computed(store, ($store) =>
+  $store.isProcessing || $store.packages.some((pkg) => pkg.isUpdating)
+);
